@@ -80,8 +80,7 @@ if target_platform == 'emscripten'
     '-sALLOW_MEMORY_GROWTH=1',
     '-sSTACK_SIZE=1048576',
     '-sENVIRONMENT=web',
-    '-sEXPORTED_RUNTIME_METHODS=FS,ENV',
-    '--embed-file', meson.current_source_dir() / 'data/assets@/assets',
+    '-sEXPORTED_RUNTIME_METHODS=FS,ENV,addRunDependency,removeRunDependency',
     '--embed-file', meson.current_source_dir() / 'data/layouts@/layouts',
   ]
   thornote_link_depends += files('data/layouts/titlebar.lua', 'data/layouts/workspace.lua')

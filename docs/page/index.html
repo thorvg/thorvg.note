@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Note application powered by ThorVG</title>
 <meta name="description" content="thor.note is a note editor rendered entirely by ThorVG. Try the WebAssembly build in the page.">
-<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" sizes="32x32" type="image/png">
 <style>
 @font-face {
     font-family: "Pretendard";
@@ -28,576 +28,384 @@
     src: url("fonts/Pretendard-Bold.subset.woff2") format("woff2");
 }
 
+
+@font-face {
+    font-family: "Fraunces";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("fonts/Fraunces-Latin.woff2") format("woff2");
+}
+
 :root {
-    --paper: #f3f5f7;
-    --sheet: #ffffff;
-    --ink: #12151a;
-    --ink-soft: #4b535e;
-    --ink-faint: #8a929d;
-    --rule: #d5dae0;
-    --blue: #0b66e4;
-    --sun: #f5c400;
+    --ink: #222426;
+    --muted: #727477;
+    --rule: #e6e7e9;
     --sans: "Pretendard", ui-sans-serif, system-ui, sans-serif;
     --mono: ui-monospace, monospace;
-    --wide: 1160px;
 }
-
 * { box-sizing: border-box; }
-
-html { scroll-behavior: smooth; }
-
-body {
-    margin: 0;
-    background: var(--paper);
-    color: var(--ink);
-    font-family: var(--sans);
-    font-size: 17px;
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-    /* The glow behind the demo reaches past the page edge. */
-    overflow-x: clip;
-}
-
-/* Drafting dots, fading out below the first screen. */
-body::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 1100px;
-    background-image: radial-gradient(circle, #c3cad3 1px, transparent 1.2px);
-    background-size: 26px 26px;
-    -webkit-mask-image: linear-gradient(#000 0%, #000 35%, transparent 100%);
-    mask-image: linear-gradient(#000 0%, #000 35%, transparent 100%);
-    opacity: 0.55;
-    pointer-events: none;
-    z-index: -1;
-}
-
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body { margin: 0; color: var(--ink); background: #fff; font-family: var(--sans); font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
 a { color: inherit; }
+a:focus-visible { outline: 2px solid #7377e0; outline-offset: 5px; border-radius: 3px; }
+.header { background: #fff; }
+.header-inner { display: flex; align-items: center; gap: 28px; width: min(1128px, calc(100% - 48px)); min-height: 62px; margin-inline: auto; }
+.brand { display: inline-flex; align-items: center; gap: 9px; color: #17181a; text-decoration: none; }
+.brand img { display: block; width: 32px; height: 32px; }
+.brand span { font-size: 22px; font-weight: 600; letter-spacing: -0.7px; }
+.header nav { display: flex; align-items: center; gap: 30px; margin-left: auto; }
+.header nav a { color: #64666a; font-size: 14px; text-decoration: none; }
+.header nav a:hover { color: #17181a; }
+.source { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: #27292c; }
+.source:hover { opacity: 0.65; }
+.source svg { width: 21px; height: 21px; }
 
-.wrap {
-    width: min(var(--wide), calc(100% - 48px));
-    margin-inline: auto;
-}
-
-.label {
-    font-family: var(--mono);
-    font-size: 12px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-}
-
-/* ---------- top bar ---------- */
-
-.top {
-    display: flex;
-    align-items: center;
-    gap: 28px;
-    padding: 22px 0;
-}
-
-.brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-right: auto;
-    text-decoration: none;
-    font-weight: 700;
-    font-size: 19px;
-    letter-spacing: -0.02em;
-}
-
-.brand img { width: 26px; height: 30px; }
-
-.brand i {
-    font-style: normal;
-    color: var(--blue);
-}
-
-.top nav {
-    display: flex;
-    gap: 26px;
-    font-size: 15px;
-}
-
-.top nav a {
-    text-decoration: none;
-    color: var(--ink-soft);
-    transition: color 0.15s;
-}
-
-.top nav a:hover { color: var(--ink); }
-
-.top .source {
-    font-family: var(--mono);
-    font-size: 13px;
-    text-decoration: none;
-    padding: 7px 12px;
-    border: 1px solid var(--rule);
-    border-radius: 6px;
-    background: var(--sheet);
-    transition: border-color 0.15s;
-}
-
-.top .source:hover { border-color: var(--ink); }
-
-/* ---------- hero ---------- */
-
-.hero {
-    padding: 72px 0 76px;
-    display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-    gap: 48px;
-    align-items: start;
-}
-
-h1 {
-    margin: 0;
-    font-size: clamp(42px, 6.6vw, 92px);
-    line-height: 1.02;
-    letter-spacing: -0.035em;
-    font-weight: 700;
-    text-wrap: balance;
-}
-
-h1 span {
-    color: var(--blue);
-}
-
-.lede {
-    margin: 0 0 6px;
-    font-size: 19px;
-    line-height: 1.55;
-    color: var(--ink-soft);
-    max-width: 34em;
-}
-
-.lede strong { color: var(--ink); font-weight: 600; }
-
-.actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 26px;
-}
-
-.button {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    font: inherit;
-    font-size: 16px;
-    font-weight: 600;
-    padding: 12px 20px;
-    border-radius: 8px;
-    border: 1px solid var(--ink);
-    background: var(--ink);
-    color: #fff;
-    text-decoration: none;
-    cursor: pointer;
-    transition: transform 0.15s, background 0.15s;
-}
-
-.button:hover { background: var(--blue); border-color: var(--blue); transform: translateY(-1px); }
-.button:focus-visible, .top a:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
-
-.button.quiet {
-    background: transparent;
-    color: var(--ink);
-    border-color: var(--rule);
-}
-
-.button.quiet:hover { background: var(--sheet); border-color: var(--ink); }
-
-.rise { opacity: 0; transform: translateY(14px); animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
-.rise.d1 { animation-delay: 0.08s; }
-.rise.d2 { animation-delay: 0.2s; }
-.rise.d3 { animation-delay: 0.32s; }
-.rise.d4 { animation-delay: 0.46s; }
-
-@keyframes rise { to { opacity: 1; transform: none; } }
-
-/* ---------- live demo ---------- */
-
-.demo { position: relative; padding-bottom: 40px; }
-
-/* The symbol's own colors, blurred behind the window. */
-.demo::before {
-    content: "";
-    position: absolute;
-    inset: 6% -4% 12% -4%;
-    background:
-        radial-gradient(38% 46% at 16% 30%, rgba(11, 102, 228, 0.34), transparent 70%),
-        radial-gradient(34% 44% at 52% 80%, rgba(6, 201, 140, 0.30), transparent 70%),
-        radial-gradient(32% 44% at 88% 28%, rgba(242, 71, 15, 0.24), transparent 70%),
-        radial-gradient(22% 30% at 74% 70%, rgba(245, 196, 0, 0.30), transparent 70%);
-    filter: blur(46px);
-    z-index: -1;
-}
-
-.stage {
-    position: relative;
-    aspect-ratio: 3 / 2;
-    background: var(--sheet);
-    border: 1px solid #b9c0c9;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 30px 70px -28px rgba(18, 21, 26, 0.45), 0 10px 24px -14px rgba(18, 21, 26, 0.3);
-}
-
-.stage canvas,
-.stage .poster {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
-/* Typing goes to this field so the browser can compose text; the app draws the result itself. */
-.stage textarea {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 2px;
-    height: 20px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    outline: none;
-    resize: none;
-    overflow: hidden;
-    opacity: 0;
-    font-size: 16px;
-    pointer-events: none;
-}
-
-/* The app owns the keyboard and the wheel while it has focus. */
-.stage { transition: border-color 0.2s, box-shadow 0.2s; }
-.stage[data-focus] {
-    border-color: var(--blue);
-    box-shadow: 0 0 0 3px rgba(11, 102, 228, 0.18), 0 30px 70px -28px rgba(18, 21, 26, 0.45), 0 10px 24px -14px rgba(18, 21, 26, 0.3);
-}
-
-.stage .poster {
-    object-fit: cover;
-    object-position: top left;
-    pointer-events: none;
-    transition: opacity 0.4s;
-}
-
+.masthead { position: relative; isolation: isolate; overflow: hidden; padding: 70px 40px 56px; background: #25292e; }
+.vector-scene { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; mask-image: linear-gradient(90deg, #000, transparent 35%, transparent 65%, #000); }
+.vector-scene svg { position: absolute; top: -12px; width: clamp(280px, 28vw, 420px); height: auto; overflow: visible; }
+.scene-left { left: -28px; }
+.scene-right { right: -32px; }
+.scene-caret { animation: caret-blink 1.6s step-end infinite; }
+@keyframes caret-blink { 0%, 65%, 100% { opacity: 0.85; } 66%, 99% { opacity: 0.15; } }
+.headline { max-width: 1120px; margin: 48px auto 0; color: #fff; text-align: center; }
+h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 4.2vw, 56px); font-weight: 500; line-height: 1.2857; letter-spacing: -1.3px; text-wrap: balance; }
+.headline p { max-width: 960px; margin: 12px auto 0; color: #edebe8; font-size: 23px; font-weight: 400; line-height: 1.45; text-wrap: balance; }
+.demo { max-width: 1300px; margin-inline: auto; }
+.stage { position: relative; width: 100%; aspect-ratio: 13 / 8; min-height: 440px; overflow: hidden; background: #fff; border: 1px solid rgb(0 0 0 / 12%); border-radius: 14px; box-shadow: 0 24px 64px rgb(0 0 0 / 25%); transition: box-shadow 0.2s; }
+.stage[data-focus] { box-shadow: 0 0 0 3px rgb(255 255 255 / 30%), 0 24px 64px rgb(0 0 0 / 25%); }
+.stage canvas, .stage .poster { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+/* The hidden field lets the browser compose text; the editor draws it. */
+.stage textarea { position: absolute; left: 0; top: 0; width: 2px; height: 20px; margin: 0; padding: 0; border: 0; outline: none; resize: none; overflow: hidden; opacity: 0; font-size: 16px; pointer-events: none; }
+.stage .poster { object-fit: cover; object-position: top left; pointer-events: none; transition: opacity 0.3s; }
 .stage[data-state="running"] .poster { opacity: 0; }
-
-.stage-status {
-    position: absolute;
-    left: 50%;
-    bottom: 34px;
-    transform: translateX(-50%);
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 16px;
-    border-radius: 999px;
-    background: rgba(18, 21, 26, 0.9);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    white-space: nowrap;
-    box-shadow: 0 14px 34px -12px rgba(18, 21, 26, 0.6);
-    pointer-events: none;
-    transition: opacity 0.3s;
-}
-
-.stage-status::before {
-    content: "";
-    width: 12px;
-    height: 12px;
-    border: 2px solid rgba(255, 255, 255, 0.35);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-.stage[data-state="running"] .stage-status { opacity: 0; }
+.stage-status { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 9px; max-width: calc(100% - 32px); padding: 8px 14px; background: rgb(255 255 255 / 96%); border: 1px solid var(--rule); border-radius: 6px; color: #626468; font-size: 13px; white-space: nowrap; pointer-events: none; }
+.stage-status::before { content: ""; width: 11px; height: 11px; flex-shrink: 0; border: 1.5px solid #d5d5d5; border-top-color: #626468; border-radius: 50%; animation: spin 0.8s linear infinite; }
+.stage[data-state="running"] .stage-status { visibility: hidden; }
 .stage[data-state="failed"] .stage-status::before { display: none; }
-
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.keys {
-    margin: 30px 0 0;
-    padding: 0;
-    list-style: none;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-    gap: 10px 36px;
-    font-size: 15px;
-    color: var(--ink-soft);
+/* Decorative keycaps stay behind the editor and never capture input. */
+.shortcut-scene { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.shortcut-ghost { position: absolute; left: var(--x); top: var(--y); display: inline-flex; gap: 6px; transform: translateX(-50%) rotate(var(--turn)); opacity: 0.25; white-space: nowrap; }
+.shortcut-ghost kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding-inline: 8px; color: #c5d1e2; background: rgb(255 255 255 / 3%); border: 1px solid rgb(184 204 228 / 45%); border-bottom-width: 2px; border-radius: 6px; font-family: var(--mono); font-size: 13px; font-weight: 400; line-height: 1; }
+
+.shortcuts { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-block: 48px 64px; }
+.shortcuts h2 { margin: 0 0 20px; font-size: 19px; font-weight: 600; letter-spacing: -0.4px; }
+.keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 44px; margin: 0; padding: 0; list-style: none; }
+.keys li { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; color: var(--muted); font-size: 14px; }
+.keys .combo { display: inline-flex; gap: 4px; white-space: nowrap; }
+.keys kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 23px; height: 24px; padding-inline: 6px; color: #55585d; background: #fafafa; border: 1px solid #e3e4e6; border-radius: 4px; font-family: var(--mono); font-size: 11px; font-weight: 400; line-height: 1; }
+.features { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-block: 0 64px; }
+.features h2 { margin: 0 0 32px; padding-top: 40px; border-top: 1px solid var(--rule); font-size: clamp(36px, 4vw, 48px); font-weight: 600; letter-spacing: -1.2px; }
+.feature-label { margin: 0 0 20px; font-size: 21px; font-weight: 600; letter-spacing: -0.4px; }
+.feature-demos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.feature-card { overflow: hidden; background: #fff; border: 1px solid #e1e2e4; border-radius: 10px; }
+.feature-card.dark { color: #ededed; background: #1e1e1e; border-color: #363636; }
+.feature-card iframe { display: block; width: 100%; height: 440px; border: 0; }
+.motion-icons { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-bottom: 64px; }
+.motion-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; padding-top: 40px; border-top: 1px solid var(--rule); }
+.motion-heading h2 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px; }
+.motion-hint { margin: 0; color: var(--muted); font-size: 12px; }
+.motion-description { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
+.icon-sheet { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; overflow: hidden; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; }
+.motion-icon { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-width: 0; min-height: 140px; margin: 0; padding: 20px 8px; border: 0; background: #fff; font: inherit; cursor: pointer; }
+.motion-icon:hover, .motion-icon[aria-pressed="true"] { background: #fafafa; }
+.motion-icon:focus-visible { outline: 2px solid #7377e0; outline-offset: -3px; }
+.motion-glyph { position: static; display: block; width: 64px; height: 64px; pointer-events: none; }
+.motion-label { color: var(--muted); font-size: 12px; line-height: 1.4; text-align: center; }
+.motion-count { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: #fafafa; }
+.motion-count strong { color: #54585e; font-size: 28px; font-weight: 600; }
+.motion-count span { color: var(--muted); font-size: 12px; }
+
+@media (max-width: 1000px) {
+    .masthead { padding: 56px 24px 40px; }
+    .headline { margin-top: 36px; }
+    .headline p { font-size: 20px; }
+    .keys { column-gap: 24px; }
 }
-
-.keys li {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--rule);
+@media (max-width: 900px) { .feature-demos { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .icon-sheet { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 680px) {
+    .header-inner { width: calc(100% - 32px); gap: 18px; }
+    .brand span { font-size: 20px; }
+    .brand img { width: 28px; height: 28px; }
+    .header nav { gap: 16px; }
+    .header nav a { font-size: 13px; }
+    .site-link { display: none; }
+    .masthead { padding: 44px 16px 32px; }
+    .vector-scene { opacity: 0.65; }
+    .vector-scene svg { top: 10px; width: 240px; }
+    .scene-left { left: -112px; }
+    .scene-right { right: -112px; }
+    h1 { font-size: clamp(31px, 8.5vw, 38px); line-height: 1.2; letter-spacing: -0.8px; }
+    .headline { margin-top: 30px; }
+    .headline p { margin-top: 16px; font-size: 17px; line-height: 1.5; }
+    .stage { height: 520px; aspect-ratio: auto; min-height: 0; border-radius: 9px; }
+    .stage-status { white-space: normal; }
+    .shortcut-ghost { opacity: 0.18; }
+    .shortcut-ghost kbd { min-width: 26px; height: 27px; padding-inline: 5px; font-size: 11px; }
+    .shortcuts { width: calc(100% - 32px); padding-block: 32px 40px; }
+    .shortcuts h2 { font-size: 17px; margin-bottom: 14px; }
+    .keys { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+    .keys li { gap: 6px; font-size: 13px; }
+    .keys kbd { min-width: 20px; padding-inline: 4px; font-size: 10px; }
+    .features { width: calc(100% - 32px); padding-bottom: 40px; }
+    .features h2 { padding-top: 32px; }
+    .feature-label { font-size: 19px; }
+    .motion-icons { width: calc(100% - 32px); padding-bottom: 40px; }
+    .motion-heading { padding-top: 32px; margin-bottom: 20px; }
+    .motion-heading h2 { font-size: 23px; }
+    .icon-sheet { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .motion-icon { min-height: 128px; padding: 16px 4px; gap: 8px; }
+    .motion-label { font-size: 11px; }
 }
-
-.keys .combo { white-space: nowrap; }
-
-kbd {
-    font-family: var(--mono);
-    font-size: 12.5px;
-    padding: 3px 7px;
-    border: 1px solid var(--rule);
-    border-bottom-width: 2px;
-    border-radius: 5px;
-    background: var(--sheet);
-    color: var(--ink);
-    white-space: nowrap;
-}
-
-/* ---------- sections ---------- */
-
-section { padding: 84px 0; }
-
-.split {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-    gap: 48px;
-}
-
-h2 {
-    margin: 14px 0 0;
-    font-size: clamp(30px, 3.6vw, 46px);
-    line-height: 1.05;
-    letter-spacing: -0.035em;
-    font-weight: 700;
-    text-wrap: balance;
-}
-
-.split > header p { margin: 18px 0 0; color: var(--ink-soft); max-width: 22em; }
-
-pre {
-    margin: 0;
-    font-family: var(--mono);
-    font-size: 13.5px;
-    line-height: 1.7;
-    overflow-x: auto;
-    tab-size: 2;
-}
-
-/* ---------- build ---------- */
-
-.recipes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-
-.recipe {
-    background: var(--sheet);
-    border: 1px solid var(--rule);
-    border-radius: 10px;
-    padding: 22px 24px 24px;
-    min-width: 0;
-}
-
-.recipe h3 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
-.recipe pre { color: var(--ink); }
-.recipe pre .p { color: var(--ink-faint); user-select: none; }
-.recipe p { margin: 14px 0 0; font-size: 14.5px; color: var(--ink-soft); }
-.recipe p code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
-
-.needs { margin: 22px 0 0; font-size: 15px; color: var(--ink-soft); }
-.needs code { font-family: var(--mono); font-size: 13px; color: var(--ink); }
-
-/* ---------- small screens ---------- */
-
-@media (max-width: 860px) {
-    body { font-size: 16px; }
-    .top nav { display: none; }
-    .hero { grid-template-columns: 1fr; gap: 34px; padding: 44px 0 40px; }
-    .split, .recipes { grid-template-columns: 1fr; gap: 28px; }
-    section { padding: 60px 0; }
-    .stage { border-radius: 8px; }
-    .stage-status { bottom: 14px; font-size: 13px; }
-}
-
+@media (max-width: 380px) { .keys { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-    .rise { animation: none; opacity: 1; transform: none; }
-    .button { transition: none; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 </style>
 </head>
 <body>
-
-<div class="wrap">
-    <div class="top">
-        <a class="brand" href="#top" id="top"><img src="logo.svg" alt=""><span>thor<i>.</i>note</span></a>
-        <nav aria-label="Sections">
-            <a href="#demo">Live demo</a>
-            <a href="#build">Build</a>
+<header class="header" id="top">
+    <div class="header-inner">
+        <a class="brand" href="#top" aria-label="ThorNote"><img src="logo.svg" alt=""><span>ThorNote</span></a>
+        <nav aria-label="Links">
+            <a class="site-link" href="https://www.thorvg.org/">ThorVG</a>
         </nav>
-        <a class="source" href="https://github.com/thorvg/thorvg.note">source</a>
+        <a class="source" href="https://github.com/thorvg/thorvg.note" aria-label="View source on GitHub" title="GitHub">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        </a>
     </div>
-</div>
-
+</header>
 <main>
-    <div class="wrap">
-        <div class="hero">
-            <div>
-                <h1 class="rise d1">Note application powered by
-                    <span>ThorVG</span></h1>
-            </div>
-            <div class="rise d3">
-                <p class="lede">Every element of <strong>thor.note</strong> is rendered by ThorVG. Text editing and font handling, SVG and Lottie, and every other part of the interface are drawn as vectors, so it stays sharp at any size. The title bar, layouts and features are customized in Lua, aiming for an editor you can extend.</p>
-                <div class="actions">
-                    <a class="button" href="#demo">Try it below</a>
-                    <a class="button quiet" href="#build">Build it yourself</a>
-                </div>
+    <section class="masthead" aria-labelledby="page-title">
+        <div class="vector-scene" aria-hidden="true">
+            <svg class="scene-left" viewBox="0 0 400 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="pen-stroke" x1="30" y1="140" x2="330" y2="470" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#F3CD91" stop-opacity="0.75"/>
+                        <stop offset="1" stop-color="#ED9D86" stop-opacity="0.15"/>
+                    </linearGradient>
+                </defs>
+                <g transform="rotate(-12 150 150)">
+                    <rect x="48" y="58" width="224" height="156" stroke="#B9C3D8" stroke-opacity="0.22" stroke-dasharray="4 5"/>
+                    <path d="M24 192H308M68 32V242" stroke="#B9C3D8" stroke-opacity="0.14"/>
+                    <text x="70" y="184" font-family="Fraunces, Georgia, serif" font-size="130" font-weight="500" stroke="#DCE3F1" stroke-opacity="0.4" stroke-width="1">Aa</text>
+                    <g fill="#25292E" stroke="#AABCD8" stroke-opacity="0.5">
+                        <rect x="44" y="54" width="8" height="8"/>
+                        <rect x="268" y="54" width="8" height="8"/>
+                        <rect x="44" y="210" width="8" height="8"/>
+                        <rect x="268" y="210" width="8" height="8"/>
+                    </g>
+                </g>
+                <path d="M-50 340C122 420 38 236 188 282S258 428 340 486" stroke="url(#pen-stroke)" stroke-width="2"/>
+                <path d="M-50 340L122 420M188 282L38 236M188 282L258 428M340 486L258 428" stroke="#F3CD91" stroke-opacity="0.18" stroke-dasharray="3 5"/>
+                <g fill="#25292E" stroke="#F3CD91" stroke-opacity="0.6" stroke-width="1.5">
+                    <rect x="183" y="277" width="10" height="10"/>
+                    <circle cx="38" cy="236" r="4"/>
+                    <circle cx="122" cy="420" r="4"/>
+                    <circle cx="258" cy="428" r="4"/>
+                    <rect x="335" y="481" width="10" height="10"/>
+                </g>
+                <path d="M-60 580C42 444 180 590 222 632" stroke="#9BC7DF" stroke-opacity="0.2" stroke-width="1.5"/>
+            </svg>
+            <svg class="scene-right" viewBox="0 0 400 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g transform="rotate(9 230 124)">
+                    <rect x="70" y="58" width="290" height="78" rx="9" fill="#FFFFFF" fill-opacity="0.025" stroke="#9BC7DF" stroke-opacity="0.3"/>
+                    <rect x="88" y="81" width="58" height="34" rx="2" fill="#91BAF0" fill-opacity="0.16"/>
+                    <text x="91" y="105" fill="#E1E9F4" fill-opacity="0.6" font-family="Pretendard, sans-serif" font-size="22">Hello, vectors.</text>
+                    <path class="scene-caret" d="M232 80V116" stroke="#A8D7F2" stroke-width="2"/>
+                    <rect x="42" y="31" width="30" height="30" rx="5" fill="#25292E" stroke="#9BC7DF" stroke-opacity="0.4"/>
+                    <path d="M49 39H65M57 39V53M53 53H61" stroke="#C2D3E6" stroke-opacity="0.65" stroke-width="1.4"/>
+                </g>
+                <path d="M308 184C115 170 164 366 312 380S410 564 244 590" stroke="#91BAD4" stroke-opacity="0.4" stroke-width="2"/>
+                <path d="M308 184L115 170M312 380L164 366M312 380L410 564M244 590L410 564" stroke="#91BAD4" stroke-opacity="0.18" stroke-dasharray="3 5"/>
+                <g fill="#25292E" stroke="#9BC7DF" stroke-opacity="0.6" stroke-width="1.5">
+                    <rect x="303" y="179" width="10" height="10"/>
+                    <circle cx="115" cy="170" r="4"/>
+                    <circle cx="164" cy="366" r="4"/>
+                    <rect x="307" y="375" width="10" height="10"/>
+                    <rect x="239" y="585" width="10" height="10"/>
+                </g>
+                <g transform="rotate(24 366 308)" stroke="#EDBD92" stroke-opacity="0.2">
+                    <rect x="310" y="252" width="112" height="112" rx="24"/>
+                    <rect x="326" y="268" width="80" height="80" rx="16"/>
+                </g>
+            </svg>
+        </div>
+        <div class="demo" id="demo">
+            <div class="stage" id="stage">
+                <canvas id="canvas" aria-label="ThorNote editor"></canvas>
+                <textarea id="keyboard" aria-label="Editor text input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+                <img class="poster" src="preview.png" alt="ThorNote welcome screen">
+                <div class="stage-status" id="status" role="status">Starting the app</div>
             </div>
         </div>
-    </div>
-
-    <div class="wrap demo rise d4" id="demo">
-        <div class="stage" id="stage">
-            <canvas id="canvas" aria-label="thor.note running in the page"></canvas>
-            <textarea id="keyboard" aria-label="thor.note text input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
-            <img class="poster" src="preview.png" alt="ThorNote welcome screen with the ThorVG logo">
-            <div class="stage-status" id="status" role="status">Starting the app</div>
+        <div class="shortcut-scene" aria-hidden="true">
+            <span class="shortcut-ghost" style="--x: 15%; --y: 22px; --turn: -8deg"><kbd>F1</kbd></span>
+            <span class="shortcut-ghost" style="--x: 40%; --y: 14px; --turn: 7deg"><kbd class="mod">Ctrl</kbd> <kbd>P</kbd></span>
+            <span class="shortcut-ghost" style="--x: 65%; --y: 24px; --turn: -5deg"><kbd class="mod">Ctrl</kbd> <kbd>O</kbd></span>
+            <span class="shortcut-ghost" style="--x: 87%; --y: 18px; --turn: 9deg"><kbd class="mod">Ctrl</kbd> <kbd>S</kbd></span>
+            <span class="shortcut-ghost" style="--x: 2%; --y: 24%; --turn: -12deg"><kbd class="mod">Ctrl</kbd> <kbd>B</kbd></span>
+            <span class="shortcut-ghost" style="--x: 97%; --y: 33%; --turn: 12deg"><kbd class="mod">Ctrl</kbd> <kbd>,</kbd></span>
+            <span class="shortcut-ghost" style="--x: 2%; --y: 56%; --turn: -8deg"><kbd class="mod">Ctrl</kbd> <kbd>Z</kbd></span>
+            <span class="shortcut-ghost" style="--x: 97%; --y: 66%; --turn: 9deg"><kbd class="mod">Ctrl</kbd> <kbd>Shift</kbd> <kbd>Z</kbd></span>
+            <span class="shortcut-ghost" style="--x: 7%; --y: 84%; --turn: -10deg"><kbd class="mod">Ctrl</kbd> <kbd>A</kbd></span>
+            <span class="shortcut-ghost" style="--x: 92%; --y: 84%; --turn: 8deg"><kbd class="mod">Ctrl</kbd> <kbd>C</kbd></span>
+            <span class="shortcut-ghost" style="--x: 4%; --y: calc(100% - 44px); --turn: -6deg"><kbd class="mod">Ctrl</kbd> <kbd>X</kbd></span>
+            <span class="shortcut-ghost" style="--x: 26%; --y: calc(100% - 40px); --turn: 7deg"><kbd class="mod">Ctrl</kbd> <kbd>V</kbd></span>
+            <span class="shortcut-ghost" style="--x: 50%; --y: calc(100% - 42px); --turn: -4deg"><kbd class="mod">Ctrl</kbd> <kbd>+</kbd></span>
+            <span class="shortcut-ghost" style="--x: 75%; --y: calc(100% - 40px); --turn: 6deg"><kbd class="mod">Ctrl</kbd> <kbd>-</kbd></span>
+            <span class="shortcut-ghost" style="--x: 96%; --y: calc(100% - 46px); --turn: -9deg"><kbd class="mod">Ctrl</kbd> <kbd>0</kbd></span>
         </div>
-        <ul class="keys" aria-label="Keyboard shortcuts">
+        <div class="headline">
+            <h1 id="page-title">Note application powered by ThorVG</h1>
+            <p>A plain-text editor rendered entirely as vectors. Try it in your browser.</p>
+        </div>
+    </section>
+    <section class="shortcuts" aria-labelledby="shortcuts-title">
+        <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+        <ul class="keys">
+            <li>New document<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>N</kbd></span></li>
+            <li>Open files<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>O</kbd></span></li>
+            <li>Recent files<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>P</kbd></span></li>
+            <li>Save<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>S</kbd></span></li>
+            <li>Save as<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span></li>
+            <li>Close tab<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>W</kbd></span></li>
             <li>Command palette<span class="combo"><kbd>F1</kbd></span></li>
-            <li>Recent files<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>P</kbd></span></li>
-            <li>Find a file<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>O</kbd></span></li>
-            <li>Save<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>S</kbd></span></li>
-            <li>Document list<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>B</kbd></span></li>
-            <li>Settings<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>,</kbd></span></li>
-            <li>Undo<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>Z</kbd></span></li>
-            <li>Redo<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>Shift</kbd> <kbd>Z</kbd></span></li>
-            <li>Select all<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>A</kbd></span></li>
-            <li>Copy<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>C</kbd></span></li>
-            <li>Cut<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>X</kbd></span></li>
-            <li>Paste<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>V</kbd></span></li>
-            <li>Larger text<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>+</kbd></span></li>
-            <li>Smaller text<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>-</kbd></span></li>
-            <li>Reset text size<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>0</kbd></span></li>
+            <li>Settings<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>,</kbd></span></li>
+            <li>Document list<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>B</kbd></span></li>
+            <li>Undo<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>Z</kbd></span></li>
+            <li>Redo<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></span></li>
+            <li>Select all<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>A</kbd></span></li>
+            <li>Copy<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>C</kbd></span></li>
+            <li>Cut<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>X</kbd></span></li>
+            <li>Paste<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>V</kbd></span></li>
+            <li>Larger text<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>+</kbd></span></li>
+            <li>Smaller text<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>-</kbd></span></li>
+            <li>Reset text size<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>0</kbd></span></li>
         </ul>
-    </div>
-
-    <section id="build">
-        <div class="wrap split">
-            <header>
-                <div class="label">Build</div>
-                <h2>Set up, compile, run.</h2>
-                <p>C++20 and Meson. Lua is fetched and built with the project.</p>
-            </header>
-            <div>
-                <div class="recipes">
-                    <div class="recipe">
-                        <h3>Desktop</h3>
-<pre><span class="p">$ </span>meson setup build
-<span class="p">$ </span>meson compile -C build
-<span class="p">$ </span>build/src/thornote/ThorNote notes/</pre>
-                        <p>Pass a folder to open it as a library, or files to open them in tabs.</p>
-                    </div>
-                    <div class="recipe">
-                        <h3>WebAssembly</h3>
-<pre><span class="p">$ </span>meson setup build/wasm \
-    --cross-file cross/wasm32.txt \
-    --buildtype=release \
-    -Dcpp_link_args="['-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm', '-sSINGLE_FILE']"
-<span class="p">$ </span>meson compile -C build/wasm</pre>
-                        <p>Produces <code>ThorNote.js</code> with WebAssembly embedded by <code>-sSINGLE_FILE</code>, so it also opens straight from disk. Omit that flag to produce separate <code>ThorNote.js</code> and <code>ThorNote.wasm</code> files.</p>
-                    </div>
-                </div>
-                <p class="needs">Desktop needs <code>thorvg-1 &ge; 1.2</code> and <code>sdl3 &ge; 3.2</code> installed. The WebAssembly build needs the Emscripten toolchain on the path and fetches ThorVG itself.</p>
-            </div>
+    </section>
+    <section class="features" aria-labelledby="features-title">
+        <h2 id="features-title">Features</h2>
+        <h3 class="feature-label" id="appearance-title">Dark / Light mode</h3>
+        <div class="feature-demos" aria-labelledby="appearance-title">
+            <article class="feature-card">
+                <iframe src="editor.html?theme=light&amp;sample=Rendering.md" title="ThorNote light mode editor" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+            </article>
+            <article class="feature-card dark">
+                <iframe src="editor.html?theme=dark&amp;sample=Rendering.md" title="ThorNote dark mode editor" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+            </article>
+        </div>
+    </section>
+    <section class="motion-icons" id="motion-icons" aria-labelledby="motion-title">
+        <div class="motion-heading">
+            <h2 id="motion-title">Motion icons</h2>
+            <p class="motion-hint">Hover or focus to preview. Press to toggle.</p>
+        </div>
+        <p class="motion-description">Lottie icons bring smooth, responsive interactions to the app.<br>
+            The icons below are rendered with ThorVG WebCanvas, using <code>LottieAnimation</code> to transition between states defined by markers.</p>
+        <div class="icon-sheet">
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Folder">
+                <canvas class="motion-glyph" data-icon="icons/folder.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Folder</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="File">
+                <canvas class="motion-glyph" data-icon="icons/file.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">File</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Star">
+                <canvas class="motion-glyph" data-icon="icons/star.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Star</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Search">
+                <canvas class="motion-glyph" data-icon="icons/search.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Search</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Check">
+                <canvas class="motion-glyph" data-icon="icons/check.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Check</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Chevron right">
+                <canvas class="motion-glyph" data-icon="icons/chevron-right.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Chevron right</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Grid">
+                <canvas class="motion-glyph" data-icon="icons/grid.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Grid</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Command">
+                <canvas class="motion-glyph" data-icon="icons/command.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Command</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Close">
+                <canvas class="motion-glyph" data-icon="icons/close.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Close</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="New">
+                <canvas class="motion-glyph" data-icon="icons/new.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">New</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Save">
+                <canvas class="motion-glyph" data-icon="icons/save.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Save</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Settings">
+                <canvas class="motion-glyph" data-icon="icons/settings.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Settings</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Menu">
+                <canvas class="motion-glyph" data-icon="icons/menu.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Menu</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Sidebar">
+                <canvas class="motion-glyph" data-icon="icons/sidebar.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Sidebar</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Properties">
+                <canvas class="motion-glyph" data-icon="icons/properties.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Properties</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Chevron left">
+                <canvas class="motion-glyph" data-icon="icons/chevron-left.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Chevron left</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Plus">
+                <canvas class="motion-glyph" data-icon="icons/plus.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Plus</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Minus">
+                <canvas class="motion-glyph" data-icon="icons/minus.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Minus</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Dirty">
+                <canvas class="motion-glyph" data-icon="icons/dirty.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Dirty</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Window minimize">
+                <canvas class="motion-glyph" data-icon="icons/window-minimize.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Window minimize</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Window maximize">
+                <canvas class="motion-glyph" data-icon="icons/window-maximize.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Window maximize</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Window restore">
+                <canvas class="motion-glyph" data-icon="icons/window-restore.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Window restore</span>
+            </button>
+            <button class="motion-icon" type="button" aria-pressed="false" aria-label="Window fullscreen">
+                <canvas class="motion-glyph" data-icon="icons/window-fullscreen.json" width="64" height="64" aria-hidden="true"></canvas>
+                <span class="motion-label">Window fullscreen</span>
+            </button>
+            <div class="motion-count"><strong>23</strong><span>app icons</span></div>
         </div>
     </section>
 </main>
 
-<script>
-(function () {
-    var stage = document.getElementById('stage');
-    var canvas = document.getElementById('canvas');
-    var keyboard = document.getElementById('keyboard');
-    var status = document.getElementById('status');
-    var samples = ['Welcome.md', 'Rendering.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
-    // Command is the app's primary modifier on Apple systems, Ctrl everywhere else.
-    var apple = /Mac|iPhone|iPad/.test(navigator.platform);
-    // Shown alone when the sample notes cannot be fetched, as when the page is opened from disk.
-    var spare = '# Welcome to thor.note\n\nYou are typing into the real editor.\nClick here and type. F1 opens the command palette.\n\nServe this folder over HTTP to load the sample notes.\n';
-
-    function fail(message) {
-        stage.dataset.state = 'failed';
-        status.textContent = message;
-    }
-
-    function fetchNotes() {
-        return Promise.all(samples.map(function (name) {
-            return fetch('notes/' + encodeURIComponent(name)).then(function (response) {
-                if (!response.ok) throw new Error(name);
-                return response.text();
-            }).then(function (text) { return {name: name, text: text}; });
-        })).catch(function () { return [{name: 'Welcome.md', text: spare}]; });
-    }
-
-    function start(notes) {
-        window.Module = {
-            canvas: canvas,
-            arguments: ['--fresh', '--settings-dir', '/settings'],
-            print: function () {},
-            printErr: function () {},
-            preRun: [function () {
-                // Keys reach the app only while its text field has focus.
-                Module.ENV.SDL_EMSCRIPTEN_KEYBOARD_ELEMENT = '#keyboard';
-                Module.FS.mkdir('/notes');
-                notes.forEach(function (note) { Module.FS.writeFile('/notes/' + note.name, note.text); });
-                // The app opens on its welcome screen; its recent lists lead to the sample notes.
-                Module.FS.mkdir('/settings');
-                Module.FS.writeFile('/settings/settings.conf', 'thornote-settings 1\n' + notes.map(function (note) {
-                    return 'recent-file "/notes/' + note.name + '"\n';
-                }).join('') + 'recent-directory "/notes"\n');
-            }],
-            postRun: [function () {
-                // The window starts at its default size; a resize makes it adopt the canvas box.
-                window.dispatchEvent(new Event('resize'));
-                stage.dataset.state = 'running';
-                status.textContent = '';
-            }],
-            onAbort: function () { fail('The app stopped unexpectedly'); }
-        };
-        var script = document.createElement('script');
-        script.src = 'ThorNote.js';
-        script.onerror = function () { fail('The app could not be loaded'); };
-        document.body.appendChild(script);
-    }
-
-    var composing = false;
-    keyboard.addEventListener('compositionstart', function () { composing = true; });
-    keyboard.addEventListener('compositionend', function () { composing = false; });
-    canvas.addEventListener('mousedown', function (event) {
-        // Focus stays on the text field; a click also ends the composition in progress.
-        event.preventDefault();
-        if (composing) keyboard.blur();
-        keyboard.focus({preventScroll: true});
-    });
-    keyboard.addEventListener('focus', function () { stage.dataset.focus = ''; });
-    keyboard.addEventListener('blur', function () { delete stage.dataset.focus; });
-    // Shortcuts pressed in the app stay there; the browser would act on them as well.
-    keyboard.addEventListener('keydown', function (event) {
-        if (event.ctrlKey || event.metaKey || /^F\d+$/.test(event.key)) event.preventDefault();
-    });
-    if (apple) document.querySelectorAll('kbd.mod').forEach(function (key) { key.textContent = '\u2318'; });
-    // Until the app is focused the wheel keeps scrolling the page.
-    stage.addEventListener('wheel', function (event) {
-        if (document.activeElement !== keyboard) event.stopPropagation();
-    }, {capture: true});
-
-    if (typeof WebAssembly !== 'object') fail('This browser cannot run WebAssembly');
-    else fetchNotes().then(start);
-})();
-</script>
+<script src="editor.js"></script>
+<script src="motion-icons.js"></script>
 </body>
 </html>
