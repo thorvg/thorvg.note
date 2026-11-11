@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>ThorVG</title>
+  <rect width="512" height="512" rx="112" fill="white"/>
+  <path transform="translate(107 96) scale(1.72973)" d="M122.873 105.689H146.948L67.4961 185V146.557C67.4962 123.986 85.767 105.689 108.306 105.689H39.2119L69.9697 52.8447H0L34.3076 0H172.359L164.78 10.0205C144.379 36.9956 112.54 52.8447 78.749 52.8447H160.619L122.873 105.689Z" fill="black"/>
+</svg>

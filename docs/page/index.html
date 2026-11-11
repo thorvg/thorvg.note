@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Note application powered by ThorVG</title>
+<meta name="description" content="thor.note is a note editor rendered entirely by ThorVG. Try the WebAssembly build in the page.">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<style>
+@font-face {
+    font-family: "Pretendard";
+    font-weight: 400;
+    font-display: swap;
+    src: url("fonts/Pretendard-Regular.subset.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Pretendard";
+    font-weight: 600;
+    font-display: swap;
+    src: url("fonts/Pretendard-SemiBold.subset.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Pretendard";
+    font-weight: 700;
+    font-display: swap;
+    src: url("fonts/Pretendard-Bold.subset.woff2") format("woff2");
+}
+
+:root {
+    --paper: #f3f5f7;
+    --sheet: #ffffff;
+    --ink: #12151a;
+    --ink-soft: #4b535e;
+    --ink-faint: #8a929d;
+    --rule: #d5dae0;
+    --blue: #0b66e4;
+    --sun: #f5c400;
+    --sans: "Pretendard", ui-sans-serif, system-ui, sans-serif;
+    --mono: ui-monospace, monospace;
+    --wide: 1160px;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* The glow behind the demo reaches past the page edge. */
+    overflow-x: clip;
+}
+
+/* Drafting dots, fading out below the first screen. */
+body::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1100px;
+    background-image: radial-gradient(circle, #c3cad3 1px, transparent 1.2px);
+    background-size: 26px 26px;
+    -webkit-mask-image: linear-gradient(#000 0%, #000 35%, transparent 100%);
+    mask-image: linear-gradient(#000 0%, #000 35%, transparent 100%);
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: -1;
+}
+
+a { color: inherit; }
+
+.wrap {
+    width: min(var(--wide), calc(100% - 48px));
+    margin-inline: auto;
+}
+
+.label {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+}
+
+/* ---------- top bar ---------- */
+
+.top {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 22px 0;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-right: auto;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: -0.02em;
+}
+
+.brand img { width: 26px; height: 30px; }
+
+.brand i {
+    font-style: normal;
+    color: var(--blue);
+}
+
+.top nav {
+    display: flex;
+    gap: 26px;
+    font-size: 15px;
+}
+
+.top nav a {
+    text-decoration: none;
+    color: var(--ink-soft);
+    transition: color 0.15s;
+}
+
+.top nav a:hover { color: var(--ink); }
+
+.top .source {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-decoration: none;
+    padding: 7px 12px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--sheet);
+    transition: border-color 0.15s;
+}
+
+.top .source:hover { border-color: var(--ink); }
+
+/* ---------- hero ---------- */
+
+.hero {
+    padding: 72px 0 76px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    gap: 48px;
+    align-items: start;
+}
+
+h1 {
+    margin: 0;
+    font-size: clamp(42px, 6.6vw, 92px);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    font-weight: 700;
+    text-wrap: balance;
+}
+
+h1 span {
+    color: var(--blue);
+}
+
+.lede {
+    margin: 0 0 6px;
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: 34em;
+}
+
+.lede strong { color: var(--ink); font-weight: 600; }
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 26px;
+}
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: #fff;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.15s, background 0.15s;
+}
+
+.button:hover { background: var(--blue); border-color: var(--blue); transform: translateY(-1px); }
+.button:focus-visible, .top a:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+
+.button.quiet {
+    background: transparent;
+    color: var(--ink);
+    border-color: var(--rule);
+}
+
+.button.quiet:hover { background: var(--sheet); border-color: var(--ink); }
+
+.rise { opacity: 0; transform: translateY(14px); animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
+.rise.d1 { animation-delay: 0.08s; }
+.rise.d2 { animation-delay: 0.2s; }
+.rise.d3 { animation-delay: 0.32s; }
+.rise.d4 { animation-delay: 0.46s; }
+
+@keyframes rise { to { opacity: 1; transform: none; } }
+
+/* ---------- live demo ---------- */
+
+.demo { position: relative; padding-bottom: 40px; }
+
+/* The symbol's own colors, blurred behind the window. */
+.demo::before {
+    content: "";
+    position: absolute;
+    inset: 6% -4% 12% -4%;
+    background:
+        radial-gradient(38% 46% at 16% 30%, rgba(11, 102, 228, 0.34), transparent 70%),
+        radial-gradient(34% 44% at 52% 80%, rgba(6, 201, 140, 0.30), transparent 70%),
+        radial-gradient(32% 44% at 88% 28%, rgba(242, 71, 15, 0.24), transparent 70%),
+        radial-gradient(22% 30% at 74% 70%, rgba(245, 196, 0, 0.30), transparent 70%);
+    filter: blur(46px);
+    z-index: -1;
+}
+
+.stage {
+    position: relative;
+    aspect-ratio: 3 / 2;
+    background: var(--sheet);
+    border: 1px solid #b9c0c9;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 30px 70px -28px rgba(18, 21, 26, 0.45), 0 10px 24px -14px rgba(18, 21, 26, 0.3);
+}
+
+.stage canvas,
+.stage .poster {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* Typing goes to this field so the browser can compose text; the app draws the result itself. */
+.stage textarea {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2px;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    opacity: 0;
+    font-size: 16px;
+    pointer-events: none;
+}
+
+/* The app owns the keyboard and the wheel while it has focus. */
+.stage { transition: border-color 0.2s, box-shadow 0.2s; }
+.stage[data-focus] {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(11, 102, 228, 0.18), 0 30px 70px -28px rgba(18, 21, 26, 0.45), 0 10px 24px -14px rgba(18, 21, 26, 0.3);
+}
+
+.stage .poster {
+    object-fit: cover;
+    object-position: top left;
+    pointer-events: none;
+    transition: opacity 0.4s;
+}
+
+.stage[data-state="running"] .poster { opacity: 0; }
+
+.stage-status {
+    position: absolute;
+    left: 50%;
+    bottom: 34px;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px;
+    border-radius: 999px;
+    background: rgba(18, 21, 26, 0.9);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: 0 14px 34px -12px rgba(18, 21, 26, 0.6);
+    pointer-events: none;
+    transition: opacity 0.3s;
+}
+
+.stage-status::before {
+    content: "";
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.stage[data-state="running"] .stage-status { opacity: 0; }
+.stage[data-state="failed"] .stage-status::before { display: none; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.keys {
+    margin: 30px 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 10px 36px;
+    font-size: 15px;
+    color: var(--ink-soft);
+}
+
+.keys li {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule);
+}
+
+.keys .combo { white-space: nowrap; }
+
+kbd {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    padding: 3px 7px;
+    border: 1px solid var(--rule);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: var(--sheet);
+    color: var(--ink);
+    white-space: nowrap;
+}
+
+/* ---------- sections ---------- */
+
+section { padding: 84px 0; }
+
+.split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 48px;
+}
+
+h2 {
+    margin: 14px 0 0;
+    font-size: clamp(30px, 3.6vw, 46px);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    font-weight: 700;
+    text-wrap: balance;
+}
+
+.split > header p { margin: 18px 0 0; color: var(--ink-soft); max-width: 22em; }
+
+pre {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.7;
+    overflow-x: auto;
+    tab-size: 2;
+}
+
+/* ---------- build ---------- */
+
+.recipes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+
+.recipe {
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 22px 24px 24px;
+    min-width: 0;
+}
+
+.recipe h3 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
+.recipe pre { color: var(--ink); }
+.recipe pre .p { color: var(--ink-faint); user-select: none; }
+.recipe p { margin: 14px 0 0; font-size: 14.5px; color: var(--ink-soft); }
+.recipe p code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+
+.needs { margin: 22px 0 0; font-size: 15px; color: var(--ink-soft); }
+.needs code { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+
+/* ---------- small screens ---------- */
+
+@media (max-width: 860px) {
+    body { font-size: 16px; }
+    .top nav { display: none; }
+    .hero { grid-template-columns: 1fr; gap: 34px; padding: 44px 0 40px; }
+    .split, .recipes { grid-template-columns: 1fr; gap: 28px; }
+    section { padding: 60px 0; }
+    .stage { border-radius: 8px; }
+    .stage-status { bottom: 14px; font-size: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .rise { animation: none; opacity: 1; transform: none; }
+    .button { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+    <div class="top">
+        <a class="brand" href="#top" id="top"><img src="logo.svg" alt=""><span>thor<i>.</i>note</span></a>
+        <nav aria-label="Sections">
+            <a href="#demo">Live demo</a>
+            <a href="#build">Build</a>
+        </nav>
+        <a class="source" href="https://github.com/thorvg/thorvg.note">source</a>
+    </div>
+</div>
+
+<main>
+    <div class="wrap">
+        <div class="hero">
+            <div>
+                <h1 class="rise d1">Note application powered by
+                    <span>ThorVG</span></h1>
+            </div>
+            <div class="rise d3">
+                <p class="lede">Every element of <strong>thor.note</strong> is rendered by ThorVG. Text editing and font handling, SVG and Lottie, and every other part of the interface are drawn as vectors, so it stays sharp at any size. The title bar, layouts and features are customized in Lua, aiming for an editor you can extend.</p>
+                <div class="actions">
+                    <a class="button" href="#demo">Try it below</a>
+                    <a class="button quiet" href="#build">Build it yourself</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="wrap demo rise d4" id="demo">
+        <div class="stage" id="stage">
+            <canvas id="canvas" aria-label="thor.note running in the page"></canvas>
+            <textarea id="keyboard" aria-label="thor.note text input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+            <img class="poster" src="preview.png" alt="ThorNote welcome screen with the ThorVG logo">
+            <div class="stage-status" id="status" role="status">Starting the app</div>
+        </div>
+        <ul class="keys" aria-label="Keyboard shortcuts">
+            <li>Command palette<span class="combo"><kbd>F1</kbd></span></li>
+            <li>Recent files<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>P</kbd></span></li>
+            <li>Find a file<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>O</kbd></span></li>
+            <li>Save<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>S</kbd></span></li>
+            <li>Document list<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>B</kbd></span></li>
+            <li>Settings<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>,</kbd></span></li>
+            <li>Undo<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>Z</kbd></span></li>
+            <li>Redo<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>Shift</kbd> <kbd>Z</kbd></span></li>
+            <li>Select all<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>A</kbd></span></li>
+            <li>Copy<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>C</kbd></span></li>
+            <li>Cut<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>X</kbd></span></li>
+            <li>Paste<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>V</kbd></span></li>
+            <li>Larger text<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>+</kbd></span></li>
+            <li>Smaller text<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>-</kbd></span></li>
+            <li>Reset text size<span class="combo"><kbd class="mod">Ctrl</kbd> <kbd>0</kbd></span></li>
+        </ul>
+    </div>
+
+    <section id="build">
+        <div class="wrap split">
+            <header>
+                <div class="label">Build</div>
+                <h2>Set up, compile, run.</h2>
+                <p>C++20 and Meson. Lua is fetched and built with the project.</p>
+            </header>
+            <div>
+                <div class="recipes">
+                    <div class="recipe">
+                        <h3>Desktop</h3>
+<pre><span class="p">$ </span>meson setup build
+<span class="p">$ </span>meson compile -C build
+<span class="p">$ </span>build/src/thornote/ThorNote notes/</pre>
+                        <p>Pass a folder to open it as a library, or files to open them in tabs.</p>
+                    </div>
+                    <div class="recipe">
+                        <h3>WebAssembly</h3>
+<pre><span class="p">$ </span>meson setup build/wasm \
+    --cross-file cross/wasm32.txt \
+    --buildtype=release \
+    -Dcpp_link_args="['-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm', '-sSINGLE_FILE']"
+<span class="p">$ </span>meson compile -C build/wasm</pre>
+                        <p>Produces <code>ThorNote.js</code> with WebAssembly embedded by <code>-sSINGLE_FILE</code>, so it also opens straight from disk. Omit that flag to produce separate <code>ThorNote.js</code> and <code>ThorNote.wasm</code> files.</p>
+                    </div>
+                </div>
+                <p class="needs">Desktop needs <code>thorvg-1 &ge; 1.2</code> and <code>sdl3 &ge; 3.2</code> installed. The WebAssembly build needs the Emscripten toolchain on the path and fetches ThorVG itself.</p>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script>
+(function () {
+    var stage = document.getElementById('stage');
+    var canvas = document.getElementById('canvas');
+    var keyboard = document.getElementById('keyboard');
+    var status = document.getElementById('status');
+    var samples = ['Welcome.md', 'Rendering.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
+    // Command is the app's primary modifier on Apple systems, Ctrl everywhere else.
+    var apple = /Mac|iPhone|iPad/.test(navigator.platform);
+    // Shown alone when the sample notes cannot be fetched, as when the page is opened from disk.
+    var spare = '# Welcome to thor.note\n\nYou are typing into the real editor.\nClick here and type. F1 opens the command palette.\n\nServe this folder over HTTP to load the sample notes.\n';
+
+    function fail(message) {
+        stage.dataset.state = 'failed';
+        status.textContent = message;
+    }
+
+    function fetchNotes() {
+        return Promise.all(samples.map(function (name) {
+            return fetch('notes/' + encodeURIComponent(name)).then(function (response) {
+                if (!response.ok) throw new Error(name);
+                return response.text();
+            }).then(function (text) { return {name: name, text: text}; });
+        })).catch(function () { return [{name: 'Welcome.md', text: spare}]; });
+    }
+
+    function start(notes) {
+        window.Module = {
+            canvas: canvas,
+            arguments: ['--fresh', '--settings-dir', '/settings'],
+            print: function () {},
+            printErr: function () {},
+            preRun: [function () {
+                // Keys reach the app only while its text field has focus.
+                Module.ENV.SDL_EMSCRIPTEN_KEYBOARD_ELEMENT = '#keyboard';
+                Module.FS.mkdir('/notes');
+                notes.forEach(function (note) { Module.FS.writeFile('/notes/' + note.name, note.text); });
+                // The app opens on its welcome screen; its recent lists lead to the sample notes.
+                Module.FS.mkdir('/settings');
+                Module.FS.writeFile('/settings/settings.conf', 'thornote-settings 1\n' + notes.map(function (note) {
+                    return 'recent-file "/notes/' + note.name + '"\n';
+                }).join('') + 'recent-directory "/notes"\n');
+            }],
+            postRun: [function () {
+                // The window starts at its default size; a resize makes it adopt the canvas box.
+                window.dispatchEvent(new Event('resize'));
+                stage.dataset.state = 'running';
+                status.textContent = '';
+            }],
+            onAbort: function () { fail('The app stopped unexpectedly'); }
+        };
+        var script = document.createElement('script');
+        script.src = 'ThorNote.js';
+        script.onerror = function () { fail('The app could not be loaded'); };
+        document.body.appendChild(script);
+    }
+
+    var composing = false;
+    keyboard.addEventListener('compositionstart', function () { composing = true; });
+    keyboard.addEventListener('compositionend', function () { composing = false; });
+    canvas.addEventListener('mousedown', function (event) {
+        // Focus stays on the text field; a click also ends the composition in progress.
+        event.preventDefault();
+        if (composing) keyboard.blur();
+        keyboard.focus({preventScroll: true});
+    });
+    keyboard.addEventListener('focus', function () { stage.dataset.focus = ''; });
+    keyboard.addEventListener('blur', function () { delete stage.dataset.focus; });
+    // Shortcuts pressed in the app stay there; the browser would act on them as well.
+    keyboard.addEventListener('keydown', function (event) {
+        if (event.ctrlKey || event.metaKey || /^F\d+$/.test(event.key)) event.preventDefault();
+    });
+    if (apple) document.querySelectorAll('kbd.mod').forEach(function (key) { key.textContent = '\u2318'; });
+    // Until the app is focused the wheel keeps scrolling the page.
+    stage.addEventListener('wheel', function (event) {
+        if (document.activeElement !== keyboard) event.stopPropagation();
+    }, {capture: true});
+
+    if (typeof WebAssembly !== 'object') fail('This browser cannot run WebAssembly');
+    else fetchNotes().then(start);
+})();
+</script>
+</body>
+</html>
