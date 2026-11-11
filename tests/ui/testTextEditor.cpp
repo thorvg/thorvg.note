@@ -107,4 +107,34 @@ TEST_CASE_FIXTURE(Editor, "composition_and_read_only_leave_the_document_unchange
     CHECK(document.text() == "note");
 }
 
+TEST_CASE_FIXTURE(Editor, "multibyte_layout")
+{
+    editor.font(fonts.fallback);
+    std::string text = "A가中";
+    for (size_t i = 0; i < 500; ++i)
+        text += "\nA";
+    REQUIRE(document.text(text));
+    context.focus("editor");
+    draw();
+
+    editor.select(0, 0);
+    auto start = editor.caretRect().x;
+    editor.select(1, 1);
+    auto latin = editor.caretRect().x;
+    editor.select(4, 4);
+    auto korean = editor.caretRect().x;
+    editor.select(7, 7);
+    auto chinese = editor.caretRect().x;
+    CHECK(latin > start);
+    CHECK(korean > latin);
+    CHECK(chinese > korean);
+
+    context.textInput("가");
+    CHECK(document.text().substr(0, 10) == "A가中가");
+    CHECK(editor.caretRect().x == doctest::Approx(chinese + korean - latin));
+    REQUIRE(editor.undo());
+    CHECK(document.text() == text);
+    CHECK(editor.caretRect().x == doctest::Approx(chinese));
+}
+
 TEST_SUITE_END();

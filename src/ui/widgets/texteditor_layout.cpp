@@ -16,6 +16,17 @@ uint32_t codepoint(std::string_view text)
         value = (value << 6) | (static_cast<unsigned char>(text[i]) & 63);
     return value;
 }
+
+bool glyphMetrics(tvg::Text* measurer, std::string_view text, tvg::GlyphMetrics& metrics, size_t* consumed = nullptr)
+{
+    // Bound the NUL-terminated input so metrics never scans the rest of the document.
+    char value[5]{};
+    std::copy_n(text.data(), std::min(text.size(), sizeof(value) - 1), value);
+    const char* next = nullptr;
+    auto result = measurer->metrics(value, metrics, &next);
+    if (consumed) *consumed = next ? size_t(next - value) : 0;
+    return result == tvg::Result::Success;
+}
 }  // namespace
 
 float TextEditor::Impl::measure(std::string_view text, FontId font) const
@@ -24,20 +35,19 @@ float TextEditor::Impl::measure(std::string_view text, FontId font) const
     if (!font) font = documentFont;
     bool alternate = fonts && font != documentFont;
     if (alternate) measurer->font(fonts->textFont(font));
-    std::string value(text);
     float width = 0;
     uint32_t previous = 0;
-    for (const char* ch = value.c_str(); *ch;) {
+    for (size_t offset = 0; offset < text.size();) {
         tvg::GlyphMetrics metrics{};
-        const char* next = nullptr;
-        if (measurer->metrics(ch, metrics, &next) != tvg::Result::Success || !next || next <= ch) break;
+        size_t consumed = 0;
+        if (!glyphMetrics(measurer.get(), text.substr(offset), metrics, &consumed) || !consumed) break;
         if (fonts) {
-            auto glyph = fonts->glyph(font, codepoint({ch, size_t(next - ch)}));
+            auto glyph = fonts->glyph(font, codepoint(text.substr(offset, consumed)));
             width += fonts->textKerning(font, previous, glyph) * configuration.fontSize / fonts->unitsPerEm(font);
             previous = glyph;
         }
         width += metrics.advance;
-        ch = next;
+        offset += consumed;
     }
     if (alternate) measurer->font(fonts->textFont(documentFont));
     return width;
@@ -59,15 +69,15 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         line.offsets.push_back(base + begin);
         line.x.push_back(0);
         auto append = [&](std::string_view value, uint32_t cp, bool caret) {
-            tvg::GlyphMetrics glyphMetrics{};
-            measurer->metrics(value.data(), glyphMetrics);
+            tvg::GlyphMetrics metrics{};
+            glyphMetrics(measurer.get(), value, metrics);
             if (fonts) {
                 auto glyph = fonts->glyph(documentFont, cp);
                 x += fonts->textKerning(documentFont, previous, glyph) * scale;
                 previous = glyph;
             }
             if (caret) line.x.back() = x;
-            x += glyphMetrics.advance;
+            x += metrics.advance;
             shown.append(value);
         };
         for (size_t offset = begin; offset < stop;) {
@@ -230,9 +240,9 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
             // Keep their advances, including kerning with the first visible glyph.
             cached->bodyLeft = measure(std::string_view(cached->value).substr(0, first));
             tvg::GlyphMetrics metrics{};
-            const char* next = nullptr;
-            if (first < cached->value.size() && measurer->metrics(cached->value.c_str() + first, metrics, &next) == tvg::Result::Success && next)
-                cached->bodyLeft = measure(std::string_view(cached->value.c_str(), size_t(next - cached->value.c_str()))) - metrics.advance;
+            size_t consumed = 0;
+            if (first < cached->value.size() && glyphMetrics(measurer.get(), std::string_view(cached->value).substr(first), metrics, &consumed) && consumed)
+                cached->bodyLeft = measure(std::string_view(cached->value).substr(0, first + consumed)) - metrics.advance;
         }
         cached->body->text(cached->value.c_str() + first);
         cached->assigned = true;
