@@ -87,7 +87,7 @@ private:
     bool openLatest(const storage::Path& directory);
     void drawWelcome(ui::Rect);
     void scrollWelcome(float vertical, float horizontal = 0);
-    bool welcomeVisible() const { return workspace.documents().empty() && !settings.active && !folderWorkspace; }
+    bool welcomeVisible() const { return workspace.documents().empty() && !settings.active && (composition != Layout::Note || !folderWorkspace); }
     void requestClose(uint64_t id);
     void save(uint64_t id, bool saveAs = false);
     void finishPrompt(bool discard);

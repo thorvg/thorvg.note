@@ -34,6 +34,7 @@ with tempfile.TemporaryDirectory(prefix="thornote-smoke-") as directory:
     note.write_text("# Sample\n\nText rendering and file loading.\n", encoding="utf-8")
     cases = {
         "welcome": [],
+        "memo_folder_session": ["--layout", "memo"],
         "memo": ["--layout", "memo", note],
         "note": ["--layout", "note", root],
         "settings": ["--settings"],
@@ -42,13 +43,22 @@ with tempfile.TemporaryDirectory(prefix="thornote-smoke-") as directory:
         image = root / f"{name}.ppm"
         settings = root / name
         settings.mkdir()
-        (settings / "settings.conf").write_text("thornote-settings 1\ndark 0\n", encoding="utf-8")
-        if name == "welcome":
+        restored_folder = name == "memo_folder_session"
+        preferences = "thornote-settings 1\ndark 0\n"
+        if restored_folder:
+            preferences += f'recent-directory "{root}"\n'
+            (settings / "session").mkdir()
+            (settings / "session/session.conf").write_text(
+                'thornote-session 1\nactive 0\nwindow 1080 720\nsettings 0 0 0\nnotes 0 "all" ""\nfolders 1\n',
+                encoding="utf-8",
+            )
+        (settings / "settings.conf").write_text(preferences, encoding="utf-8")
+        if name in ("welcome", "memo_folder_session"):
             (settings / "themes").mkdir()
             (settings / "themes/light.lua").write_text(
                 'return {schema = 1, colors = {text = "#6D28D9"}}\n', encoding="utf-8"
             )
-        run("--fresh", "--settings-dir", settings, "--snapshot", image, *arguments)
+        run(*([] if restored_folder else ["--fresh"]), "--settings-dir", settings, "--snapshot", image, *arguments)
         with image.open("rb") as stream:
             assert stream.readline() == b"P6\n", name
             width, height = map(int, stream.readline().split())
@@ -57,6 +67,6 @@ with tempfile.TemporaryDirectory(prefix="thornote-smoke-") as directory:
             pixels = stream.read()
         assert len(pixels) == width * height * 3, name
         assert len(set(pixels)) > 1, name
-        if name == "welcome":
+        if name in ("welcome", "memo_folder_session"):
             assert pixels[:width * (height // 3) * 3].count(bytes.fromhex("6D28D9")) > 1000, name
         print(f"{name}: rendered {width}x{height}")
