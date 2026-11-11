@@ -7,8 +7,6 @@
     var theme = options.get('theme');
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
     var samples = ['Welcome.md', 'Rendering.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
-    // Command is the app's primary modifier on Apple systems, Ctrl everywhere else.
-    var apple = /Mac|iPhone|iPad/.test(navigator.platform);
     // Shown alone when the sample notes cannot be fetched, as when the page is opened from disk.
     var spare = '# Welcome to thor.note\n\nYou are typing into the real editor.\nClick here and type. F1 opens the command palette.\n\nServe this folder over HTTP to load the sample notes.\n';
 
@@ -104,7 +102,6 @@
     keyboard.addEventListener('keydown', function (event) {
         if (event.ctrlKey || event.metaKey || /^F\d+$/.test(event.key)) event.preventDefault();
     });
-    if (apple) document.querySelectorAll('kbd.mod').forEach(function (key) { key.textContent = '\u2318'; });
     // Until the app is focused the wheel keeps scrolling the page.
     stage.addEventListener('wheel', function (event) {
         if (document.activeElement !== keyboard) event.stopPropagation();

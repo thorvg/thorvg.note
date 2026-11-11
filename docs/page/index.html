@@ -6,7 +6,11 @@
 <title>Note application powered by ThorVG</title>
 <meta name="description" content="thor.note is a note editor rendered entirely by ThorVG. Try the WebAssembly build in the page.">
 <link rel="icon" href="favicon.png" sizes="32x32" type="image/png">
+<script>document.documentElement.dataset.apple = /Mac|iPhone|iPad/.test(navigator.platform);</script>
 <style>
+.mod-command { display: none; }
+[data-apple="true"] .mod-control { display: none; }
+[data-apple="true"] .mod-command { display: inline; }
 @font-face {
     font-family: "Pretendard";
     font-weight: 400;
@@ -243,20 +247,20 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
         </div>
         <div class="shortcut-scene" aria-hidden="true">
             <span class="shortcut-ghost" style="--x: 15%; --y: 22px; --turn: -8deg"><kbd>F1</kbd></span>
-            <span class="shortcut-ghost" style="--x: 40%; --y: 14px; --turn: 7deg"><kbd class="mod">Ctrl</kbd> <kbd>P</kbd></span>
-            <span class="shortcut-ghost" style="--x: 65%; --y: 24px; --turn: -5deg"><kbd class="mod">Ctrl</kbd> <kbd>O</kbd></span>
-            <span class="shortcut-ghost" style="--x: 87%; --y: 18px; --turn: 9deg"><kbd class="mod">Ctrl</kbd> <kbd>S</kbd></span>
-            <span class="shortcut-ghost" style="--x: 2%; --y: 24%; --turn: -12deg"><kbd class="mod">Ctrl</kbd> <kbd>B</kbd></span>
-            <span class="shortcut-ghost" style="--x: 97%; --y: 33%; --turn: 12deg"><kbd class="mod">Ctrl</kbd> <kbd>,</kbd></span>
-            <span class="shortcut-ghost" style="--x: 2%; --y: 56%; --turn: -8deg"><kbd class="mod">Ctrl</kbd> <kbd>Z</kbd></span>
-            <span class="shortcut-ghost" style="--x: 97%; --y: 66%; --turn: 9deg"><kbd class="mod">Ctrl</kbd> <kbd>Shift</kbd> <kbd>Z</kbd></span>
-            <span class="shortcut-ghost" style="--x: 7%; --y: 84%; --turn: -10deg"><kbd class="mod">Ctrl</kbd> <kbd>A</kbd></span>
-            <span class="shortcut-ghost" style="--x: 92%; --y: 84%; --turn: 8deg"><kbd class="mod">Ctrl</kbd> <kbd>C</kbd></span>
-            <span class="shortcut-ghost" style="--x: 4%; --y: calc(100% - 44px); --turn: -6deg"><kbd class="mod">Ctrl</kbd> <kbd>X</kbd></span>
-            <span class="shortcut-ghost" style="--x: 26%; --y: calc(100% - 40px); --turn: 7deg"><kbd class="mod">Ctrl</kbd> <kbd>V</kbd></span>
-            <span class="shortcut-ghost" style="--x: 50%; --y: calc(100% - 42px); --turn: -4deg"><kbd class="mod">Ctrl</kbd> <kbd>+</kbd></span>
-            <span class="shortcut-ghost" style="--x: 75%; --y: calc(100% - 40px); --turn: 6deg"><kbd class="mod">Ctrl</kbd> <kbd>-</kbd></span>
-            <span class="shortcut-ghost" style="--x: 96%; --y: calc(100% - 46px); --turn: -9deg"><kbd class="mod">Ctrl</kbd> <kbd>0</kbd></span>
+            <span class="shortcut-ghost" style="--x: 40%; --y: 14px; --turn: 7deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>P</kbd></span>
+            <span class="shortcut-ghost" style="--x: 65%; --y: 24px; --turn: -5deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>O</kbd></span>
+            <span class="shortcut-ghost" style="--x: 87%; --y: 18px; --turn: 9deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>S</kbd></span>
+            <span class="shortcut-ghost" style="--x: 2%; --y: 24%; --turn: -12deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>B</kbd></span>
+            <span class="shortcut-ghost" style="--x: 97%; --y: 33%; --turn: 12deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>,</kbd></span>
+            <span class="shortcut-ghost" style="--x: 2%; --y: 56%; --turn: -8deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>Z</kbd></span>
+            <span class="shortcut-ghost" style="--x: 97%; --y: 66%; --turn: 9deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>Shift</kbd> <kbd>Z</kbd></span>
+            <span class="shortcut-ghost" style="--x: 7%; --y: 84%; --turn: -10deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>A</kbd></span>
+            <span class="shortcut-ghost" style="--x: 92%; --y: 84%; --turn: 8deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>C</kbd></span>
+            <span class="shortcut-ghost" style="--x: 4%; --y: calc(100% - 44px); --turn: -6deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>X</kbd></span>
+            <span class="shortcut-ghost" style="--x: 26%; --y: calc(100% - 40px); --turn: 7deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>V</kbd></span>
+            <span class="shortcut-ghost" style="--x: 50%; --y: calc(100% - 42px); --turn: -4deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>+</kbd></span>
+            <span class="shortcut-ghost" style="--x: 75%; --y: calc(100% - 40px); --turn: 6deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>-</kbd></span>
+            <span class="shortcut-ghost" style="--x: 96%; --y: calc(100% - 46px); --turn: -9deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>0</kbd></span>
         </div>
         <div class="headline">
             <h1 id="page-title">Note application powered by ThorVG</h1>
@@ -266,24 +270,24 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
     <section class="shortcuts" aria-labelledby="shortcuts-title">
         <h2 id="shortcuts-title">Keyboard shortcuts</h2>
         <ul class="keys">
-            <li>New document<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>N</kbd></span></li>
-            <li>Open files<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>O</kbd></span></li>
-            <li>Recent files<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>P</kbd></span></li>
-            <li>Save<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>S</kbd></span></li>
-            <li>Save as<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span></li>
-            <li>Close tab<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>W</kbd></span></li>
+            <li>New document<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>N</kbd></span></li>
+            <li>Open files<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>O</kbd></span></li>
+            <li>Recent files<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>P</kbd></span></li>
+            <li>Save<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>S</kbd></span></li>
+            <li>Save as<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>Shift</kbd><kbd>S</kbd></span></li>
+            <li>Close tab<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>W</kbd></span></li>
             <li>Command palette<span class="combo"><kbd>F1</kbd></span></li>
-            <li>Settings<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>,</kbd></span></li>
-            <li>Document list<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>B</kbd></span></li>
-            <li>Undo<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>Z</kbd></span></li>
-            <li>Redo<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></span></li>
-            <li>Select all<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>A</kbd></span></li>
-            <li>Copy<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>C</kbd></span></li>
-            <li>Cut<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>X</kbd></span></li>
-            <li>Paste<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>V</kbd></span></li>
-            <li>Larger text<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>+</kbd></span></li>
-            <li>Smaller text<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>-</kbd></span></li>
-            <li>Reset text size<span class="combo"><kbd class="mod">Ctrl</kbd><kbd>0</kbd></span></li>
+            <li>Settings<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>,</kbd></span></li>
+            <li>Document list<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>B</kbd></span></li>
+            <li>Undo<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>Z</kbd></span></li>
+            <li>Redo<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>Shift</kbd><kbd>Z</kbd></span></li>
+            <li>Select all<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>A</kbd></span></li>
+            <li>Copy<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>C</kbd></span></li>
+            <li>Cut<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>X</kbd></span></li>
+            <li>Paste<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>V</kbd></span></li>
+            <li>Larger text<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>+</kbd></span></li>
+            <li>Smaller text<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>-</kbd></span></li>
+            <li>Reset text size<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>0</kbd></span></li>
         </ul>
     </section>
     <section class="features" aria-labelledby="features-title">
