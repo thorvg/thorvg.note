@@ -128,7 +128,6 @@ private:
     void openEditorMenu(float x, float y);
     void closeMenu(bool preserveFolder = false);
     void activateMenu(size_t);
-    void menuKey(SDL_Keycode, bool shift);
     std::vector<DocumentTab*> filteredDocuments() const;
     void selectCollection(std::string);
     bool browsingNoteFiles() const;
@@ -213,7 +212,7 @@ private:
     ui::CommandListState paletteState, listState;
     ui::ListState collectionList, folderList;
     std::vector<ui::ListItem> collectionItems, folderItems;  // Borrowed by the lists until input is dispatched.
-    ui::Rect editorBounds{}, sidebarBounds{}, searchBounds{}, menuButton{}, menuBounds{};
+    ui::Rect editorBounds{}, sidebarBounds{}, searchBounds{}, menuButton{};
     ui::Rect headerDragBounds{};
     std::vector<ui::Rect> windowDragBounds;
     ui::Rect promptSave{}, promptDiscard{}, promptCancel{}, hintBounds{};
@@ -223,8 +222,7 @@ private:
     std::string menu, menuRoot;
     storage::Path menuFolder;
     std::optional<ui::Rect> contextMenuAnchor;
-    std::vector<ui::MenuItem> menuItems;
-    std::vector<ui::Rect> menuRows;
+    ui::MenuDefinition menuDefinition;
     size_t menuSelection = 0, documentOffset = 0, collectionOffset = 0;
     float noteFileScroll = 0;
     ui::TextInput noteSearch;

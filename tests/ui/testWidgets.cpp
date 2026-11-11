@@ -119,4 +119,100 @@ TEST_CASE_FIXTURE(ui::test::Frame, "palette_filters_and_executes_the_selection")
     CHECK(closed);
 }
 
+TEST_CASE_FIXTURE(ui::test::Frame, "scrollbar_drag_track_click_and_empty_content")
+{
+    float offset = 0;
+    std::optional<float> grab;
+    auto draw = [&](float content, bool enabled = true) {
+        render([&] { ui::scrollbar(context, "scroll", {0, 0, 12, 100}, content, offset, grab, ui::Axis::Vertical, enabled); });
+    };
+    draw(400);
+    context.pointerDown(6, 10);
+    REQUIRE(grab.has_value());
+    context.pointerMove(6, 100);
+    CHECK(offset == 300);
+    context.pointerUp(6, 100);
+    CHECK(!grab.has_value());
+    draw(400);
+    click(6, 20);
+    CHECK(offset == doctest::Approx(30));
+    draw(400, false);
+    click(6, 80);
+    CHECK(offset == doctest::Approx(30));
+    grab = 5;
+    draw(100);
+    CHECK(!grab.has_value());
+    auto thumb = ui::scrollbarThumb({0, 0, 100, 12}, 100, 400, 150, ui::Axis::Horizontal);
+    CHECK(thumb.x == doctest::Approx(37.5f));
+    CHECK(thumb.w == 25);
+    CHECK(ui::scrollbarThumb({0, 0, 12, 100}, 100, 100, 0).h == 0);
+    offset = 0;
+    render([&] { ui::scrollbar(context, "horizontal", {0, 0, 100, 12}, 400, offset, grab, ui::Axis::Horizontal); });
+    context.pointerDown(10, 6);
+    context.pointerMove(100, 6);
+    CHECK(offset == 300);
+    context.pointerUp(100, 6);
+    CHECK(!grab.has_value());
+}
+
+TEST_CASE_FIXTURE(ui::test::Frame, "menu_unifies_pointer_keyboard_and_submenu_navigation")
+{
+    ui::CommandRegistry commands;
+    commands.add({.id = "run", .title = "Run", .run = [] {
+                  }});
+    commands.add({.id = "off", .title = "Disabled", .run = [] {}, .available = [] {
+                      return false;
+                  }});
+    ui::MenuDefinition definition{.items = {
+                                      {.id = "off", .title = "Disabled", .command = "off"},
+                                      {.id = "separator"},
+                                      {.id = "run", .title = "Run", .command = "run"},
+                                      {.id = "sub", .title = "Submenu", .items = {{.id = "child", .title = "Child", .command = "run"}}},
+                                  }};
+    size_t selection = 0, activated = 99;
+    int backs = 0, closes = 0;
+    auto draw = [&] {
+        render([&] {
+            ui::menu(context, "menu", viewport, {8, 0, 1, 1}, definition, selection, commands, [&](size_t index) { activated = index; }, [&] { ++backs; }, [&] { ++closes; });
+        });
+    };
+    draw();
+    context.key(Key::Down);
+    CHECK(selection == 2);
+    context.key(Key::Tab);
+    CHECK(selection == 3);
+    context.key(Key::Tab, {.shift = true});
+    CHECK(selection == 2);
+    context.key(Key::Enter);
+    CHECK(activated == 2);
+    context.pointerMove(30, 110);
+    CHECK(selection == 3);
+    draw();
+    CHECK(selection == 3);
+    context.key(Key::Up);
+    CHECK(selection == 2);
+    draw();
+    CHECK(selection == 2);
+    activated = 99;
+    context.key(Key::Right);
+    CHECK(activated == 99);
+    context.key(Key::Down);
+    context.key(Key::Right);
+    CHECK(activated == 3);
+    context.key(Key::Left);
+    CHECK(backs == 1);
+    context.key(Key::Escape);
+    CHECK(backs == 2);
+    click(30, 30);
+    CHECK(activated == 3);
+    click(350, 250);
+    CHECK(closes == 1);
+    draw();
+    click(30, 75);
+    CHECK(activated == 2);
+    context.key(Key::Down);
+    context.key(Key::Space);
+    CHECK(activated == 3);
+}
+
 TEST_SUITE_END();

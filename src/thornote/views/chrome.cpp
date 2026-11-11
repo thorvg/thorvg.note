@@ -50,7 +50,7 @@ void EditorApp::drawWindowButton(ui::Rect r, std::string_view instance, const ch
     auto found = std::find_if(commands.commands().begin(), commands.commands().end(), [&](const auto& entry) { return entry.id == command; });
     bool enabled = found != commands.commands().end() && found->enabled();
     auto state = context.control(instance, r, [this, command = std::string(command)](const ui::Event& event) {
-        if (event.type == ui::EventType::Activate || (event.type == ui::EventType::Key && (event.key == ui::Key::Enter || event.key == ui::Key::Space))) commands.execute(command); }, enabled);
+        if (event.activated()) commands.execute(command); }, enabled);
     bool close = std::string_view(command) == "window.close", minimize = std::string_view(command) == "window.minimize";
     context.rect(r, theme.surface);
     bool highlighted = state.hovered || state.pressed || state.focused;
@@ -246,7 +246,7 @@ void EditorApp::drawTabs(ui::Context& context, ui::Rect r, bool titlebar)
             context.text({cell.x + 12, r.y, cell.w - 52, r.h}, tab ? tab->displayTitle(composition == Layout::Note) : "Settings", active ? theme.text : theme.muted, 11);
             ui::Rect close{cell.x + cell.w - 32, r.y + (r.h - 30) / 2, 30, 30};
             auto closing = context.control("tabs/close/" + key, close, [this, id](const ui::Event& e) {
-            if (e.type == ui::EventType::Activate || (e.type == ui::EventType::Key && e.key == ui::Key::Enter)) { if (id) requestClose(id); else closeSettings(); } }, !tab || !tab->busy());
+            if (e.activated(false)) { if (id) requestClose(id); else closeSettings(); } }, !tab || !tab->busy());
             if (closing.hovered) context.rect(close, theme.raised, 4);
             if (closing.hovered || closing.focused || active) context.icon("tabs/close/" + key + "/icon", close, "close", theme.muted,
                                                                            {closing.hovered, closing.pressed, false, !tab || !tab->busy(), closing.focused});
@@ -301,41 +301,17 @@ void EditorApp::closeMenu(bool preserveFolder)
 
 void EditorApp::activateMenu(size_t index)
 {
-    if (index >= menuItems.size()) return;
-    auto item = menuItems[index];
+    if (index >= menuDefinition.items.size()) return;
+    auto item = menuDefinition.items[index];
     if (!item.enabled) return;
     if (!item.items.empty()) {
         openMenu(item.id);
         return;
     }
-    for (const auto& command : commands.commands()) {
-        if (command.id == item.command && command.enabled()) {
-            closeMenu(true);
-            commands.execute(item.command);
-            menuFolder.clear();
-            break;
-        }
-    }
-}
-
-void EditorApp::menuKey(SDL_Keycode key, bool shift)
-{
-    if (key == SDLK_ESCAPE || key == SDLK_LEFT) {
-        if (menu == menuRoot) closeMenu();
-        else openMenu(menu.substr(0, menu.rfind('/')));
-    } else if (key == SDLK_RIGHT) {
-        if (menuSelection < menuItems.size() && !menuItems[menuSelection].items.empty()) activateMenu(menuSelection);
-    } else if (key == SDLK_RETURN || key == SDLK_KP_ENTER || key == SDLK_SPACE) activateMenu(menuSelection);
-    else if ((key == SDLK_UP || key == SDLK_DOWN || key == SDLK_TAB) && !menuItems.empty()) {
-        int direction = key == SDLK_UP || (key == SDLK_TAB && shift) ? -1 : 1;
-        for (size_t i = 0; i < menuItems.size(); ++i) {
-            menuSelection = size_t((int(menuSelection) + direction + int(menuItems.size())) % int(menuItems.size()));
-            const auto& item = menuItems[menuSelection];
-            if (!item.enabled || item.title.empty()) continue;
-            if (!item.items.empty()) break;
-            auto command = std::find_if(commands.commands().begin(), commands.commands().end(), [&](const auto& value) { return value.id == item.command; });
-            if (command != commands.commands().end() && command->enabled()) break;
-        }
+    if (auto command = commands.find(item.command); command && command->enabled()) {
+        closeMenu(true);
+        commands.execute(item.command);
+        menuFolder.clear();
     }
 }
 
@@ -346,71 +322,8 @@ void EditorApp::drawMenu()
         closeMenu();
         return;
     }
-    auto title = definition->title;
-    bool compact = definition->compact;
-    menuItems = std::move(definition->items);
-    menuSelection = menuItems.empty() ? 0 : std::min(menuSelection, menuItems.size() - 1);
-    float padding = compact ? 4 : 8, inset = compact ? 3 : 6, rowHeight = compact ? 24 : 32;
-    float separator = compact ? 8 : 12, radius = compact ? 4 : 9;
-    float panelHeight = title.empty() ? padding * 2 : compact ? 40
-                                                              : 54;
-    for (const auto& item : menuItems)
-        panelHeight += item.title.empty() ? separator : rowHeight;
-    float menuWidth = std::min(compact ? 128.0f : 296.0f, std::max(0.0f, width - 16));
-    menuBounds = {std::clamp(menuButton.x, 8.0f, std::max(8.0f, width - menuWidth - 8)), menuButton.y + menuButton.h + 9, menuWidth, panelHeight};
-    if (contextMenuAnchor) menuBounds.y = std::clamp(menuBounds.y, 8.0f, std::max(8.0f, height - panelHeight - 8));
-    context.modal("menu/item/0", [this] { closeMenu(); });
-    context.control("menu/backdrop", {0, 0, width, height}, [this](const ui::Event& e) { if (e.type == ui::EventType::Activate) closeMenu(); }, true, ui::ControlFlag::None);
-    float shadow = compact ? 1 : 2;
-    context.rect({menuBounds.x - shadow, menuBounds.y + shadow + 1, menuBounds.w + shadow * 2, menuBounds.h + shadow}, {0, 0, 0, 25}, radius + 1);
-    context.rect(menuBounds, theme.surface, radius, theme.border);
-    context.control("menu/panel", menuBounds, {}, true, ui::ControlFlag::None);
-    float y = menuBounds.y + padding;
-    if (!title.empty()) {
-        float back = compact ? 24 : 30, titleInset = compact ? 32 : 42;
-        ui::button(context, "menu/back", {menuBounds.x + padding, y, back, back}, "", [this] { menuKey(SDLK_LEFT, false); }, {.style = ui::ButtonStyle::Quiet, .icon = "chevron-left"});
-        context.text({menuBounds.x + titleInset, y, menuBounds.w - titleInset * 2, back}, title, theme.text, 12, true, ui::Align::Center);
-        y += back + padding;
-        context.line(menuBounds.x + 12, y, menuBounds.x + menuBounds.w - 12, y, theme.border);
-        y += padding;
-    }
-    menuRows.clear();
-    for (size_t i = 0; i < menuItems.size(); ++i) {
-        const auto& item = menuItems[i];
-        ui::Rect row{menuBounds.x + inset, y, menuBounds.w - inset * 2, item.title.empty() ? separator : rowHeight};
-        menuRows.push_back(row);
-        if (item.title.empty()) {
-            context.line(row.x + 8, row.y + separator / 2, row.x + row.w - 8, row.y + separator / 2, theme.border);
-            y += separator;
-            continue;
-        }
-        bool enabled = item.enabled;
-        std::string detail = item.detail;
-        for (const auto& command : commands.commands())
-            if (command.id == item.command) {
-                enabled = enabled && command.enabled();
-                if (detail.empty()) detail = ui::platform::shortcutLabel(command.shortcut);
-                break;
-            }
-        auto state = context.control("menu/item/" + std::to_string(i), row, [this, i](const ui::Event& e) {
-            if (e.type == ui::EventType::Activate || (e.type == ui::EventType::Key && e.key == ui::Key::Enter)) activateMenu(i); }, enabled);
-        if (state.hovered || i == menuSelection) context.rect(row, theme.selection, compact ? 2 : 5);
-        auto iconId = "menu/" + item.id;
-        if (item.checked || !item.icon.empty())
-            context.icon(iconId + "/icon", {row.x + 4, row.y, 20, row.h}, item.checked ? "check" : std::string_view(item.icon),
-                         item.checked && enabled ? theme.accent : enabled ? theme.text
-                                                                          : theme.muted,
-                         {state.hovered, state.pressed, item.checked, enabled, state.focused || i == menuSelection});
-        float textInset = compact && !item.checked && item.icon.empty() ? 10 : 28;
-        float detailWidth = compact ? std::min(row.w * 0.4f, context.textWidth(detail, 10)) : 80;
-        float trailing = compact ? 8 + (item.items.empty() ? 0 : 20) + (detail.empty() ? 0 : detailWidth + 12) : 98;
-        float detailInset = compact && item.items.empty() ? 8 : 24;
-        context.text({row.x + textInset, row.y, std::max(0.0f, row.w - textInset - trailing), row.h}, item.title, enabled ? theme.text : theme.muted, compact ? 11 : 12);
-        context.text({row.x + row.w - detailInset - detailWidth, row.y, detailWidth, row.h}, detail, theme.muted, 10, false, ui::Align::End);
-        if (!item.items.empty()) context.icon(iconId + "/submenu", {row.x + row.w - 22, row.y, 20, row.h}, "chevron-right", theme.muted,
-                                              {state.hovered, state.pressed, false, enabled, state.focused || i == menuSelection});
-        y += rowHeight;
-    }
+    menuDefinition = std::move(*definition);
+    ui::menu(context, "menu", {0, 0, width, height}, menuButton, menuDefinition, menuSelection, commands, [this](size_t index) { activateMenu(index); }, [this] { if (menu == menuRoot) closeMenu(); else openMenu(menu.substr(0, menu.rfind('/'))); }, [this] { closeMenu(); }, contextMenuAnchor.has_value());
 }
 
 }  // namespace tn

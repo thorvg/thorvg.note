@@ -79,7 +79,7 @@ void EditorApp::drawNoteFiles(ui::Rect r)
             auto path = noteBrowser.files()[*entry.file].path;
             auto key = "note-files/" + utf8(path);
             auto state = context.control(key, row, [this, path](const ui::Event& event) {
-                if (event.type == ui::EventType::Activate || (event.type == ui::EventType::Key && (event.key == ui::Key::Enter || event.key == ui::Key::Space)))
+                if (event.activated())
                     activateDocument(workspace.open(path, false)); }, !dialog);
             auto active = workspace.active();
             bool selected = !settings.active && active && active->path == path;
@@ -103,10 +103,7 @@ void EditorApp::drawNoteFiles(ui::Rect r)
                                                                                                : "No matching files";
         context.text(body.inset(12), message, theme.muted, 12, false, ui::Align::Center);
     }
-    if (limit) {
-        float thumb = std::max(20.0f, body.h * body.h / noteFiles.height());
-        context.rect({r.x + r.w - 4, body.y + (body.h - thumb) * noteFileScroll / limit, 2, thumb}, theme.border, 1);
-    }
+    ui::scrollbar(context, {r.x + r.w - 4, body.y, 2, body.h}, body.h, noteFiles.height(), noteFileScroll, 20);
     context.line(r.x + r.w - 1, r.y, r.x + r.w - 1, r.y + r.h, theme.border);
 }
 }  // namespace tn

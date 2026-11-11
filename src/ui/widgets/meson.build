@@ -1,6 +1,7 @@
 ui_sources += files(
   'list.cpp',
   'commands.cpp',
+  'menu.cpp',
   'composition.cpp',
   'textview.cpp',
   'texteditor.cpp',

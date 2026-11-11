@@ -6,38 +6,6 @@
 
 namespace tn
 {
-namespace
-{
-bool activated(const ui::Event& event)
-{
-    return event.type == ui::EventType::Activate || (event.type == ui::EventType::Key && (event.key == ui::Key::Enter || event.key == ui::Key::Space));
-}
-
-void scrollbar(ui::Context& context, std::string_view id, ui::Rect track, float content, float& offset,
-               std::optional<float>& grab, bool vertical, bool enabled)
-{
-    float length = vertical ? track.h : track.w;
-    if (length <= 0 || content <= length) {
-        grab.reset();
-        return;
-    }
-    float thumb = std::min(length, std::max(24.0f, length * length / content));
-    float travel = length - thumb, limit = content - length;
-    float start = vertical ? track.y : track.x;
-    float position = start + travel * offset / limit;
-    auto state = context.control(id, track, [=, &offset, &grab](const ui::Event& event) {
-        float pointer = vertical ? event.y : event.x;
-        if (event.type == ui::EventType::Release || event.type == ui::EventType::Cancel) grab.reset();
-        else if (event.type == ui::EventType::Press) grab = pointer >= position && pointer < position + thumb ? pointer - position : thumb / 2;
-        if ((event.type == ui::EventType::Press || event.type == ui::EventType::Drag) && grab && travel > 0)
-            offset = std::clamp((pointer - start - *grab) * limit / travel, 0.0f, limit); }, enabled, ui::ControlFlag::Capture);
-    context.rect(track, context.theme().surface);
-    ui::Rect bounds = vertical ? ui::Rect{track.x + (track.w - 4) / 2, position, 4, thumb}
-                               : ui::Rect{position, track.y + (track.h - 4) / 2, thumb, 4};
-    context.rect(bounds, state.hovered || state.pressed ? context.theme().muted : context.theme().border, 2);
-}
-}  // namespace
-
 void EditorApp::findFile(const storage::Path& directory)
 {
     if (dialog || !chooseFile) return;
@@ -147,7 +115,7 @@ void EditorApp::drawWelcome(ui::Rect viewport)
             const auto& action = actions[i];
             ui::Rect row{actionsX, y + i * rowHeight, actionsWidth, rowHeight};
             auto state = context.control(std::string("welcome/") + action.id, row, [this, id = std::string(action.id)](const ui::Event& event) {
-                if (activated(event)) commands.execute(id); }, !dialog);
+                if (event.activated()) commands.execute(id); }, !dialog);
             if (state.hovered || state.pressed) context.rect(row, theme.raised, theme.radius);
             auto command = std::find_if(commands.commands().begin(), commands.commands().end(), [&](const auto& command) { return command.id == action.id; });
             auto shortcut = command == commands.commands().end() ? std::string{} : ui::platform::shortcutLabel(command->shortcut);
@@ -166,7 +134,7 @@ void EditorApp::drawWelcome(ui::Rect viewport)
             auto path = recent.directories[i];
             ui::Rect row{actionsX, directoriesY + headingHeight + i * directoryHeight, actionsWidth, directoryHeight};
             auto state = context.control("welcome/directory/" + std::to_string(i), row, [this, path](const ui::Event& event) {
-                if (activated(event)) openRecentDirectory(path); }, !dialog);
+                if (event.activated()) openRecentDirectory(path); }, !dialog);
             if (state.hovered || state.pressed) context.rect(row, theme.raised, theme.radius);
             context.icon("welcome/directory/" + utf8(path) + "/icon", {row.x + 12, row.y + (row.h - 18) / 2, 18, 18}, "folder", theme.muted,
                          {state.hovered, state.pressed, false, !dialog, state.focused});
@@ -181,13 +149,13 @@ void EditorApp::drawWelcome(ui::Rect viewport)
             if (state.focused) context.focusRing(row.inset(2));
         }
     });
-    if (vertical && scroll.viewport.h > 0) scrollbar(context, "welcome/vertical-scrollbar",
-                                                     {scroll.viewport.x + scroll.viewport.w, body.y, std::min(scrollbarSize, body.w), scroll.viewport.h},
-                                                     contentHeight, scroll.y, scroll.grabY, true, !dialog);
+    if (vertical && scroll.viewport.h > 0) ui::scrollbar(context, "welcome/vertical-scrollbar",
+                                                         {scroll.viewport.x + scroll.viewport.w, body.y, std::min(scrollbarSize, body.w), scroll.viewport.h},
+                                                         contentHeight, scroll.y, scroll.grabY, ui::Axis::Vertical, !dialog);
     else scroll.grabY.reset();
-    if (horizontal && body.h > 0 && scroll.viewport.w > 0) scrollbar(context, "welcome/horizontal-scrollbar",
-                                                                     {body.x, scroll.viewport.y + scroll.viewport.h, scroll.viewport.w, std::min(scrollbarSize, body.h)},
-                                                                     pageWidth, scroll.x, scroll.grabX, false, !dialog);
+    if (horizontal && body.h > 0 && scroll.viewport.w > 0) ui::scrollbar(context, "welcome/horizontal-scrollbar",
+                                                                         {body.x, scroll.viewport.y + scroll.viewport.h, scroll.viewport.w, std::min(scrollbarSize, body.h)},
+                                                                         pageWidth, scroll.x, scroll.grabX, ui::Axis::Horizontal, !dialog);
     else scroll.grabX.reset();
     drawTitleBar({0, 0, viewport.w, titleHeight});
     drawStatus({viewport.x, viewport.y + viewport.h - statusHeight, viewport.w, statusHeight});

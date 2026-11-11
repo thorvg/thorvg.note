@@ -111,9 +111,7 @@ Rect TextEditor::Impl::horizontalThumb() const
 {
     auto track = horizontalTrack();
     if (track.w == 0) return {};
-    float thumb = std::min(track.w, std::max(24.0f, track.w * textArea().w / (widest + configuration.fontSize)));
-    float x = track.x + (track.w - thumb) * horizontal / maxHorizontalScroll();
-    return {x, track.y, thumb, track.h};
+    return scrollbarThumb(track, textArea().w, widest + configuration.fontSize, horizontal, Axis::Horizontal);
 }
 
 float TextEditor::Impl::maxVerticalScroll() const

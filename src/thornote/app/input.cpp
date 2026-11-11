@@ -92,7 +92,7 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
     }
     if (!menu.empty()) {
         if (event.key == SDLK_F1 || (mods.primary && mods.shift && event.key == SDLK_P)) openPalette();
-        else menuKey(event.key, mods.shift);
+        else context.key(uiKey(event.key), mods);
         return true;
     }
     if (composing) {
@@ -286,10 +286,6 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
         case SDL_EVENT_MOUSE_MOTION:
             pointerX = event.motion.x * sx;
             pointerY = event.motion.y * sy;
-            if (!menu.empty()) {
-                for (size_t i = 0; i < menuRows.size(); ++i)
-                    if (!menuItems[i].title.empty() && menuRows[i].contains(pointerX, pointerY)) menuSelection = i;
-            }
             context.pointerMove(pointerX, pointerY);
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:

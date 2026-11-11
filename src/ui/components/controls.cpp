@@ -6,11 +6,6 @@ namespace ui
 
 namespace
 {
-bool activated(const Event& event)
-{
-    return event.type == EventType::Activate || (event.type == EventType::Key && (event.key == Key::Enter || event.key == Key::Space));
-}
-
 size_t previous(const std::string& value, size_t cursor)
 {
     if (!cursor) return 0;
@@ -33,7 +28,7 @@ size_t next(const std::string& value, size_t cursor)
 State button(Context& context, std::string_view id, Rect bounds, std::string_view label, std::function<void()> activate, const ButtonOptions& options)
 {
     const auto& [style, icon, enabled, active, appearance] = options;
-    auto state = context.control(id, bounds, [activate = std::move(activate)](const Event& event) { if (activated(event) && activate) activate(); }, enabled);
+    auto state = context.control(id, bounds, [activate = std::move(activate)](const Event& event) { if (event.activated() && activate) activate(); }, enabled);
     const auto& t = context.theme();
     auto fill = style == ButtonStyle::Primary ? t.accent : style == ButtonStyle::Quiet ? t.surface
                                                                                        : t.raised;
@@ -58,7 +53,7 @@ State button(Context& context, std::string_view id, Rect bounds, std::string_vie
 
 void checkbox(Context& context, std::string_view id, Rect bounds, std::string_view label, bool value, std::function<void(bool)> change, bool enabled)
 {
-    auto state = context.control(id, bounds, [value, change = std::move(change)](const Event& event) { if (activated(event)) change(!value); }, enabled);
+    auto state = context.control(id, bounds, [value, change = std::move(change)](const Event& event) { if (event.activated()) change(!value); }, enabled);
     const auto& t = context.theme();
     Rect box{bounds.x, bounds.y + (bounds.h - 18) / 2, 18, 18};
     context.rect(box, value && enabled ? t.accent : t.surface, 4, state.hovered ? t.accent : t.border);

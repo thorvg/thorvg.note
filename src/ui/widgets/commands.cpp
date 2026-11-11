@@ -34,7 +34,7 @@ void commandList(Context& context, std::string_view id, Rect bounds, const Comma
         Rect row{bounds.x, bounds.y + 43 + (i - first) * rowHeight, bounds.w, rowHeight - 2};
         auto stateId = prefix + "/" + command.id;
         auto interaction = context.control(stateId, row, [&registry, &state, commandId = command.id, i, executed](const Event& event) {
-            if (event.type == EventType::Activate || (event.type == EventType::Key && event.key == Key::Enter)) {
+            if (event.activated(false)) {
                 state.selected = i;
                 if (registry.execute(commandId) && executed) executed();
             } }, command.enabled());

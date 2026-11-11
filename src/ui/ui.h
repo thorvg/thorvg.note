@@ -468,15 +468,16 @@ struct Modifiers
  */
 enum class EventType
 {
-    Press,       ///< The pointer went down on the control; carries position, modifiers and click count.
-    Drag,        ///< The pointer moved while pressed on the control; carries position.
-    Activate,    ///< The pointer was released over the control it pressed: a click.
-    Key,         ///< A key for the focused control; carries key and modifiers.
-    Text,        ///< Committed text for the focused control; carries text.
-    Scroll,      ///< The wheel moved over a Scrollable control; x/y carry the horizontal/vertical deltas.
-    Release,     ///< The pointer was released anywhere after pressing a Capture control; precedes Activate.
-    Cancel,      ///< The press on a Capture control was abandoned, such as by Escape or Context::cancelPointer().
-    ContextMenu  ///< A menu was requested at the position through Context::contextMenu().
+    Press,        ///< The pointer went down on the control; carries position, modifiers and click count.
+    Drag,         ///< The pointer moved while pressed on the control; carries position.
+    Activate,     ///< The pointer was released over the control it pressed: a click.
+    Key,          ///< A key for the focused control; carries key and modifiers.
+    Text,         ///< Committed text for the focused control; carries text.
+    Scroll,       ///< The wheel moved over a Scrollable control; x/y carry the horizontal/vertical deltas.
+    Release,      ///< The pointer was released anywhere after pressing a Capture control; precedes Activate.
+    Cancel,       ///< The press on a Capture control was abandoned, such as by Escape or Context::cancelPointer().
+    ContextMenu,  ///< A menu was requested at the position through Context::contextMenu().
+    Hover         ///< The pointer moved over a control registered with ControlFlag::Hover.
 };
 
 /**
@@ -516,6 +517,12 @@ struct Event
     int clicks = 1;
     std::string text = {};
     mutable bool handled = true;  ///< A Scroll handler may clear this to let an enclosing region or host scroll.
+
+    /** @brief Whether a pointer activation or keyboard confirmation should invoke this control. */
+    bool activated(bool space = true) const
+    {
+        return type == EventType::Activate || (type == EventType::Key && (key == Key::Enter || (space && key == Key::Space)));
+    }
 };
 
 /**
@@ -543,7 +550,8 @@ enum class ControlFlag : uint8_t
     Focusable = 1,   ///< Participates in keyboard focus.
     Scrollable = 2,  ///< Receives Scroll events from Context::wheel().
     Capture = 4,     ///< Receives Release outside its bounds and Cancel.
-    TabInput = 8     ///< Receives Tab as a Key event instead of moving focus.
+    TabInput = 8,    ///< Receives Tab as a Key event instead of moving focus.
+    Hover = 16       ///< Receives Hover events from Context::pointerMove().
 };
 
 /** @brief Wheel behavior for a scroll region; offsets and limits use the same units. */
@@ -1480,6 +1488,15 @@ enum class Axis
     Vertical     ///< Sizes are heights; a divider moves up and down.
 };
 
+/** @brief Maps a content offset to scrollbar thumb bounds; returns empty bounds when content fits. */
+Rect scrollbarThumb(Rect track, float viewport, float content, float offset, Axis axis = Axis::Vertical, float minimum = 24);
+
+/** @brief Draws a passive vertical scroll indicator. */
+void scrollbar(Context& context, Rect track, float viewport, float content, float offset, float minimum = 24);
+
+/** @brief Draws a scrollbar with track clicks, pointer capture, and dragging. */
+void scrollbar(Context& context, std::string_view id, Rect track, float content, float& offset, std::optional<float>& grab, Axis axis = Axis::Vertical, bool enabled = true);
+
 /**
  * @brief Edge whose movement changes the requested pane size.
  */
@@ -1855,6 +1872,14 @@ struct MenuDefinition
     std::vector<MenuItem> items;
     bool compact = false;
 };
+
+/**
+ * @brief Draws a modal menu with pointer selection, keyboard navigation, and submenu actions.
+ * @note Definition, selection, and registry must remain alive until the next Context::begin().
+ * Back navigates to the parent menu; close dismisses the whole menu. Constrain vertical placement for context menus.
+ */
+void menu(Context& context, std::string_view id, Rect viewport, Rect anchor, const MenuDefinition& definition, size_t& selection,
+          const CommandRegistry& commands, std::function<void(size_t)> activate, std::function<void()> back, std::function<void()> close, bool constrainVertical = false);
 
 /**
  * @brief One node of a declarative component tree: layout request plus content.

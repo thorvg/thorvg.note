@@ -315,6 +315,8 @@ void Context::pointerMove(float x, float y)
 {
     pointerPosition(x, y);
     if (!impl->pressedId.empty()) impl->send(impl->pressedId, {.type = EventType::Drag, .x = x, .y = y});
+    auto target = impl->hit(x, y);
+    if (target && target->enabled && has(target->flags, ControlFlag::Hover)) impl->send(target->id, {.type = EventType::Hover, .x = x, .y = y});
 }
 
 void Context::pointerDown(float x, float y, Modifiers modifiers, int clicks)

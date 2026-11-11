@@ -23,7 +23,7 @@ void list(Context& context, std::string_view id, Rect bounds, const std::vector<
                 if (i >= items.size()) return;
                 bool key = event.type == EventType::Key;
                 if (event.type == EventType::ContextMenu && contextMenu) contextMenu(items[i].id, {event.x, event.y, 1, 1});
-                else if (event.type == EventType::Activate || (key && (event.key == Key::Enter || event.key == Key::Space))) select(items[i].id);
+                else if (event.activated()) select(items[i].id);
                 else if (key && (event.key == Key::Up || event.key == Key::Down)) {
                     auto step = event.key == Key::Up ? -1 : 1;
                     for (auto next = ptrdiff_t(i) + step; next >= 0 && next < ptrdiff_t(items.size()); next += step) {

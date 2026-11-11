@@ -15,10 +15,6 @@ std::string lower(std::string value)
         ch = char(std::tolower(static_cast<unsigned char>(ch)));
     return value;
 }
-bool activated(const ui::Event& event)
-{
-    return event.type == ui::EventType::Activate || (event.type == ui::EventType::Key && (event.key == ui::Key::Enter || event.key == ui::Key::Space));
-}
 }  // namespace
 
 void EditorApp::activateDocument(uint64_t id)
@@ -179,7 +175,7 @@ void EditorApp::drawSettings(ui::Rect r)
         ui::Rect row = categoryRail ? ui::Rect{r.x + 12, r.y + 94 + i * 38, rail - 12, 34}
                                     : ui::Rect{r.x + 24 + i * (cell + 8), r.y + 102, cell, 34};
         auto state = context.control("settings/category/" + std::to_string(i), row, [this, i](const ui::Event& event) {
-            if (activated(event)) {
+            if (event.activated()) {
                 settings.category = i;
                 settings.scroll = 0;
                 settings.search = {};
@@ -254,7 +250,7 @@ void EditorApp::drawSettings(ui::Rect r)
                     size_t index = matches[settings.fontOffset + row];
                     const auto& choice = settings.catalog[index];
                     ui::Rect cell{list.x + 4, list.y + row * 28, list.w - 8, 28};
-                    auto state = context.control("settings/fonts/" + std::to_string(index), cell, [this, index](const ui::Event& event) { if (activated(event)) selectFont(settings.catalog[index]); });
+                    auto state = context.control("settings/fonts/" + std::to_string(index), cell, [this, index](const ui::Event& event) { if (event.activated()) selectFont(settings.catalog[index]); });
                     bool selected = choice.path == fontChoice.path && choice.index == fontChoice.index;
                     if (selected || state.hovered) context.rect(cell, selected ? theme.selection : theme.raised, 4);
                     context.text({cell.x + 10, cell.y, cell.w - 40, cell.h}, choice.name, theme.text, 12);
@@ -264,10 +260,7 @@ void EditorApp::drawSettings(ui::Rect r)
                 }
                 if (matches.empty()) context.text(list, "No matching fonts", theme.muted, 12, false, ui::Align::Center);
             });
-            if (fontLimit) {
-                float thumb = std::max(16.0f, list.h * 5 / matches.size());
-                context.rect({list.x + list.w - 4, list.y + (list.h - thumb) * settings.fontOffset / fontLimit, 2, thumb}, theme.border, 1);
-            }
+            ui::scrollbar(context, {list.x + list.w - 4, list.y, 2, list.h}, 5, float(matches.size()), float(settings.fontOffset), 16);
             y += 148;
             context.text({body.x, y, body.w, 20}, settings.fontError.empty() ? std::to_string(matches.size()) + " font choices · Preview" : settings.fontError,
                          settings.fontError.empty() ? theme.muted : theme.danger, 10);
@@ -319,10 +312,7 @@ void EditorApp::drawSettings(ui::Rect r)
         }
         if (!sections[0] && !sections[1] && !sections[2]) context.text({body.x, y, body.w, 48}, "No matching settings", theme.muted, 13);
     });
-    if (limit) {
-        float thumb = std::max(24.0f, body.h * body.h / total);
-        context.rect({r.x + r.w - 8, body.y + (body.h - thumb) * settings.scroll / limit, 3, thumb}, theme.border, 1.5f);
-    }
+    ui::scrollbar(context, {r.x + r.w - 8, body.y, 3, body.h}, body.h, total, settings.scroll);
     context.text({body.x, r.y + r.h - 24, body.w, 22}, settings.saveError.empty() ? "Changes apply immediately and are saved automatically." : settings.saveError,
                  settings.saveError.empty() ? theme.muted : theme.danger, 10);
 }

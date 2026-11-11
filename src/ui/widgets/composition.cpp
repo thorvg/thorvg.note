@@ -203,7 +203,7 @@ void Composition::Impl::draw(Composition& owner, Context& context, const Element
     State state{false, false, false};
     if (!widget && !node.command.empty()) {
         state = context.control(instance, bounds, [&commands, id = node.command](const Event& event) {
-            if (event.type == EventType::Activate || (event.type == EventType::Key && (event.key == Key::Enter || event.key == Key::Space))) commands.execute(id); }, enabled);
+            if (event.activated()) commands.execute(id); }, enabled);
     }
     auto fill = resolve(a.fill, t, node.kind == ElementKind::Shape ? t.accent : Color{0, 0, 0, 0});
     if (node.active) fill = resolve(a.activeFill, t, fill);

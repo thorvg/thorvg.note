@@ -21,18 +21,6 @@ std::string excerpt(std::string_view value)
     return std::string(value.substr(0, length));
 }
 
-std::string elide(ui::Context& context, std::string value, float width, float size)
-{
-    if (context.textWidth(value, size) <= width) return value;
-    while (!value.empty() && context.textWidth(value + "…", size) > width) {
-        size_t end = value.size() - 1;
-        while (end && (uint8_t(value[end]) & 0xc0) == 0x80)
-            --end;
-        value.resize(end);
-    }
-    return value + "…";
-}
-
 std::string preview(const DocumentTab& tab)
 {
     auto first = tab.document.text().find('\n');
@@ -170,18 +158,18 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
             auto id = tab->id;
             ui::Rect row{body.x, body.y + (i - documentOffset) * rowHeight, body.w, rowHeight - 4};
             auto state = context.control("documents/" + std::to_string(id), row, [this, id](const ui::Event& e) {
-                if (e.type == ui::EventType::Activate || (e.type == ui::EventType::Key && (e.key == ui::Key::Enter || e.key == ui::Key::Space))) {
+                if (e.activated()) {
                     activateDocument(id);
                 }
             });
             bool selected = tab == workspace.active();
             if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);
-            context.text({row.x + 10, row.y + 5, row.w - 38, 24}, elide(context, tab->displayTitle(notes), row.w - 44, 12), theme.text, 12, selected || notes);
+            context.text({row.x + 10, row.y + 5, row.w - 38, 24}, context.elideText(tab->displayTitle(notes), row.w - 44, 12, selected || notes), theme.text, 12, selected || notes);
             auto detail = tab->loading ? "Opening…" : tab->saving ? "Saving…"
                 : tab->path.empty()                               ? "Not saved"
                 : notes                                           ? preview(*tab)
                                                                   : displayName(tab->path.parent_path());
-            context.text({row.x + 10, row.y + 29, row.w - 20, notes ? 24.0f : 14.0f}, elide(context, detail, row.w - 28, 10), theme.muted, 10);
+            context.text({row.x + 10, row.y + 29, row.w - 20, notes ? 24.0f : 14.0f}, context.elideText(detail, row.w - 28, 10), theme.muted, 10);
             if (tab->dirty()) context.icon("documents/" + std::to_string(id) + "/dirty", {row.x + row.w - 26, row.y + 5, 24, 24}, "dirty", theme.muted,
                                            {state.hovered, state.pressed, true, true, state.focused});
             if (notes && favorites.count(id)) context.icon("documents/" + std::to_string(id) + "/favorite", {row.x + row.w - 26, row.y + 33, 18, 18}, "star", theme.accent,
@@ -191,10 +179,7 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
         }
     });
     if (documents.empty()) context.text(body.inset(12), notes ? "No matching notes" : "No open documents", theme.muted, 12, false, ui::Align::Center);
-    if (limit) {
-        float track = body.h, thumb = std::max(20.0f, track * float(count) / documents.size());
-        context.rect({r.x + r.w - 4, body.y + (track - thumb) * documentOffset / limit, 2, thumb}, theme.border, 1);
-    }
+    ui::scrollbar(context, {r.x + r.w - 4, body.y, 2, body.h}, float(count), float(documents.size()), float(documentOffset), 20);
     context.line(r.x + r.w - 1, r.y, r.x + r.w - 1, r.y + r.h, theme.border);
 }
 
@@ -214,11 +199,11 @@ void EditorApp::drawNoteHeading(ui::Rect r)
         : tab->path.empty()                               ? "Unsaved / " + tab->displayTitle()
                                                           : displayName(tab->path.parent_path()) + " / " + tab->title;
     ui::Rect breadcrumbBounds{r.x + options.padding, r.y + 3, r.w - options.padding - 64, 32};
-    context.text(breadcrumbBounds, elide(context, breadcrumb, breadcrumbBounds.w - 6, 11), theme.muted, 11);
+    context.text(breadcrumbBounds, context.elideText(breadcrumb, breadcrumbBounds.w - 6, 11), theme.muted, 11);
     if (!tab) return;
     ui::Rect star{r.x + r.w - 48, r.y + 4, 28, 28};
     auto state = context.control("note/favorite", star, [this](const ui::Event& e) {
-        if (e.type == ui::EventType::Activate || (e.type == ui::EventType::Key && e.key == ui::Key::Enter)) commands.execute("note.favorite.toggle"); }, !tab->loading);
+        if (e.activated(false)) commands.execute("note.favorite.toggle"); }, !tab->loading);
     if (state.hovered) context.rect(star, theme.raised, 5);
     context.icon("note/favorite/icon", star, "star", favorites.count(tab->id) ? theme.accent : theme.muted,
                  {state.hovered, state.pressed, favorites.count(tab->id) != 0, !tab->loading, state.focused});

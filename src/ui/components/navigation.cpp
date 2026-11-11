@@ -5,6 +5,46 @@
 namespace ui
 {
 
+Rect scrollbarThumb(Rect track, float viewport, float content, float offset, Axis axis, float minimum)
+{
+    bool vertical = axis == Axis::Vertical;
+    float length = vertical ? track.h : track.w;
+    if (length <= 0 || viewport <= 0 || content <= viewport) return {};
+    float thumb = std::min(length, std::max(minimum, length * viewport / content));
+    float position = (length - thumb) * std::clamp(offset / (content - viewport), 0.0f, 1.0f);
+    return vertical ? Rect{track.x, track.y + position, track.w, thumb} : Rect{track.x + position, track.y, thumb, track.h};
+}
+
+void scrollbar(Context& context, Rect track, float viewport, float content, float offset, float minimum)
+{
+    context.rect(scrollbarThumb(track, viewport, content, offset, Axis::Vertical, minimum), context.theme().border, track.w / 2);
+}
+
+void scrollbar(Context& context, std::string_view id, Rect track, float content, float& offset, std::optional<float>& grab, Axis axis, bool enabled)
+{
+    bool vertical = axis == Axis::Vertical;
+    float length = vertical ? track.h : track.w;
+    auto thumb = scrollbarThumb(track, length, content, offset, axis);
+    if (thumb.w <= 0 || thumb.h <= 0) {
+        grab.reset();
+        return;
+    }
+    float start = vertical ? track.y : track.x;
+    float position = vertical ? thumb.y : thumb.x;
+    float size = vertical ? thumb.h : thumb.w;
+    float travel = length - size, limit = content - length;
+    auto state = context.control(id, track, [=, &offset, &grab](const Event& event) {
+        float pointer = vertical ? event.y : event.x;
+        if (event.type == EventType::Release || event.type == EventType::Cancel) grab.reset();
+        else if (event.type == EventType::Press) grab = pointer >= position && pointer < position + size ? pointer - position : size / 2;
+        if ((event.type == EventType::Press || event.type == EventType::Drag) && grab && travel > 0)
+            offset = std::clamp((pointer - start - *grab) * limit / travel, 0.0f, limit); }, enabled, ControlFlag::Capture);
+    context.rect(track, context.theme().surface);
+    thumb = vertical ? Rect{thumb.x + (thumb.w - 4) / 2, thumb.y, 4, thumb.h}
+                     : Rect{thumb.x, thumb.y + (thumb.h - 4) / 2, thumb.w, 4};
+    context.rect(thumb, state.hovered || state.pressed ? context.theme().muted : context.theme().border, 2);
+}
+
 void tabSurface(Context& context, Rect bounds, bool selected, bool hovered, const TabOptions& options)
 {
     if ((!selected && !hovered) || bounds.w <= 1 || bounds.h <= 1) return;
