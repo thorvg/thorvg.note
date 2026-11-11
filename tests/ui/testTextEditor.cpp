@@ -83,6 +83,34 @@ TEST_CASE_FIXTURE(Editor, "pointer_selects_and_wheel_scrolls_in_host_coordinates
     CHECK(!context.wheel(-3));
 }
 
+TEST_CASE_FIXTURE(Editor, "wheel_is_released_at_editor_scroll_boundaries")
+{
+    std::string text;
+    for (int i = 0; i < 100; ++i)
+        text += "line\n";
+    REQUIRE(document.text(text));
+    draw();
+    context.pointerMove(bounds.x + 20, bounds.y + 20);
+    CHECK(!context.wheel(1));
+    CHECK(context.wheel(-0.25f));
+    CHECK(editor.scrollY() == 0);
+    CHECK(context.wheel(-1000));
+    CHECK(editor.scrollY() > 0);
+    CHECK(!context.wheel(-1));
+    CHECK(context.wheel(1));
+}
+
+TEST_CASE_FIXTURE(Editor, "wheel_is_released_when_content_fits")
+{
+    REQUIRE(document.text("Short note"));
+    draw();
+    context.pointerMove(bounds.x + 20, bounds.y + 20);
+    CHECK(!context.wheel(-1));
+    context.focus("editor");
+    CHECK(!context.wheel(1));
+    CHECK(editor.scrollY() == 0);
+}
+
 TEST_CASE_FIXTURE(Editor, "composition_and_read_only_leave_the_document_unchanged")
 {
     REQUIRE(document.text("note"));

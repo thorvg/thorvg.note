@@ -39,13 +39,6 @@ std::string preview(const DocumentTab& tab)
     return first == std::string::npos ? "" : excerpt(std::string_view(tab.document.text()).substr(first + 1));
 }
 
-size_t scrollRows(size_t offset, size_t limit, float amount)
-{
-    if (amount == 0) return offset;
-    int step = amount > 0 ? -std::max(1, int(amount * 3)) : std::max(1, int(-amount * 3));
-    return size_t(std::clamp(int(offset) + step, 0, int(limit)));
-}
-
 bool matches(std::string_view value, std::string_view query)
 {
     return std::search(value.begin(), value.end(), query.begin(), query.end(), [](unsigned char a, unsigned char b) {
@@ -121,9 +114,7 @@ void EditorApp::drawCollections(ui::Rect r)
     size_t count = std::max(size_t(1), size_t(body.h / 36));
     const auto& folders = recent.rootDirectories();
     size_t limit = folders.size() > count ? folders.size() - count : 0;
-    collectionOffset = std::min(collectionOffset, limit);
-    context.control("collections/scroll", body, [this, limit](const ui::Event& e) {
-        if (e.type == ui::EventType::Scroll) collectionOffset = scrollRows(collectionOffset, limit, e.y); }, !dialog, ui::ControlFlag::Scrollable);
+    context.scroll("collections/scroll", body, collectionOffset, limit, {.step = 3, .enabled = !dialog});
     if (!folders.empty()) {
         for (size_t i = collectionOffset; i < folders.size() && i < collectionOffset + count; ++i) {
             const auto& path = folders[i];
@@ -172,9 +163,7 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
         }
         revealDocument = false;
     }
-    documentOffset = std::min(documentOffset, limit);
-    context.control("documents/scroll", body, [this, limit](const ui::Event& e) {
-        if (e.type == ui::EventType::Scroll) documentOffset = scrollRows(documentOffset, limit, e.y); }, true, ui::ControlFlag::Scrollable);
+    context.scroll("documents/scroll", body, documentOffset, limit, {.step = 3});
     context.clip(body, [&] {
         for (size_t i = documentOffset; i < documents.size() && i < documentOffset + count; ++i) {
             auto tab = documents[i];

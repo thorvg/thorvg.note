@@ -10,10 +10,8 @@ void list(Context& context, std::string_view id, Rect bounds, const std::vector<
     const auto& t = context.theme();
     if (rowHeight <= 0) rowHeight = t.rowHeight;
     auto limit = std::max(0.0f, items.size() * rowHeight - bounds.h);
-    state.scroll = std::clamp(state.scroll, 0.0f, limit);
     auto prefix = std::string(id);
-    context.control(prefix + "/scroll", bounds, [&state, rowHeight, limit](const Event& event) {
-        if (event.type == EventType::Scroll) state.scroll = std::clamp(state.scroll - event.y * rowHeight, 0.0f, limit); }, true, ControlFlag::Scrollable);
+    context.scroll(prefix + "/scroll", bounds, state.scroll, limit, {.step = rowHeight});
     auto first = size_t(state.scroll / rowHeight);
     auto end = std::min(items.size(), size_t(std::ceil((state.scroll + bounds.h) / rowHeight)));
     context.clip(bounds, [&] {

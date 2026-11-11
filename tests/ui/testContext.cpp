@@ -142,4 +142,72 @@ TEST_CASE_FIXTURE(Frame, "frame_requests_keep_the_earliest_time")
     CHECK(context.nextFrame() == doctest::Approx(2.0 + 1.0 / 60));
 }
 
+TEST_CASE_FIXTURE(Frame, "scroll_regions_clamp_and_release_exhausted_directions")
+{
+    float outer = 0, inner = 0;
+    context.begin(theme, {0, 0, 200, 100});
+    context.scroll("outer", {0, 0, 200, 100}, outer, 200.0f);
+    context.scroll("inner", {0, 0, 100, 100}, inner, 36.0f);
+    context.end();
+    context.pointerPosition(10, 10);
+    CHECK(!context.wheel(1));
+    CHECK(context.wheel(-1));
+    CHECK(inner == 36);
+    CHECK(outer == 0);
+    CHECK(context.wheel(-1));
+    CHECK(outer == 36);
+    CHECK(context.wheel(1));
+    CHECK(inner == 0);
+
+    context.begin(theme, {0, 0, 200, 100});
+    context.scroll("outer", {0, 0, 200, 100}, outer, 0.0f);
+    context.end();
+    CHECK(outer == 0);
+    CHECK(!context.wheel(-1));
+}
+
+TEST_CASE_FIXTURE(Frame, "scroll_regions_support_rows_and_horizontal_strips")
+{
+    size_t row = 0;
+    float x = 0;
+    context.begin(theme, {0, 0, 200, 100});
+    context.scroll("rows", {0, 0, 100, 100}, row, size_t(5), {.step = 3});
+    context.scroll("tabs", {100, 0, 100, 100}, x, 100.0f, {.step = 48, .horizontal = true});
+    context.end();
+    context.pointerPosition(10, 10);
+    CHECK(context.wheel(-0.1f));
+    CHECK(row == 1);
+    CHECK(context.wheel(-2));
+    CHECK(row == 5);
+    CHECK(!context.wheel(-1));
+    CHECK(context.wheel(0.1f));
+    CHECK(row == 4);
+    context.pointerPosition(110, 10);
+    CHECK(context.wheel(-1));
+    CHECK(x == 48);
+    CHECK(context.wheel(0, 1));
+    CHECK(x == 96);
+}
+
+TEST_CASE_FIXTURE(Frame, "two_axis_scroll_regions_handle_wheel_and_keyboard")
+{
+    float x = 0, y = 0;
+    context.begin(theme, {0, 0, 200, 100});
+    context.scroll("page", {0, 0, 200, 100}, x, y, 100.0f, 300.0f);
+    context.end();
+    context.pointerPosition(10, 10);
+    CHECK(context.wheel(-1, -1));
+    CHECK(x == 36);
+    CHECK(y == 36);
+    CHECK(context.scrollKey("page", Key::PageDown));
+    CHECK(y == 126);
+    CHECK(context.scrollKey("page", Key::Home));
+    CHECK(x == 0);
+    CHECK(y == 0);
+    CHECK(context.scrollKey("page", Key::End));
+    CHECK(y == 300);
+    CHECK(!context.wheel(-1));
+    CHECK(!context.scrollKey("page", Key::Enter));
+}
+
 TEST_SUITE_END();

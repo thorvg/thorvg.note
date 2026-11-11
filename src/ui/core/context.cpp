@@ -3,6 +3,9 @@
 #include <cmath>
 #include <memory>
 #include <unordered_set>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 namespace ui
 {
@@ -382,14 +385,59 @@ void Context::textInput(std::string_view text)
 
 bool Context::wheel(float vertical, float horizontal)
 {
-    if (vertical == 0 && horizontal == 0) return false;
-    for (auto it = impl->controls.rbegin(); it != impl->controls.rend(); ++it) {
-        if (!it->enabled || !has(it->flags, ControlFlag::Scrollable) || !it->bounds.contains(impl->pointerX, impl->pointerY)) continue;
-        auto id = it->id;
-        impl->send(id, {.type = EventType::Scroll, .x = horizontal, .y = vertical});
-        return true;
+    if (!std::isfinite(vertical) || !std::isfinite(horizontal) || (vertical == 0 && horizontal == 0)) return false;
+    for (size_t i = impl->controls.size(); i > 0;) {
+        const auto& control = impl->controls[--i];
+        if (!control.enabled || !has(control.flags, ControlFlag::Scrollable) || !control.bounds.contains(impl->pointerX, impl->pointerY)) continue;
+        auto id = control.id;
+        Event event{.type = EventType::Scroll, .x = horizontal, .y = vertical};
+        impl->send(id, event);
+        if (event.handled) return true;
+        i = std::min(i, impl->controls.size());
     }
+#ifdef __EMSCRIPTEN__
+    EM_ASM({
+        if (Module['onUnhandledWheel']) Module['onUnhandledWheel']($0, $1); }, horizontal * 100, -vertical * 100);
+#endif
     return false;
+}
+
+void Context::scroll(std::string_view id, Rect bounds, float& x, float& y, float limitX, float limitY, ScrollOptions options)
+{
+    limitX = std::max(0.0f, limitX);
+    limitY = std::max(0.0f, limitY);
+    x = std::clamp(x, 0.0f, limitX);
+    y = std::clamp(y, 0.0f, limitY);
+    control(id, bounds, [&x, &y, limitX, limitY, bounds, options](const Event& event) {
+        float dx = 0, dy = 0;
+        if (event.type == EventType::Scroll) {
+            dx = -event.x * options.step;
+            dy = -event.y * options.step;
+        } else if (event.type == EventType::Key) {
+            switch (event.key) {
+                case Key::Up: dy = -options.step; break;
+                case Key::Down: dy = options.step; break;
+                case Key::Left: dx = -options.step; break;
+                case Key::Right: dx = options.step; break;
+                case Key::PageUp: dy = -bounds.h * 0.9f; break;
+                case Key::PageDown: dy = bounds.h * 0.9f; break;
+                case Key::Home: dx = -limitX; dy = -limitY; break;
+                case Key::End: dy = limitY; break;
+                default: event.handled = false; return;
+            }
+        } else return;
+        bool horizontal = scrollOffset(x, limitX, dx);
+        bool vertical = scrollOffset(y, limitY, dy);
+        event.handled = horizontal || vertical; }, options.enabled && (limitX > 0 || limitY > 0), ControlFlag::Scrollable);
+}
+
+bool Context::scrollKey(std::string_view id, Key key)
+{
+    auto control = impl->find(id);
+    if (!control || !control->enabled || !has(control->flags, ControlFlag::Scrollable)) return false;
+    Event event{.type = EventType::Key, .key = key, .handled = false};
+    impl->send(id, event);
+    return event.handled;
 }
 
 void Context::clip(Rect bounds, const std::function<void()>& render)

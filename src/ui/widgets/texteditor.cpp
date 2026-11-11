@@ -351,7 +351,11 @@ void TextEditor::Impl::handle(Context& host, std::string_view id, Rect bounds, c
         case EventType::Drag: pointerMove(x, y); break;
         case EventType::Release: pointerUp(); break;
         case EventType::Cancel: cancelPointer(); break;
-        case EventType::Scroll: wheel(event.y, event.x); break;
+        case EventType::Scroll:
+            relayout();
+            event.handled = (event.y > 0 && vertical > 0) || (event.y < 0 && vertical < maxVerticalScroll()) || (event.x > 0 && horizontal > 0) || (event.x < 0 && horizontal < maxHorizontalScroll());
+            if (event.handled) wheel(event.y, event.x);
+            break;
         case EventType::Key:
             focus(true);
             key(event.key, event.modifiers);

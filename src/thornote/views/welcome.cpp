@@ -101,12 +101,6 @@ void EditorApp::openRecentFiles()
     context.focus("palette/search");
 }
 
-void EditorApp::scrollWelcome(float vertical, float horizontal)
-{
-    welcomeScroll.x = std::clamp(welcomeScroll.x + horizontal, 0.0f, welcomeScroll.limitX);
-    welcomeScroll.y = std::clamp(welcomeScroll.y + vertical, 0.0f, welcomeScroll.limitY);
-}
-
 void EditorApp::drawWelcome(ui::Rect viewport)
 {
     float titleHeight = 40;
@@ -128,14 +122,12 @@ void EditorApp::drawWelcome(ui::Rect viewport)
                        std::max(0.0f, body.h - (horizontal ? scrollbarSize : 0))};
     scroll.limitX = std::max(0.0f, pageWidth - scroll.viewport.w);
     scroll.limitY = std::max(0.0f, contentHeight - scroll.viewport.h);
-    scrollWelcome(0);
+    context.scroll("welcome/scroll", body, scroll.x, scroll.y, scroll.limitX, scroll.limitY, {.enabled = !dialog});
     float x = scroll.viewport.x + std::max(margin, (scroll.viewport.w - contentWidth) / 2) - scroll.x;
     float y = scroll.viewport.y + std::max(margin, (scroll.viewport.h - logoHeight - fixedHeight) / 2) - scroll.y;
     ui::Rect logoBounds{x + (contentWidth - logoWidth) / 2, y, logoWidth, logoHeight};
     float actionsX = x, actionsWidth = contentWidth;
     y += logoHeight + actionsGap;
-    context.control("welcome/scroll", body, [this](const ui::Event& event) {
-        if (event.type == ui::EventType::Scroll) scrollWelcome(-event.y * 36, -event.x * 36); }, !dialog, ui::ControlFlag::Scrollable);
 
     context.clip(scroll.viewport, [&] {
         context.paint(ui::paintKey('B', logoBounds, theme.text), [&]() -> tvg::Paint* {

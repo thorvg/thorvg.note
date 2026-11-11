@@ -66,9 +66,7 @@ void EditorApp::drawNoteFiles(ui::Rect r)
     context.text({r.x + r.w - 44, r.y + 9, 28, 30}, std::to_string(noteFiles.count()), theme.muted, 11, false, ui::Align::End);
     ui::Rect body{r.x + 6, r.y + 92, r.w - 12, std::max(0.0f, r.h - 98)};
     float limit = std::max(0.0f, noteFiles.height() - body.h);
-    noteFileScroll = std::clamp(noteFileScroll, 0.0f, limit);
-    context.control("note-files/scroll", body, [this, limit](const ui::Event& event) {
-        if (event.type == ui::EventType::Scroll) noteFileScroll = std::clamp(noteFileScroll - event.y * 60, 0.0f, limit); }, !dialog, ui::ControlFlag::Scrollable);
+    context.scroll("note-files/scroll", body, noteFileScroll, limit, {.step = 60, .enabled = !dialog});
     context.clip(body, [&] {
         auto [first, last] = noteFiles.visibleRows(noteFileScroll, body.h);
         for (size_t i = first; i < last; ++i) {

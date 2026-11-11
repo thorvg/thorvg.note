@@ -172,19 +172,7 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
         context.key(uiKey(event.key), {.shift = mods.shift});
         return true;
     }
-    if (welcomeVisible()) {
-        switch (event.key) {
-            case SDLK_UP: scrollWelcome(-36); return true;
-            case SDLK_DOWN: scrollWelcome(36); return true;
-            case SDLK_LEFT: scrollWelcome(0, -36); return true;
-            case SDLK_RIGHT: scrollWelcome(0, 36); return true;
-            case SDLK_PAGEUP: scrollWelcome(-welcomeScroll.viewport.h * 0.9f); return true;
-            case SDLK_PAGEDOWN: scrollWelcome(welcomeScroll.viewport.h * 0.9f); return true;
-            case SDLK_HOME: scrollWelcome(-welcomeScroll.limitY, -welcomeScroll.limitX); return true;
-            case SDLK_END: scrollWelcome(welcomeScroll.limitY); return true;
-            default: break;
-        }
-    }
+    if (welcomeVisible() && context.scrollKey("welcome/scroll", uiKey(event.key))) return true;
     if (visibleDocument() && editorFocus) {
         auto key = uiKey(event.key);
         // The typed character of Space arrives as text input.

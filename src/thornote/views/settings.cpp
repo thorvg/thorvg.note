@@ -213,9 +213,7 @@ void EditorApp::drawSettings(ui::Rect r)
     float layoutHeight = 296 + (choiceRows(layoutCount) - 1) * 48;
     float total = (sections[0] ? editorHeight : 0) + (sections[1] ? appearanceHeight : 0) + (sections[2] ? layoutHeight : 0);
     float limit = std::max(0.0f, total - body.h);
-    settings.scroll = std::clamp(settings.scroll, 0.0f, limit);
-    context.control("settings/scroll", viewport, [this, limit](const ui::Event& event) {
-        if (event.type == ui::EventType::Scroll) settings.scroll = std::clamp(settings.scroll - event.y * 36, 0.0f, limit); }, true, ui::ControlFlag::Scrollable);
+    context.scroll("settings/scroll", viewport, settings.scroll, limit);
     context.clip(viewport, [&] {
         float y = body.y - settings.scroll;
         auto heading = [&](const char* title, const char* description) {
@@ -250,9 +248,7 @@ void EditorApp::drawSettings(ui::Rect r)
             ui::Rect list{body.x, y, body.w, 140};
             context.rect(list, theme.surface, 6, theme.border);
             size_t fontLimit = matches.size() > 5 ? matches.size() - 5 : 0;
-            settings.fontOffset = std::min(settings.fontOffset, fontLimit);
-            context.control("settings/fonts/scroll", list, [this, fontLimit](const ui::Event& event) {
-                if (event.type == ui::EventType::Scroll) settings.fontOffset = size_t(std::clamp(double(settings.fontOffset) - event.y * 3, 0.0, double(fontLimit))); }, true, ui::ControlFlag::Scrollable);
+            context.scroll("settings/fonts/scroll", list, settings.fontOffset, fontLimit, {.step = 3});
             context.clip(list.inset(2), [&] {
                 for (size_t row = 0; row < 5 && settings.fontOffset + row < matches.size(); ++row) {
                     size_t index = matches[settings.fontOffset + row];

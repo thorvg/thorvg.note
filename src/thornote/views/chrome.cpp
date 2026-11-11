@@ -233,11 +233,7 @@ void EditorApp::drawTabs(ui::Context& context, ui::Rect r, bool titlebar)
     float top = tabOptions.style == ui::TabStyle::Connected ? 4 : tabOptions.style == ui::TabStyle::Segmented ? 2
                                                                                                               : 0;
     ui::Rect strip{r.x, r.y + top, visible + 2 * edge, r.h - top};
-    context.control("tabs/scroll", strip, [this](const ui::Event& event) {
-        if (event.type == ui::EventType::Scroll) {
-            float delta = std::abs(event.x) > std::abs(event.y) ? event.x : -event.y;
-            tabScroll.x = std::clamp(tabScroll.x + delta * 48, 0.0f, tabScroll.limit);
-        } }, !dialog, ui::ControlFlag::Scrollable);
+    context.scroll("tabs/scroll", strip, tabScroll.x, tabScroll.limit, {.step = 48, .horizontal = true, .enabled = !dialog});
     context.clip({r.x, r.y, strip.w, r.h}, [&] {
         for (size_t i = first; i < end; ++i) {
             auto tab = i < documents.size() ? documents[i].get() : nullptr;

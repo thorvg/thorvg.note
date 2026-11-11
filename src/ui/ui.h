@@ -515,6 +515,7 @@ struct Event
     Modifiers modifiers = {};
     int clicks = 1;
     std::string text = {};
+    mutable bool handled = true;  ///< A Scroll handler may clear this to let an enclosing region or host scroll.
 };
 
 /**
@@ -543,6 +544,14 @@ enum class ControlFlag : uint8_t
     Scrollable = 2,  ///< Receives Scroll events from Context::wheel().
     Capture = 4,     ///< Receives Release outside its bounds and Cancel.
     TabInput = 8     ///< Receives Tab as a Key event instead of moving focus.
+};
+
+/** @brief Wheel behavior for a scroll region; offsets and limits use the same units. */
+struct ScrollOptions
+{
+    float step = 36;
+    bool horizontal = false;  ///< Horizontal strips also accept the dominant vertical wheel delta.
+    bool enabled = true;
 };
 
 constexpr ControlFlag operator|(ControlFlag a, ControlFlag b)
@@ -1127,6 +1136,27 @@ public:
     bool wheel(float vertical, float horizontal = 0);
 
     /**
+     * @brief Registers a scroll region and clamps its retained offset to the current limit.
+     * @note Offset must remain alive until the next begin(). Integral offsets advance in whole steps.
+     * Empty regions and exhausted directions release the wheel to enclosing regions or the host.
+     */
+    template<typename T>
+    void scroll(std::string_view id, Rect bounds, T& offset, T limit, ScrollOptions options = {})
+    {
+        offset = std::clamp(offset, T(0), std::max(T(0), limit));
+        control(id, bounds, [&offset, limit, options](const Event& event) {
+            if (event.type != EventType::Scroll) return;
+            float delta = options.horizontal ? (std::abs(event.x) > std::abs(event.y) ? event.x : -event.y) : -event.y;
+            event.handled = scrollOffset(offset, limit, delta * options.step); }, options.enabled && limit > 0, ControlFlag::Scrollable);
+    }
+
+    /** @brief Registers both axes of a scroll region; horizontal and vertical deltas stay independent. */
+    void scroll(std::string_view id, Rect bounds, float& x, float& y, float limitX, float limitY, ScrollOptions options = {});
+
+    /** @brief Routes navigation keys to a registered scroll region without changing keyboard focus. */
+    bool scrollKey(std::string_view id, Key key);
+
+    /**
      * @brief Draws a callback inside bounds intersected with the current clip.
      *
      * @code
@@ -1286,6 +1316,19 @@ public:
      * @endcode
      */
     void focusRing(Rect bounds);
+
+private:
+    template<typename T>
+    static bool scrollOffset(T& offset, T limit, float delta)
+    {
+        if (!std::isfinite(delta) || delta == 0) return false;
+        double amount = delta;
+        if constexpr (std::is_integral_v<T>) amount = std::copysign(std::max(1.0, std::floor(std::abs(amount))), amount);
+        auto next = static_cast<T>(std::clamp(double(offset) + amount, 0.0, double(limit)));
+        bool changed = next != offset;
+        offset = next;
+        return changed;
+    }
 
     TN_UI_DECLARE_IMPL(unique_ptr);
 };

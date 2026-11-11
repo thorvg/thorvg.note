@@ -33,6 +33,10 @@
         }));
     }
 
+    function scrollPage(x, y) {
+        if (window.parent !== window) window.parent.scrollBy({left: x, top: y, behavior: 'instant'});
+    }
+
     function start(notes) {
         var appArguments = ['--fresh', '--settings-dir', '/settings'];
         var sample = options.get('sample');
@@ -43,6 +47,7 @@
         });
         window.Module = {
             canvas: canvas,
+            onUnhandledWheel: scrollPage,
             arguments: appArguments,
             print: function () {},
             printErr: function () {},
