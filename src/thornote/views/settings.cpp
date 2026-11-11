@@ -199,7 +199,7 @@ void EditorApp::drawSettings(ui::Rect r)
     auto query = lower(settings.search.value);
     bool sections[]{query.empty() ? settings.category == 0 : std::string("editor font family size zoom preview line numbers").find(query) != std::string::npos,
                     query.empty() ? settings.category == 1 : std::string("appearance theme light dark tab style connected segmented underline").find(query) != std::string::npos,
-                    query.empty() ? settings.category == 2 : std::string("layout navigation sidebar view panel script lua memo note editor").find(query) != std::string::npos};
+                    query.empty() ? settings.category == 2 : std::string("layout script lua memo note editor").find(query) != std::string::npos};
     auto choiceColumns = [&](size_t count) {
         auto capacity = std::max(size_t(1), std::min(count, size_t(std::max(1.0f, (body.w + 8) / 118))));
         auto rows = (count + capacity - 1) / capacity;
@@ -210,7 +210,7 @@ void EditorApp::drawSettings(ui::Rect r)
     };
     float editorHeight = 550 + (body.w < 390 ? 32 : 0);
     float appearanceHeight = 350 + (choiceRows(2) + choiceRows(3) - 2) * 48;
-    float layoutHeight = 380 + (choiceRows(layoutCount) - 1) * 48;
+    float layoutHeight = 296 + (choiceRows(layoutCount) - 1) * 48;
     float total = (sections[0] ? editorHeight : 0) + (sections[1] ? appearanceHeight : 0) + (sections[2] ? layoutHeight : 0);
     float limit = std::max(0.0f, total - body.h);
     settings.scroll = std::clamp(settings.scroll, 0.0f, limit);
@@ -317,10 +317,6 @@ void EditorApp::drawSettings(ui::Rect r)
             choices("settings/layout", {"Memo", "Note"}, int(composition), [this](int value) { setLayout(Layout(value)); });
             context.text({body.x, y, body.w, 24}, std::string("Options for ") + layoutName(composition), theme.muted, 11);
             y += 36;
-            ui::checkbox(context, "settings/navigation", {body.x, y, body.w, 30}, "Show document navigation", layout().sidebar, [this](bool value) { layout().sidebar = value; }, hasLayoutView("documents"));
-            y += 42;
-            ui::checkbox(context, "settings/properties", {body.x, y, body.w, 30}, "Show editor view settings on the right", layout().properties, [this](bool value) { layout().properties = value; }, hasLayoutView("view-settings"));
-            y += 42;
             ui::checkbox(context, "settings/layout/lineNumbers", {body.x, y, body.w, 30}, "Show line numbers", layout().lineNumbers, [this](bool value) { layout().lineNumbers = value; applyAppearance(); });
             y += 54;
             ui::button(context, "settings/layout/edit", {body.x, y, std::min(230.0f, body.w), 34}, "Edit current layout script…", [this] { editLayoutScript(); });

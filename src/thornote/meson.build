@@ -84,6 +84,7 @@ if target_platform == 'emscripten'
     '--embed-file', meson.current_source_dir() / 'data/assets@/assets',
     '--embed-file', meson.current_source_dir() / 'data/layouts@/layouts',
   ]
+  thornote_link_depends += files('data/layouts/titlebar.lua', 'data/layouts/workspace.lua')
   # The optimization level also selects the optimized runtime and the post-link passes.
   if get_option('optimization') in ['1', '2', '3', 's']
     thornote_link_args += '-O' + get_option('optimization')

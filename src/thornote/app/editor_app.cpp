@@ -35,7 +35,6 @@ EditorApp::EditorApp(std::function<void()> wake, storage::Path settingsDirectory
     workbench.resized = [this](std::string_view id, float value) {
         if (id == "collections") layout().sidebarWidth = value;
         else if (id == "documents") (composition == Layout::Note && !commandList ? layout().notesWidth : layout().sidebarWidth) = value;
-        else if (id == "view-settings") layout().propertiesWidth = value;
     };
     if (!settingsDirectory.empty()) preferencesPath = std::move(settingsDirectory) / "settings.conf";
     loadPreferences();
@@ -264,9 +263,7 @@ void EditorApp::registerCommands()
         layout().sidebar = true; commandList = !commandList;
         if (commandList) { focusEditor(false); context.focus("sidebar/commands/search"); }
         else focusEditor(true); }, [this] { return hasLayoutView("documents"); }, "This layout has no navigation view; use the Command Palette or edit the layout script");
-    add("view.sidebar.toggle", "Show document navigation", "View", "Mod+B", [this] { layout().sidebar = !layout().sidebar; focusEditor(true); }, [this] { return hasLayoutView("documents"); }, "Add a documents view to the layout script to use navigation");
     add("folder.remove", "Remove folder from Note", "Folders", "", [this] { removeNoteFolder(menuFolder); }, [this] { return !menuFolder.empty(); }, "Right-click a folder in Note to choose an item");
-    add("view.properties.toggle", "Show editor view settings", "View", "", [this] { layout().properties = !layout().properties; }, [this] { return hasLayoutView("view-settings"); }, "Add a view-settings view to the layout script to use this panel");
     add("view.lineNumbers.toggle", "Toggle line numbers", "View", "", [this] { layout().lineNumbers = !layout().lineNumbers; applyAppearance(); });
     add("layout.memo", "Use Memo layout", "Layout", "", [this] { setLayout(Layout::Memo); });
     add("layout.note", "Use Note layout", "Layout", "", [this] { setLayout(Layout::Note); });

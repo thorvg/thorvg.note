@@ -110,15 +110,15 @@ void EditorApp::scrollWelcome(float vertical, float horizontal)
 void EditorApp::drawWelcome(ui::Rect viewport)
 {
     float titleHeight = 40;
-    float errorHeight = workspace.error.empty() ? 0 : 34;
-    ui::Rect body{viewport.x, viewport.y + titleHeight, viewport.w, std::max(0.0f, viewport.h - titleHeight - errorHeight)};
+    constexpr float statusHeight = 22;
+    ui::Rect body{viewport.x, viewport.y + titleHeight, viewport.w, std::max(0.0f, viewport.h - titleHeight - statusHeight)};
     constexpr float contentWidth = 480, pageWidth = contentWidth + 80, margin = 40, scrollbarSize = 12;
     constexpr float rowHeight = 34, directoryHeight = 32;
-    constexpr float logoGap = 10, actionsGap = 22, directoriesGap = 20, headingHeight = 24;
+    constexpr float actionsGap = 22, directoriesGap = 20, headingHeight = 24;
     constexpr float logoWidth = 144, logoHeight = logoWidth * 185 / 172.359f;
     auto directoryCount = std::min(recent.directories.size(), size_t(5));
     float historyHeight = directoryCount ? directoryCount * directoryHeight : 32;
-    float fixedHeight = logoGap + 22 + actionsGap + 5 * rowHeight + directoriesGap + headingHeight + historyHeight;
+    float fixedHeight = actionsGap + 5 * rowHeight + directoriesGap + headingHeight + historyHeight;
     float contentHeight = margin * 2 + logoHeight + fixedHeight;
     bool vertical = contentHeight > body.h;
     bool horizontal = pageWidth > body.w - (vertical ? scrollbarSize : 0);
@@ -129,10 +129,11 @@ void EditorApp::drawWelcome(ui::Rect viewport)
     scroll.limitX = std::max(0.0f, pageWidth - scroll.viewport.w);
     scroll.limitY = std::max(0.0f, contentHeight - scroll.viewport.h);
     scrollWelcome(0);
-    float x = body.x + std::max(margin, (body.w - contentWidth) / 2) - scroll.x;
-    ui::Rect logoBounds{x + (contentWidth - logoWidth) / 2, body.y + margin - scroll.y, logoWidth, logoHeight};
+    float x = scroll.viewport.x + std::max(margin, (scroll.viewport.w - contentWidth) / 2) - scroll.x;
+    float y = scroll.viewport.y + std::max(margin, (scroll.viewport.h - logoHeight - fixedHeight) / 2) - scroll.y;
+    ui::Rect logoBounds{x + (contentWidth - logoWidth) / 2, y, logoWidth, logoHeight};
     float actionsX = x, actionsWidth = contentWidth;
-    float y = logoBounds.y + logoHeight + logoGap + 22 + actionsGap;
+    y += logoHeight + actionsGap;
     context.control("welcome/scroll", body, [this](const ui::Event& event) {
         if (event.type == ui::EventType::Scroll) scrollWelcome(-event.y * 36, -event.x * 36); }, !dialog, ui::ControlFlag::Scrollable);
 
@@ -144,7 +145,6 @@ void EditorApp::drawWelcome(ui::Rect viewport)
             ui::transform(logo, {scale, 0, logoBounds.x, 0, scale, logoBounds.y, 0, 0, 1});
             return logo;
         });
-        context.text({x, logoBounds.y + logoHeight + logoGap, contentWidth, 22}, "Powered by ThorVG", theme.muted, 11, false, ui::Align::Center);
         struct Action
         {
             const char* id;
@@ -198,11 +198,6 @@ void EditorApp::drawWelcome(ui::Rect viewport)
                                                                      pageWidth, scroll.x, scroll.grabX, false, !dialog);
     else scroll.grabX.reset();
     drawTitleBar({0, 0, viewport.w, titleHeight});
-    if (!workspace.error.empty()) {
-        ui::Rect error{0, viewport.h - errorHeight, viewport.w, errorHeight};
-        context.rect(error, theme.surface);
-        context.text({12, error.y, error.w - 112, error.h}, workspace.error, theme.danger, 11);
-        ui::button(context, "error/dismiss", {error.w - 94, error.y + 3, 82, 28}, "Dismiss", [this] { workspace.error.clear(); }, {.style = ui::ButtonStyle::Quiet});
-    }
+    drawStatus({viewport.x, viewport.y + viewport.h - statusHeight, viewport.w, statusHeight});
 }
 }  // namespace tn

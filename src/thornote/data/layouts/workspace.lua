@@ -30,14 +30,9 @@ local definition = {
                 ui.view { id = "content", source = "content" },
               },
             },
-            ui.view {
-              id = "view-settings", source = "view-settings",
-              width = ui.preferred(state.propertiesWidth, 200, 300),
-              visible = state.properties, resizable = true, resizeEdge = "leading",
-            },
+
           },
         },
-        ui.view { id = "error", source = "error", height = 34, visible = state.error },
         ui.view { id = "status", source = "status", height = 22 },
       },
     }

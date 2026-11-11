@@ -5,7 +5,7 @@ namespace tn
 {
 namespace
 {
-const std::vector<std::string> types{"window-icon", "window-title", "window-drag", "window-close", "window-minimize",
+const std::vector<std::string> types{"window-icon", "window-title", "window-tabs", "window-drag", "window-close", "window-minimize",
                                      "window-maximize", "window-fullscreen", "window-zoom", "window-controls"};
 std::filesystem::path bundledTitlebar()
 {

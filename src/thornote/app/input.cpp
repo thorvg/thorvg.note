@@ -75,7 +75,7 @@ size_t byteAt(std::string_view text, int characters)
 bool EditorApp::searchFocused() const
 {
     auto active = workspace.active();
-    return palette || (settings.active && (context.focused() == "settings/search" || context.focused() == "settings/fonts/search")) || (layout().sidebar && (!active || !editorFocus) && ((commandList && context.focused() == "sidebar/commands/search") || (composition == Layout::Note && !commandList && context.focused() == "notes/search")));
+    return palette || (settings.active && (context.focused() == "settings/search" || context.focused() == "settings/fonts/search")) || ((composition == Layout::Note || commandList) && (!active || !editorFocus) && ((commandList && context.focused() == "sidebar/commands/search") || (composition == Layout::Note && !commandList && context.focused() == "notes/search")));
 }
 
 bool EditorApp::key(const SDL_KeyboardEvent& event)
@@ -136,7 +136,6 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
             case SDLK_S: command = mods.shift ? "file.saveAs" : "file.save"; break;
             case SDLK_W: command = "file.close"; break;
             case SDLK_Q: command = "file.quit"; break;
-            case SDLK_B: command = "view.sidebar.toggle"; break;
             case SDLK_COMMA: command = "settings.open"; break;
             case SDLK_TAB: command = mods.shift ? "tab.previous" : "tab.next"; break;
             case SDLK_EQUALS:

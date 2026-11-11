@@ -117,12 +117,11 @@ private:
     void drawCenteredTitle(ui::Rect available, std::string_view title, float size, bool modified = false);
     void drawWindowButton(ui::Rect, std::string_view instance, const char* command);
     std::vector<ui::ViewType> windowViewTypes(bool divider = true);
-    void drawTabs(ui::Context&, ui::Rect);
+    void drawTabs(ui::Context&, ui::Rect, bool titlebar = false);
     void drawSidebar(ui::Rect);
     void drawCollections(ui::Rect);
     void drawDocuments(ui::Rect, bool notes);
     void drawNoteHeading(ui::Rect);
-    void drawViewSettings(ui::Rect);
     void drawStatus(ui::Rect);
     void drawEditor(ui::Rect);
     void drawMenu();
@@ -202,13 +201,20 @@ private:
         float x = 0, y = 0, limitX = 0, limitY = 0;
         std::optional<float> grabX, grabY;
     } welcomeScroll;
+    struct
+    {
+        float x = 0, width = 0, origin = 0, limit = 0;
+        size_t count = 0;
+        uint64_t selected = 0, pressed = 0;
+        std::optional<float> grab;
+        bool dragging = false;
+    } tabScroll;
     LayoutScript layoutScript{commands};
     ui::Composition workbench;
     ui::CommandListState paletteState, listState;
     ui::ListState collectionList, folderList;
     std::vector<ui::ListItem> collectionItems, folderItems;  // Borrowed by the lists until input is dispatched.
     ui::Rect editorBounds{}, sidebarBounds{}, searchBounds{}, menuButton{}, menuBounds{};
-    ui::Rect viewSettingsBounds{};
     ui::Rect headerDragBounds{};
     std::vector<ui::Rect> windowDragBounds;
     ui::Rect promptSave{}, promptDiscard{}, promptCancel{}, hintBounds{};
@@ -220,7 +226,7 @@ private:
     std::optional<ui::Rect> contextMenuAnchor;
     std::vector<ui::MenuItem> menuItems;
     std::vector<ui::Rect> menuRows;
-    size_t menuSelection = 0, documentOffset = 0, collectionOffset = 0, tabOffset = 0;
+    size_t menuSelection = 0, documentOffset = 0, collectionOffset = 0;
     float noteFileScroll = 0;
     ui::TextInput noteSearch;
     mutable std::string searchedQuery;

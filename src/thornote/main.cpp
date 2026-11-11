@@ -29,7 +29,7 @@ int usage(int status)
     std::cout << "usage: tnote [--layout memo|note] [--layout-dir path] [--settings] [--settings-dir path] [--fresh] [--snapshot image.ppm] [--] [paths...]\n"
                  "  Directories open in Note; files open as documents. Use . for the current directory.\n"
                  "  Reopens the last session, including drafts; --fresh skips session restore and checkpointing.\n"
-                 "  Mod+N/O/S/W: new/open/save/close; Mod+Shift+P or F1: commands; Mod+B: sidebar; Mod+,: settings\n";
+                 "  Mod+N/O/S/W: new/open/save/close; Mod+Shift+P or F1: commands; Mod+,: settings\n";
     return status;
 }
 }  // namespace

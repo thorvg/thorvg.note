@@ -3,7 +3,6 @@
 #include <ui/ui.h>
 #include <algorithm>
 #include <cmath>
-#include <sstream>
 #include <cctype>
 
 namespace tn
@@ -84,7 +83,7 @@ DocumentTab* EditorApp::visibleDocument() const
 {
     if (settings.active) return nullptr;
     auto active = workspace.active();
-    if (composition != Layout::Note || commandList || browsingNoteFiles() || !layout().sidebar || width < 660) return active;
+    if (composition != Layout::Note || commandList || browsingNoteFiles() || width < 660) return active;
     auto documents = filteredDocuments();
     return std::find(documents.begin(), documents.end(), active) != documents.end() ? active : nullptr;
 }
@@ -237,52 +236,19 @@ void EditorApp::drawNoteHeading(ui::Rect r)
     if (state.focused) context.focusRing(star);
 }
 
-void EditorApp::drawViewSettings(ui::Rect r)
-{
-    viewSettingsBounds = r;
-    context.rect(r, theme.surface);
-    context.line(r.x, r.y, r.x, r.y + r.h, theme.border);
-    context.text({r.x + 16, r.y + 10, r.w - 32, 30}, "View", theme.text, 13, true);
-    float y = r.y + 52;
-    context.text({r.x + 16, y, r.w - 32, 20}, "ZOOM", theme.muted, 10);
-    ui::button(context, "properties/font/settings", {r.x + r.w - 84, y - 4, 68, 26}, "Font…", [this] { commands.execute("settings.font.open"); }, {.style = ui::ButtonStyle::Quiet});
-    y += 26;
-    ui::button(context, "properties/font/decrease", {r.x + 16, y, 32, 30}, "", [this] { commands.execute("editor.font.decrease"); }, {.style = ui::ButtonStyle::Quiet, .icon = "minus"});
-    std::ostringstream zoomLabel;
-    zoomLabel << options.fontSize / 16 * 100 << '%';
-    ui::button(context, "properties/font/reset", {r.x + 54, y, r.w - 108, 30}, zoomLabel.str(),
-               [this] { commands.execute("editor.font.reset"); }, {.style = ui::ButtonStyle::Quiet});
-    ui::button(context, "properties/font/increase", {r.x + r.w - 48, y, 32, 30}, "", [this] { commands.execute("editor.font.increase"); }, {.style = ui::ButtonStyle::Quiet, .icon = "plus"});
-    y += 44;
-    ui::checkbox(context, "properties/lineNumbers", {r.x + 16, y, r.w - 32, 30}, "Line numbers", options.lineNumbers, [this](bool value) { layout().lineNumbers = value; applyAppearance(); });
-    y += 50;
-    context.line(r.x + 16, y, r.x + r.w - 16, y, theme.border);
-    y += 16;
-    context.text({r.x + 16, y, r.w - 32, 20}, "LAYOUT", theme.muted, 10);
-    y += 28;
-    ui::button(context, "properties/layout/edit", {r.x + 16, y, r.w - 32, 32}, "Edit layout script…", [this] { commands.execute("layout.script.edit"); });
-    y += 40;
-    context.text({r.x + 16, y, r.w - 32, 34}, "Save the script to apply\nlayout changes.", theme.muted, 10);
-    y += 54;
-    auto tab = visibleDocument();
-    if (!tab) return;
-    context.line(r.x + 16, y, r.x + r.w - 16, y, theme.border);
-    y += 16;
-    auto label = [&](const char* title, std::string value) {
-        context.text({r.x + 16, y, r.w - 32, 18}, title, theme.muted, 10);
-        context.text({r.x + 16, y + 20, r.w - 32, 24}, elide(context, value, r.w - 38, 12), theme.text, 12);
-        y += 64;
-    };
-    label("FILE", tab->displayTitle());
-    label("FOLDER", tab->path.empty() ? "Not saved" : displayName(tab->path.parent_path()));
-    label("ENCODING", tab->format.bom ? "UTF-8 with BOM" : "UTF-8");
-}
-
 void EditorApp::drawStatus(ui::Rect r)
 {
     auto tab = visibleDocument();
     context.rect(r, theme.surface);
     context.line(r.x, r.y, r.x + r.w, r.y, theme.border);
+    std::string_view error = workspace.error;
+    if (error.empty()) error = themeProfiles.error(dark);
+    if (error.empty()) error = inputExtensions.error();
+    if (error.empty()) error = layoutScript.error();
+    if (!error.empty()) {
+        context.text({r.x + 12, r.y, r.w - 24, r.h}, context.elideText(error, std::max(0.0f, r.w - 24), 10), theme.danger, 10);
+        return;
+    }
     if (settings.active) {
         context.text({r.x + 12, r.y, r.w - 24, r.h}, "Settings", theme.muted, 10);
         return;
@@ -335,7 +301,7 @@ void EditorApp::render(float w, float h, double seconds)
     for (const auto& tab : workspace.documents()) {
         configure(*tab);
     }
-    if (!settings.active && composition == Layout::Note && !commandList && !browsingNoteFiles() && layout().sidebar && w >= 660) {
+    if (!settings.active && composition == Layout::Note && !commandList && !browsingNoteFiles() && w >= 660) {
         auto documents = filteredDocuments();
         if (!documents.empty() && std::find(documents.begin(), documents.end(), workspace.active()) == documents.end()) workspace.select(documents.front()->id);
     }
@@ -356,8 +322,8 @@ void EditorApp::render(float w, float h, double seconds)
     auto& state = layout();
     bool notes = composition == Layout::Note && !commandList;
     if (notes) refreshNoteFiles();
-    bool navigation = state.sidebar && w >= 660;
-    editorBounds = sidebarBounds = searchBounds = viewSettingsBounds = headerDragBounds = {};
+    bool navigation = (composition == Layout::Note || commandList) && w >= 660;
+    editorBounds = sidebarBounds = searchBounds = headerDragBounds = {};
     if (!menu.empty()) menuButton = contextMenuAnchor.value_or(ui::Rect{});
     windowDragBounds.clear();
     layoutScript.refresh(composition, layoutScriptState());
@@ -381,19 +347,11 @@ void EditorApp::render(float w, float h, double seconds)
         {"note-heading", [this](ui::Context&, ui::Rect r, std::string_view) {
              drawNoteHeading(r);
          }},
-        {"view-settings", [this](ui::Context&, ui::Rect r, std::string_view) {
-             drawViewSettings(r);
-         }},
         {"editor", [this](ui::Context&, ui::Rect r, std::string_view) {
              drawEditor(r);
          }},
         {"content", [this](ui::Context&, ui::Rect r, std::string_view) {
              drawEditor(r);
-         }},
-        {"error", [this](ui::Context& ctx, ui::Rect r, std::string_view) {
-             ctx.rect(r, theme.surface);
-             ctx.text({r.x + 12, r.y, r.w - 104, r.h}, workspace.error, theme.danger, 11);
-             ui::button(ctx, "error/dismiss", {r.x + r.w - 86, r.y + 3, 78, r.h - 6}, "Dismiss", [this] { workspace.error.clear(); }, {.style = ui::ButtonStyle::Quiet});
          }},
         {"status", [this](ui::Context&, ui::Rect r, std::string_view) {
              drawStatus(r);
@@ -412,8 +370,6 @@ void EditorApp::render(float w, float h, double seconds)
             element.resizable = resizable;
             return element;
         };
-        auto properties = pane("view-settings", state.properties && w >= 780, ui::preferred(state.propertiesWidth, 200, 300), {}, true);
-        properties.resizeEdge = ui::ResizeEdge::Leading;
         auto tree = ui::column({
             pane("titlebar", true, {}, ui::fixed(40)),
             ui::row({
@@ -423,33 +379,15 @@ void EditorApp::render(float w, float h, double seconds)
                                                             180, 340),
                      {}, true),
                 ui::column({
-                    pane("tabs", settings.open || (!notes && workspace.documents().size() > 1), {}, ui::fixed(34)),
+                    pane("tabs", composition != Layout::Memo && (settings.open || (!notes && workspace.documents().size() > 1)), {}, ui::fixed(34)),
                     pane("note-heading", notes, {}, ui::fixed(38)),
                     pane("content", true, {}),
                 }),
-                std::move(properties),
             }),
-            pane("error", !workspace.error.empty(), {}, ui::fixed(34)),
             pane("status", true, {}, ui::fixed(22)),
         });
         std::string error;
         if (workbench.apply(std::move(tree), error)) workbench.render(context, "workspace", {0, 0, w, h}, types, commands);
-    }
-    bool themeError = !themeProfiles.error(dark).empty();
-    bool inputError = !inputExtensions.error().empty();
-    if (themeError || !layoutScript.error().empty() || inputError) {
-        ui::Rect error{0, std::max(0.0f, h - 56), w, 34};
-        context.rect(error, theme.surface);
-        context.line(error.x, error.y, error.x + error.w, error.y, theme.danger);
-        auto message = themeError ? "Theme: " + themeProfiles.error(dark) : inputError ? "Input: " + inputExtensions.error()
-                                                                                       : (layoutScript.titlebarError() ? "Title bar: " : "Layout: ") + layoutScript.error();
-        context.text({12, error.y, std::max(1.0f, w - 116), 34}, message, theme.danger, 11);
-        ui::button(context, "layout/error/edit", {w - 94, error.y + 3, 82, 28}, "Edit script", [this, themeError, inputError] {
-            if (themeError) editTheme();
-            else if (inputError) editInputExtensions();
-            else editLayoutScript(layoutScript.titlebarError());
-        },
-                   {.style = ui::ButtonStyle::Quiet});
     }
     if (!menu.empty() && (menuButton.w <= 0 || menuButton.h <= 0)) closeMenu();
     if (!menu.empty()) drawMenu();

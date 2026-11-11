@@ -3,6 +3,7 @@
 #include <thornote/platform/native_window.h>
 #include <ui/ui.h>
 #include <algorithm>
+#include <cmath>
 
 namespace tn
 {
@@ -81,7 +82,7 @@ void EditorApp::drawTitleBar(ui::Rect r, bool headerOnly)
     auto& bar = layoutScript.titlebar();
     auto types = windowViewTypes(false);
     bar.render(context, "titlebar", r, types, commands);
-    context.line(r.x, r.y + r.h - 1, r.x + r.w, r.y + r.h - 1, theme.border);
+    if (composition != Layout::Memo) context.line(r.x, r.y + r.h - 1, r.x + r.w, r.y + r.h - 1, theme.border);
 }
 
 void EditorApp::drawAppIcon(ui::Rect r, bool divider)
@@ -134,6 +135,9 @@ std::vector<ui::ViewType> EditorApp::windowViewTypes(bool divider)
         {"window-title", [this, divider](ui::Context&, ui::Rect r, std::string_view) {
              drawWindowTitle(r, true, divider);
          }},
+        {"window-tabs", [this](ui::Context& context, ui::Rect r, std::string_view) {
+             drawTabs(context, r, true);
+         }},
         {"window-drag", [this, divider](ui::Context&, ui::Rect r, std::string_view) {
              drawWindowTitle(r, false, divider);
          }},
@@ -155,54 +159,112 @@ void EditorApp::drawHeader(ui::Rect r)
     drawTitleBar(r, true);
 }
 
-void EditorApp::drawTabs(ui::Context& context, ui::Rect r)
+void EditorApp::drawTabs(ui::Context& context, ui::Rect r, bool titlebar)
 {
-    context.rect(r, theme.surface);
-    context.line(r.x, r.y + r.h - 1, r.x + r.w, r.y + r.h - 1, theme.border);
+    if (titlebar) windowDragBounds.push_back(r.intersect(context.clip()));
+    else {
+        context.rect(r, theme.surface);
+        context.line(r.x, r.y + r.h - 1, r.x + r.w, r.y + r.h - 1, theme.border);
+    }
     const auto& documents = workspace.documents();
     size_t total = documents.size() + settings.open;
-    if (!total) return;
     float edge = tabOptions.style == ui::TabStyle::Connected ? std::max(6.0f, tabOptions.shoulder) : 6;
-    float available = std::max(1.0f, r.w - 60 - 2 * edge);
-    float cellWidth = std::min(210.0f, std::max(128.0f, available / total));
-    size_t count = std::max(size_t(1), size_t(available / cellWidth));
-    count = std::min(count, total);
-    size_t selected = settings.active ? documents.size() : 0;
-    if (!settings.active)
-        for (size_t i = 0; i < documents.size(); ++i)
-            if (documents[i].get() == workspace.active()) selected = i;
-    if (selected < tabOffset) tabOffset = selected;
-    if (selected >= tabOffset + count) tabOffset = selected - count + 1;
-    tabOffset = std::min(tabOffset, total - count);
-    for (size_t i = tabOffset; i < total && i < tabOffset + count; ++i) {
-        auto tab = i < documents.size() ? documents[i].get() : nullptr;
-        uint64_t id = tab ? tab->id : 0;
-        std::string key = tab ? std::to_string(id) : "settings";
-        float top = tabOptions.style == ui::TabStyle::Connected ? 4 : tabOptions.style == ui::TabStyle::Segmented ? 2
-                                                                                                                  : 0;
-        ui::Rect cell{r.x + edge + (i - tabOffset) * cellWidth, r.y + top, cellWidth - 2, r.h - top - (tabOptions.style == ui::TabStyle::Segmented ? 2 : 0)};
-        auto state = context.control("tabs/" + key, {cell.x, cell.y, cell.w - 28, cell.h}, [this, id](const ui::Event& e) {
-            if (e.type == ui::EventType::Activate || (e.type == ui::EventType::Key && e.key == ui::Key::Enter)) {
-                if (id) activateDocument(id);
-                else openSettings();
-            }
-        });
-        bool active = tab ? !settings.active && tab == workspace.active() : settings.active;
-        ui::tabSurface(context, cell, active, state.hovered, tabOptions);
-        context.text({cell.x + 12, cell.y, cell.w - 48, cell.h}, tab ? tab->displayTitle(composition == Layout::Note) : "Settings", active ? theme.text : theme.muted, 11);
-        ui::Rect close{cell.x + cell.w - 26, cell.y + (cell.h - 22) / 2, 22, 22};
-        auto closing = context.control("tabs/close/" + key, close, [this, id](const ui::Event& e) {
-            if (e.type == ui::EventType::Activate || (e.type == ui::EventType::Key && e.key == ui::Key::Enter)) { if (id) requestClose(id); else closeSettings(); } }, !tab || !tab->busy());
-        if (closing.hovered) context.rect(close, theme.raised, 4);
-        if (closing.hovered || closing.focused || active) context.icon("tabs/close/" + key + "/icon", close, "close", theme.muted,
-                                                                       {closing.hovered, closing.pressed, false, !tab || !tab->busy(), closing.focused});
-        else if (tab && tab->dirty()) context.icon("tabs/dirty/" + key, close, "dirty", theme.muted,
-                                                   {state.hovered, state.pressed, true, true, state.focused});
-        if (state.focused) context.focusRing(cell.inset(5));
+    auto add = [&](float x) {
+        ui::button(context, "tabs/new", {x, r.y + (r.h - 30) / 2, 30, 30}, "", [this] { commands.execute("file.new"); },
+                   {.style = ui::ButtonStyle::Quiet, .icon = "new", .enabled = !dialog});
+    };
+    if (!total) {
+        tabScroll = {};
+        if (titlebar) add(r.x + edge);
+        return;
     }
-    if (total > count) {
-        ui::button(context, "tabs/previous", {r.x + r.w - 64, r.y + 3, 26, 28}, "", [this] { commands.execute("tab.previous"); }, {.style = ui::ButtonStyle::Quiet, .icon = "chevron-left"});
-        ui::button(context, "tabs/next", {r.x + r.w - 34, r.y + 3, 26, 28}, "", [this] { commands.execute("tab.next"); }, {.style = ui::ButtonStyle::Quiet, .icon = "chevron-right"});
+    float available = std::max(1.0f, r.w - (titlebar ? 98 : 60) - 2 * edge);
+    float minimum = titlebar ? std::min(128.0f, available) : 128;
+    float cellWidth = std::min(210.0f, std::max(minimum, available / total));
+    size_t selected = settings.active ? documents.size() : 0;
+    size_t pressed = tabScroll.pressed == 0 && settings.open ? documents.size() : total;
+    for (size_t i = 0; i < documents.size(); ++i) {
+        if (!settings.active && documents[i].get() == workspace.active()) selected = i;
+        if (documents[i]->id == tabScroll.pressed) pressed = i;
+    }
+    float content = total * cellWidth;
+    float visible = std::min(content, available);
+    float limit = std::max(0.0f, content - visible);
+    uint64_t selectedId = selected < documents.size() ? documents[selected]->id : 0;
+    if (tabScroll.selected != selectedId || tabScroll.count != total || tabScroll.width != visible) {
+        float left = selected * cellWidth, right = left + cellWidth;
+        if (left < tabScroll.x) tabScroll.x = left;
+        if (right > tabScroll.x + visible) tabScroll.x = right - visible;
+    }
+    tabScroll.x = std::clamp(tabScroll.x, 0.0f, limit);
+    tabScroll.selected = selectedId;
+    tabScroll.count = total;
+    tabScroll.width = visible;
+    tabScroll.limit = limit;
+    if (pressed == total) tabScroll.grab.reset();
+    auto interact = [this](uint64_t id, const ui::Event& event) {
+        if (event.type == ui::EventType::Press) {
+            tabScroll.grab = event.x;
+            tabScroll.origin = tabScroll.x;
+            tabScroll.pressed = id;
+            tabScroll.dragging = false;
+        } else if (event.type == ui::EventType::Drag && tabScroll.grab) {
+            float distance = event.x - *tabScroll.grab;
+            if (tabScroll.dragging || std::abs(distance) >= 4) {
+                tabScroll.dragging = true;
+                tabScroll.x = std::clamp(tabScroll.origin - distance, 0.0f, tabScroll.limit);
+            }
+        } else if (event.type == ui::EventType::Release || event.type == ui::EventType::Cancel) {
+            tabScroll.grab.reset();
+            if (tabScroll.dragging) focusEditor(true);
+        } else if ((event.type == ui::EventType::Activate && !tabScroll.dragging) || (event.type == ui::EventType::Key && event.key == ui::Key::Enter)) {
+            if (id) activateDocument(id);
+            else openSettings();
+        }
+    };
+    size_t first = size_t(tabScroll.x / cellWidth);
+    size_t end = std::min(total, size_t(std::ceil((tabScroll.x + visible) / cellWidth)));
+    auto flags = ui::ControlFlag::Focusable | ui::ControlFlag::Capture;
+    if (tabScroll.grab && (pressed < first || pressed >= end)) {
+        // Keep receiving drag events after the pressed tab leaves the viewport.
+        auto id = tabScroll.pressed;
+        context.control("tabs/" + (id ? std::to_string(id) : "settings"), {}, [interact, id](const ui::Event& event) { interact(id, event); }, !dialog, flags);
+    }
+    float top = tabOptions.style == ui::TabStyle::Connected ? 4 : tabOptions.style == ui::TabStyle::Segmented ? 2
+                                                                                                              : 0;
+    ui::Rect strip{r.x, r.y + top, visible + 2 * edge, r.h - top};
+    context.control("tabs/scroll", strip, [this](const ui::Event& event) {
+        if (event.type == ui::EventType::Scroll) {
+            float delta = std::abs(event.x) > std::abs(event.y) ? event.x : -event.y;
+            tabScroll.x = std::clamp(tabScroll.x + delta * 48, 0.0f, tabScroll.limit);
+        } }, !dialog, ui::ControlFlag::Scrollable);
+    context.clip({r.x, r.y, strip.w, r.h}, [&] {
+        for (size_t i = first; i < end; ++i) {
+            auto tab = i < documents.size() ? documents[i].get() : nullptr;
+            uint64_t id = tab ? tab->id : 0;
+            std::string key = tab ? std::to_string(id) : "settings";
+            ui::Rect cell{r.x + edge + i * cellWidth - tabScroll.x, r.y + top, cellWidth - 2, r.h - top - (tabOptions.style == ui::TabStyle::Segmented ? 2 : 0)};
+            auto state = context.control("tabs/" + key, {cell.x, cell.y, cell.w - 34, cell.h}, [interact, id](const ui::Event& event) { interact(id, event); }, !dialog, flags);
+            bool active = tab ? !settings.active && tab == workspace.active() : settings.active;
+            ui::tabSurface(context, cell, active, state.hovered, tabOptions);
+            context.text({cell.x + 12, r.y, cell.w - 52, r.h}, tab ? tab->displayTitle(composition == Layout::Note) : "Settings", active ? theme.text : theme.muted, 11);
+            ui::Rect close{cell.x + cell.w - 32, r.y + (r.h - 30) / 2, 30, 30};
+            auto closing = context.control("tabs/close/" + key, close, [this, id](const ui::Event& e) {
+            if (e.type == ui::EventType::Activate || (e.type == ui::EventType::Key && e.key == ui::Key::Enter)) { if (id) requestClose(id); else closeSettings(); } }, !tab || !tab->busy());
+            if (closing.hovered) context.rect(close, theme.raised, 4);
+            if (closing.hovered || closing.focused || active) context.icon("tabs/close/" + key + "/icon", close, "close", theme.muted,
+                                                                           {closing.hovered, closing.pressed, false, !tab || !tab->busy(), closing.focused});
+            else if (tab && tab->dirty()) context.icon("tabs/dirty/" + key, close, "dirty", theme.muted,
+                                                       {state.hovered, state.pressed, true, true, state.focused});
+            if (state.focused) context.focusRing(cell.inset(5));
+            if (i + 1 < total && i != selected && i + 1 != selected)
+                context.line(cell.x + cellWidth - 1, r.y + r.h / 2 - 8, cell.x + cellWidth - 1, r.y + r.h / 2 + 8, theme.border);
+        }
+    });
+    if (titlebar) add(r.x + edge + visible);
+    if (limit > 0) {
+        ui::button(context, "tabs/previous", {r.x + r.w - 64, r.y + (r.h - 30) / 2, 30, 30}, "", [this] { commands.execute("tab.previous"); }, {.style = ui::ButtonStyle::Quiet, .icon = "chevron-left"});
+        ui::button(context, "tabs/next", {r.x + r.w - 34, r.y + (r.h - 30) / 2, 30, 30}, "", [this] { commands.execute("tab.next"); }, {.style = ui::ButtonStyle::Quiet, .icon = "chevron-right"});
     }
 }
 
