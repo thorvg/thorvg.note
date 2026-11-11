@@ -19,6 +19,7 @@ thornote_args = [
   '-DTHORNOTE_INSTALL_DATA="' + get_option('prefix') / thornote_data + '"',
 ]
 thornote_link_args = []
+thornote_link_depends = []
 subdir('app')
 subdir('documents')
 subdir('preferences')
@@ -71,6 +72,7 @@ thornote = executable(
   thornote_main,
   dependencies: thornote_app_dep,
   link_args: thornote_link_args,
+  link_depends: thornote_link_depends,
   install: true,
   install_rpath: ':'.join(thornote_runtime_paths),
 )

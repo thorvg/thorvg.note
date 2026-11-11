@@ -2,14 +2,23 @@
 addToLibrary({
     $thornoteTextField: null,
 
-    thornoteTextInputAttach__deps: ['$thornoteTextField', '$UTF8ToString', '$stringToUTF8OnStack', '$stackSave', '$stackRestore', 'thornoteTextEdit', 'thornoteTextCommit', 'thornoteClipboardCopy', 'thornoteClipboardPaste'],
+    thornoteTextInputAttach__deps: ['$thornoteTextField', '$UTF8ToString', '$stringToUTF8OnStack', '$stringToNewUTF8', '$stackSave', '$stackRestore', 'free', 'thornoteTextEdit', 'thornoteTextCommit', 'thornoteClipboardCopy', 'thornoteClipboardPaste'],
     thornoteTextInputAttach: function (selector) {
         var field = selector ? document.querySelector(UTF8ToString(selector)) : null;
         if (!(field instanceof HTMLTextAreaElement) && !(field instanceof HTMLInputElement)) return false;
         var send = function (target, text, cursor) {
             var stack = stackSave();
-            target(stringToUTF8OnStack(text), cursor);
-            stackRestore(stack);
+            // Short input stays on the stack; a paste can exceed the WASM stack.
+            var heap = text.length > 1024;
+            var pointer = 0;
+            try {
+                pointer = heap ? stringToNewUTF8(text) : stringToUTF8OnStack(text);
+                if (!pointer) throw new Error('Text input allocation failed');
+                target(pointer, cursor);
+            } finally {
+                if (heap && pointer) _free(pointer);
+                stackRestore(stack);
+            }
         };
         var composed = function (event) { return event.isComposing || event.keyCode === 229; };
         var apple = /Mac|iPhone|iPad/.test(navigator.platform);
