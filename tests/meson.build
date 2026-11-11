@@ -13,3 +13,6 @@ test('text', test_runner,
   args: ['--test-suite=document,session'],
   timeout: 120,
 )
+
+subdir('task')
+subdir('storage')

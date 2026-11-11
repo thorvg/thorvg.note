@@ -1,0 +1,1 @@
+option('task_threads', type: 'boolean', value: true, description: 'Enable task workers; WebAssembly additionally requires compiler and linker pthread flags')
