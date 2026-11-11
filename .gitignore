@@ -3,6 +3,7 @@
 /subprojects/.wraplock
 /subprojects/lua-*/
 /subprojects/thorvg/
+/subprojects/sdl3/
 /subprojects/packagecache/
 # Local editor settings and macOS metadata
 /.vscode/

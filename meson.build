@@ -25,6 +25,9 @@ if target_platform == 'emscripten'
   thorvg = subproject(
     'thorvg',
     default_options: [
+      'buildtype=' + get_option('buildtype'),
+      'optimization=' + get_option('optimization'),
+      'b_ndebug=' + get_option('b_ndebug'),
       'engines=cpu',
       'loaders=svg,lottie,ttf,png,jpg',
       'threads=false',

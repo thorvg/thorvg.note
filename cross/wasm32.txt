@@ -5,8 +5,12 @@ ar = 'emar'
 strip = 'emstrip'
 
 [built-in options]
-c_args = ['-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
-cpp_args = ['-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
+buildtype = 'release'
+optimization = 's'
+b_ndebug = 'if-release'
+# Clang maps the size preset to -Oz; select -Os explicitly.
+c_args = ['-Os', '-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
+cpp_args = ['-Os', '-fno-rtti', '-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
 c_link_args = ['-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
 cpp_link_args = ['-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
 

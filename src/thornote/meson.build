@@ -1,5 +1,29 @@
 if target_platform == 'emscripten'
-  sdl_dep = declare_dependency(compile_args: '--use-port=sdl3', link_args: '--use-port=sdl3')
+  cmake = import('cmake')
+  sdl_options = cmake.subproject_options()
+  sdl_options.add_cmake_defines({
+    'SDL_SHARED': false,
+    'SDL_STATIC': true,
+    'SDL_INSTALL': false,
+    'SDL_TEST_LIBRARY': false,
+    'SDL_TESTS': false,
+    'SDL_AUDIO': false,
+    'SDL_VIDEO': true,
+    'SDL_GPU': false,
+    'SDL_RENDER': false,
+    'SDL_CAMERA': false,
+    'SDL_JOYSTICK': false,
+    'SDL_HAPTIC': false,
+    'SDL_HIDAPI': false,
+    'SDL_SENSOR': false,
+    'SDL_OPENGL': false,
+    'SDL_OPENGLES': false,
+    'SDL_PTHREADS': false,
+    'CMAKE_C_FLAGS_RELEASE': '-Os -DNDEBUG',
+  })
+  sdl_options.set_install(false)
+  sdl = cmake.subproject('sdl3', options: sdl_options)
+  sdl_dep = sdl.dependency('SDL3-static')
 else
   sdl_dep = dependency('sdl3', version: '>=3.2.0')
 endif
@@ -63,6 +87,9 @@ if target_platform == 'emscripten'
   # The optimization level also selects the optimized runtime and the post-link passes.
   if get_option('optimization') in ['1', '2', '3', 's']
     thornote_link_args += '-O' + get_option('optimization')
+  endif
+  if get_option('optimization') == 's'
+    thornote_link_args += '-sBINARYEN_EXTRA_PASSES=gufa-optimizing,merge-similar-functions,--converge'
   endif
 endif
 
