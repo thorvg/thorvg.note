@@ -480,7 +480,7 @@ TEST_CASE("edit_errors")
 {
     tn::Document document;
     tn::EditSession session(document);
-    REQUIRE(session.insert(u8"AéB"));
+    REQUIRE(session.insert("AéB"));
     session.move(tn::Move::Start);
     auto revision = document.revision();
     CHECK(session.error() == tn::EditError::None);
@@ -505,7 +505,7 @@ TEST_CASE("edit_errors")
         CHECK(session.error() == item.error);
         CHECK(document.revision() == revision);
 
-        CHECK(document.text() == u8"AéB");
+        CHECK(document.text() == "AéB");
         CHECK(session.selection().caret == 0);
     }
 

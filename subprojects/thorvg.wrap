@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/thorvg/thorvg.git
+revision = 96b03410b133b2494c63191115b7f7c00ddf3ed7
+depth = 1
+
+[provide]
+dependency_names = thorvg-1

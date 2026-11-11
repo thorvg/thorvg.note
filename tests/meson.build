@@ -4,6 +4,7 @@ subdir('text')
 
 test_runner = executable(
   'ThorNote-tests',
+  'common/doctest/doctest.h',
   'common/main.cpp',
   test_sources,
   dependencies: test_deps,
@@ -16,3 +17,5 @@ test('text', test_runner,
 
 subdir('task')
 subdir('storage')
+subdir('common')
+subdir('ui')

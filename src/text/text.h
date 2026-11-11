@@ -366,7 +366,7 @@ struct Document
      *
      * @code
      *     tn::Document document;
-     *     document.text(u8"Aé");  // 'A' uses one byte; 'é' uses two.
+     *     document.text("Aé");  // 'A' uses one byte; 'é' uses two.
      *
      *     assert(document.clamp(2) == 1);
      *     assert(document.next(1) == 3);
@@ -382,7 +382,7 @@ struct Document
      *
      * @code
      *     tn::Document document;
-     *     document.text(u8"AéB");
+     *     document.text("AéB");
      *
      *     // Boundaries: A(0), é(1), B(3), end(4).
      *     assert(document.previous(4) == 3);  // Start of 'B'.
@@ -405,7 +405,7 @@ struct Document
      *
      * @code
      *     tn::Document document;
-     *     document.text(u8"AéB");
+     *     document.text("AéB");
      *
      *     // Boundaries: A(0), é(1), B(3), end(4).
      *     assert(document.next(0) == 1);  // After 'A'.

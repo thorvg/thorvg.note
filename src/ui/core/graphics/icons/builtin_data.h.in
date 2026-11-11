@@ -1,0 +1,18 @@
+#pragma once
+
+#include <cstddef>
+
+namespace ui::detail
+{
+struct BuiltinIcon
+{
+    const char* name;
+    const char* data;
+    bool tint;
+};
+
+inline constexpr BuiltinIcon builtinIcons[] = {
+@UI_ICON_DATA@
+};
+inline constexpr std::size_t builtinIconCount = sizeof(builtinIcons) / sizeof(builtinIcons[0]);
+}  // namespace ui::detail
