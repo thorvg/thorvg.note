@@ -1678,7 +1678,7 @@ struct CommandListState
  * @brief Borrowed display labels for a command list or palette.
  *
  * @code
- * ui::CommandListOptions options{.title = "Open Note", .placeholder = "Search notes...", .emptyMessage = "No matching notes", .itemLabel = "notes"};
+ * ui::CommandListOptions options{.title = "Open Note", .placeholder = "Search notes...", .emptyMessage = "No matching notes"};
  * ui::commandList(context, "notes", bounds, notes, state, {}, options);
  * @endcode
  *
@@ -1686,8 +1686,8 @@ struct CommandListState
  */
 struct CommandListOptions
 {
-    std::string_view title = "Command Palette", placeholder = "Search commands...";
-    std::string_view emptyMessage = "No matching commands", itemLabel = "commands";
+    std::string_view title, placeholder = "Search commands...";
+    std::string_view emptyMessage = "No matching commands";
 };
 
 /**

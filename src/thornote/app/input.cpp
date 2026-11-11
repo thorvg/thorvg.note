@@ -350,7 +350,7 @@ DocumentTab* EditorApp::textInputTarget() const
 std::optional<ui::Rect> EditorApp::textInputArea()
 {
     if (!windowFocused || dialog || prompt != Prompt::None || !menu.empty()) return {};
-    if (palette) return ui::Rect{(width - std::min(550.0f, width - 32)) / 2 + 16, std::min(90.0f, height / 8) + 47, 1, 34};
+    if (palette) return ui::Rect{(width - std::min(550.0f, width - 32)) / 2 + 12, std::min(90.0f, height / 8) + (recentPalette ? 43 : 12), 1, 34};
     if (searchFocused()) {
         if (settings.active && (context.focused() == "settings/search" || context.focused() == "settings/fonts/search")) {
             auto r = context.focused() == "settings/fonts/search" ? settings.fontSearchBounds : settings.searchBounds;

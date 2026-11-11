@@ -455,7 +455,7 @@ void EditorApp::render(float w, float h, double seconds)
     if (!menu.empty()) drawMenu();
     if (palette) {
         auto options = recentPalette ? ui::CommandListOptions{"Recent Files", "Find a recent file...",
-                                                              recent.files.empty() ? "No recent files yet" : "No matching recent files", "files"}
+                                                              recent.files.empty() ? "No recent files yet" : "No matching recent files"}
                                      : ui::CommandListOptions{};
         ui::commandPalette(context, {0, 0, w, h}, recentPalette ? recentCommands : commands, paletteState, [this, recent = recentPalette] { if (recent == recentPalette) closePalette(); }, options);
     }
