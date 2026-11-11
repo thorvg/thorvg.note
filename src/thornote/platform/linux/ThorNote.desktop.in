@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ThorNote
+Comment=Native plain-text editor
+Exec=tnote %F
+Icon=@THORNOTE_APP_ID@
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=text/plain;
+StartupWMClass=@THORNOTE_APP_ID@

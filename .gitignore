@@ -1,0 +1,13 @@
+# Meson build directories and generated subproject files
+/build*/
+/subprojects/.wraplock
+/subprojects/lua-*/
+/subprojects/thorvg/
+/subprojects/packagecache/
+# Local editor settings and macOS metadata
+/.vscode/
+.DS_Store
+.t*mp
+
+*S.md
+*.prof*

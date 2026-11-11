@@ -1,0 +1,9 @@
+#pragma once
+
+namespace tn::identity
+{
+inline constexpr char identifier[] = "@THORNOTE_APP_ID@";
+inline constexpr char version[] = "@THORNOTE_APP_VERSION@";
+inline constexpr char icon[] = R"THORNOTE_SVG(@THORNOTE_ICON_SVG@)THORNOTE_SVG";
+inline constexpr char symbol[] = R"THORNOTE_SVG(@THORVG_SYMBOL_SVG@)THORNOTE_SVG";
+}  // namespace tn::identity
