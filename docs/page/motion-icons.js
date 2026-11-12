@@ -134,7 +134,7 @@
 
     section.querySelectorAll('.motion-icon').forEach(function (card) {
         var entry = {card: card, element: card.querySelector('canvas'), state: null, visible: false,
-            hovered: false, pressed: false, active: false, focused: false, loading: false};
+            hovered: false, pressed: false, active: false, focused: false};
         entries.push(entry);
         card.addEventListener('pointerenter', function (event) { entry.hovered = event.pointerType !== 'touch'; update(entry); });
         card.addEventListener('pointerleave', function () { entry.hovered = false; update(entry); });
@@ -167,11 +167,12 @@
                 var entry = entries.find(function (item) { return item.card === change.target; });
                 entry.visible = change.isIntersecting;
                 if (!entry.visible) settle(entry);
-                else if (!entry.loading) { entry.loading = true; load(entry); }
             });
         });
         entries.forEach(function (entry) { observer.observe(entry.card); });
-    } else entries.forEach(function (entry) { entry.visible = entry.loading = true; load(entry); });
+    } else entries.forEach(function (entry) { entry.visible = true; });
+
+    entries.forEach(load);
 
     reduced.addEventListener('change', function () { if (reduced.matches) entries.forEach(settle); });
     document.addEventListener('visibilitychange', function () { if (document.hidden) entries.forEach(settle); });
