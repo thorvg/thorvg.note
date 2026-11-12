@@ -1,3 +1,4 @@
+#include <thornote/platform/native_text_input.h>
 #include <common/doctest/doctest.h>
 #include <common/engine.h>
 #include <storage/common/files.h>
@@ -82,7 +83,7 @@ TEST_CASE_FIXTURE(EditorTest, "literal_search_uses_utf8_byte_ranges_and_wraps")
     auto& tab = document("café [a] café [A]");
     tab.editor.select(0, 5);
     REQUIRE(run("edit.find"));
-    CHECK(state().query.value == "café");
+    CHECK(state().query.value() == "café");
     REQUIRE(state().matches.size() == 2);
     CHECK(state().matches[1].start == 10);
     CHECK(state().current == 0);
@@ -121,7 +122,7 @@ TEST_CASE_FIXTURE(EditorTest, "replace_current_advances_past_inserted_matches")
     auto& tab = document("one one");
     REQUIRE(run("edit.replace"));
     query("one");
-    state().replacement.value = "oneone";
+    state().replacement.value("oneone");
     REQUIRE(run("edit.replace.current"));
     CHECK(tab.document.text() == "oneone one");
     CHECK(tab.editor.session().selection().start() == 7);
@@ -141,7 +142,7 @@ TEST_CASE_FIXTURE(EditorTest, "replace_all_is_one_undo_step_separate_from_prior_
     REQUIRE(tab.editor.insert("!", error));
     REQUIRE(run("edit.replace"));
     query("cat");
-    state().replacement.value = "é";
+    state().replacement.value("é");
     REQUIRE(run("edit.replace.all"));
     CHECK(tab.document.text() == "é é é!");
     REQUIRE(tab.editor.undo());
@@ -165,14 +166,14 @@ TEST_CASE_FIXTURE(EditorTest, "deletion_normalized_replacements_and_noops")
     }
     SUBCASE("line_endings")
     {
-        state().replacement.value = "b\r\nc\r";
+        state().replacement.value("b\r\nc\r");
         REQUIRE(run("edit.replace.current"));
         CHECK(tab.document.text() == "b\nc\n aa");
         CHECK(tab.editor.session().selection().start() == 5);
     }
     SUBCASE("unchanged_text")
     {
-        state().replacement.value = "aa";
+        state().replacement.value("aa");
         auto revision = tab.document.revision();
         REQUIRE(run("edit.replace.all"));
         CHECK(tab.document.revision() == revision);
@@ -188,7 +189,7 @@ TEST_CASE_FIXTURE(EditorTest, "replacements_follow_current_revisions_and_documen
     query("cat");
     std::string error;
     REQUIRE(first.editor.applyEdits({first.document.revision(), {{0, 0, "prefix "}}, {}}, error));
-    state().replacement.value = "dog";
+    state().replacement.value("dog");
     REQUIRE(run("edit.replace.all"));
     CHECK(first.document.text() == "prefix dog dog");
     auto& second = document("cat");
@@ -211,7 +212,7 @@ TEST_CASE_FIXTURE(EditorTest, "replacement_revalidates_selection_and_respects_ed
     auto& tab = document("cat dog");
     REQUIRE(run("edit.replace"));
     query("cat");
-    state().replacement.value = "new";
+    state().replacement.value("new");
     tab.editor.select(4, 7);
     REQUIRE(run("edit.replace.current"));
     CHECK(tab.document.text() == "cat dog");
@@ -239,7 +240,7 @@ TEST_CASE_FIXTURE(EditorTest, "commands_detect_matches_added_after_an_empty_sear
     CHECK(!enabled("edit.replace.all"));
     std::string error;
     REQUIRE(tab.editor.applyEdits({tab.document.revision(), {{0, 3, "cat"}}, {}}, error));
-    state().replacement.value = "new";
+    state().replacement.value("new");
     REQUIRE(run("edit.replace.all"));
     CHECK(tab.document.text() == "new");
 }
@@ -279,7 +280,8 @@ TEST_CASE_FIXTURE(EditorTest, "field_input_navigation_and_close_preserve_documen
     CHECK(tab.document.text() == "cat cat");
     auto area = app->textInputArea();
     REQUIRE(area);
-    CHECK(area->y == state().queryBounds.y);
+    CHECK(area->y >= state().queryBounds.y);
+    CHECK(area->y + area->h <= state().queryBounds.y + state().queryBounds.h);
     key(SDLK_RETURN);
     CHECK(state().current == 1);
     key(SDLK_RETURN, SDL_KMOD_SHIFT);
@@ -355,3 +357,54 @@ TEST_CASE_FIXTURE(EditorTest, "new_drafts_remain_in_all_notes")
 }
 
 TEST_SUITE_END();
+
+TEST_CASE_FIXTURE(EditorTest, "find_field_undo_and_redo_do_not_change_the_document")
+{
+    auto& tab = document("Original document");
+    draw();
+    REQUIRE(run("edit.find"));
+    draw();
+    input("한글");
+    input(" input");
+#ifdef __APPLE__
+    constexpr auto primary = SDL_KMOD_GUI;
+#else
+    constexpr auto primary = SDL_KMOD_CTRL;
+#endif
+    key(SDLK_Z, primary);
+    CHECK(state().query.value() == "한글");
+    key(SDLK_Z, SDL_Keymod(primary | SDL_KMOD_SHIFT));
+    CHECK(state().query.value() == "한글 input");
+    key(SDLK_A, primary);
+    input("replacement");
+    CHECK(state().query.value() == "replacement");
+    key(SDLK_Z, primary);
+    CHECK(state().query.value() == "한글 input");
+    CHECK(tab.document.text() == "Original document");
+}
+
+TEST_CASE_FIXTURE(EditorTest, "find_field_native_composition_preserves_replacement_ranges")
+{
+    document("Original document");
+    draw();
+    REQUIRE(run("edit.find"));
+    draw();
+    auto& field = state().query;
+    auto id = reinterpret_cast<uintptr_t>(&field.document);
+    app->nativeTextInput({id, 0, 0, 3, "ㅎ", true});
+    CHECK(field.value().empty());
+    CHECK(field.preedit == "ㅎ");
+    app->nativeTextInput({id, 0, 0, 3, "한", true});
+    CHECK(field.value().empty());
+    app->nativeTextInput({id, 0, 0, 0, "한", false});
+    CHECK(field.value() == "한");
+    CHECK(field.preedit.empty());
+    app->nativeTextInput({id, 0, 3, 3, "하", true});
+    CHECK(field.value() == "한");
+    app->nativeTextInput({id, 0, 3, 0, "하", false});
+    CHECK(field.value() == "하");
+    REQUIRE(field.session.undo());
+    CHECK(field.value() == "한");
+    REQUIRE(field.session.undo());
+    CHECK(field.value().empty());
+}

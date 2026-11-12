@@ -70,11 +70,11 @@ TEST_CASE_FIXTURE(ui::test::Frame, "apply_assigns_ids_and_keeps_state_by_id")
     auto staged = composition;
     REQUIRE(staged.apply(workspace(220), error));
     CHECK(staged.definition().children[0].width.basis == 220);
-    CHECK(staged.input("query")->value == "abc");
+    CHECK(staged.input("query")->value() == "abc");
     CHECK(composition.definition().children[0].width.basis == 240);
 
     CHECK(!composition.apply(ui::row({ui::view("a"), ui::view("a")}), error));
-    CHECK(composition.input("query")->value == "abc");
+    CHECK(composition.input("query")->value() == "abc");
 }
 
 TEST_CASE_FIXTURE(ui::test::Frame, "elements_run_commands_and_host_views")

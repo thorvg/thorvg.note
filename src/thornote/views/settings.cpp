@@ -168,7 +168,7 @@ void EditorApp::drawSettings(ui::Rect r)
     settings.searchBounds = categoryRail ? ui::Rect{r.x + rail + gap, r.y + 22, r.w - rail - gap * 2, 34}
                                          : ui::Rect{r.x + 24, r.y + 56, r.w - 48, 34};
     ui::textField(context, "settings/search", settings.searchBounds, settings.search, "Search settings", true, {}, "search");
-    ui::button(context, "settings/search/clear", {settings.searchBounds.x + settings.searchBounds.w - 30, settings.searchBounds.y + 1, 29, 32}, "", [this] { settings.search = {}; settings.scroll = 0; }, {.style = ui::ButtonStyle::Quiet, .icon = "close", .enabled = !settings.search.value.empty()});
+    ui::button(context, "settings/search/clear", {settings.searchBounds.x + settings.searchBounds.w - 30, settings.searchBounds.y + 1, 29, 32}, "", [this] { settings.search = {}; settings.scroll = 0; }, {.style = ui::ButtonStyle::Quiet, .icon = "close", .enabled = !settings.search.value().empty()});
     const char* names[]{"Editor", "Appearance", "Layout"};
     for (int i = 0; i < 3; ++i) {
         float cell = (r.w - 64) / 3;
@@ -181,7 +181,7 @@ void EditorApp::drawSettings(ui::Rect r)
                 settings.search = {};
             }
         });
-        if (state.hovered || (settings.search.value.empty() && settings.category == i)) context.rect(row, settings.category == i ? theme.selection : theme.surface, 6);
+        if (state.hovered || (settings.search.value().empty() && settings.category == i)) context.rect(row, settings.category == i ? theme.selection : theme.surface, 6);
         float padding = categoryRail ? 12 : 6;
         context.text({row.x + padding, row.y, row.w - 2 * padding, row.h}, names[i], theme.text, 12, settings.category == i);
         if (state.focused) context.focusRing(row.inset(4));
@@ -192,7 +192,7 @@ void EditorApp::drawSettings(ui::Rect r)
     // Borders and focus rings extend outside control bounds; keep them inside the scroll clip.
     auto body = viewport.inset(4);
     settings.fontSearchBounds = {};
-    auto query = lower(settings.search.value);
+    auto query = lower(settings.search.value());
     bool sections[]{query.empty() ? settings.category == 0 : std::string("editor font family size zoom preview line numbers").find(query) != std::string::npos,
                     query.empty() ? settings.category == 1 : std::string("appearance theme light dark tab style connected segmented underline").find(query) != std::string::npos,
                     query.empty() ? settings.category == 2 : std::string("layout script lua memo note editor").find(query) != std::string::npos};
@@ -233,12 +233,12 @@ void EditorApp::drawSettings(ui::Rect r)
             settings.fontSearchBounds = {body.x, y, body.w, 32};
             ui::textField(context, "settings/fonts/search", settings.fontSearchBounds, settings.fontSearch, "Search installed fonts", true, {}, "search");
             y += 40;
-            if (settings.previousFontQuery != settings.fontSearch.value) {
-                settings.previousFontQuery = settings.fontSearch.value;
+            if (settings.previousFontQuery != settings.fontSearch.value()) {
+                settings.previousFontQuery = settings.fontSearch.value();
                 settings.fontOffset = 0;
             }
             std::vector<size_t> matches;
-            auto fontQuery = lower(settings.fontSearch.value);
+            auto fontQuery = lower(settings.fontSearch.value());
             for (size_t i = 0; i < settings.catalog.size(); ++i)
                 if (lower(settings.catalog[i].name).find(fontQuery) != std::string::npos) matches.push_back(i);
             ui::Rect list{body.x, y, body.w, 140};

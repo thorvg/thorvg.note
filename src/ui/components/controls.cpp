@@ -4,27 +4,6 @@
 namespace ui
 {
 
-namespace
-{
-size_t previous(const std::string& value, size_t cursor)
-{
-    if (!cursor) return 0;
-    --cursor;
-    while (cursor && (uint8_t(value[cursor]) & 0xc0) == 0x80)
-        --cursor;
-    return cursor;
-}
-
-size_t next(const std::string& value, size_t cursor)
-{
-    if (cursor == value.size()) return cursor;
-    ++cursor;
-    while (cursor < value.size() && (uint8_t(value[cursor]) & 0xc0) == 0x80)
-        ++cursor;
-    return cursor;
-}
-}  // namespace
-
 State button(Context& context, std::string_view id, Rect bounds, std::string_view label, std::function<void()> activate, const ButtonOptions& options)
 {
     const auto& [style, icon, enabled, active, appearance] = options;
@@ -63,52 +42,146 @@ void checkbox(Context& context, std::string_view id, Rect bounds, std::string_vi
     if (state.focused) context.focusRing(box);
 }
 
-void TextInput::insert(std::string_view text)
+TextInput::TextInput(std::string_view text, size_t cursor)
 {
-    cursor = std::min(cursor, value.size());
-    for (size_t i = 0; i < text.size(); ++i) {
-        if (uint8_t(text[i]) < 32 || uint8_t(text[i]) == 127) continue;
-        value.insert(cursor++, 1, text[i]);
-    }
+    value(text);
+    session.select(std::min(cursor, text.size()), std::min(cursor, text.size()));
 }
 
-void TextInput::edit(Key key)
+TextInput::TextInput(const TextInput& other) :
+    document(other.document)
 {
-    cursor = std::min(cursor, value.size());
+    auto selection = other.session.selection();
+    session.select(selection.anchor, selection.caret);
+}
+
+TextInput& TextInput::operator=(const TextInput& other)
+{
+    if (this == &other) return *this;
+    document = other.document;
+    auto selection = other.session.selection();
+    session.select(selection.anchor, selection.caret);
+    preedit.clear();
+    return *this;
+}
+
+void TextInput::value(std::string_view text)
+{
+    if (!document.text(text)) return;
+    session.select(document.text().size(), document.text().size());
+    preedit.clear();
+}
+
+void TextInput::insert(std::string_view text)
+{
+    preedit.clear();
+    if (std::any_of(text.begin(), text.end(), [](unsigned char c) { return c < 32 || c == 127; })) {
+        std::string filtered;
+        for (auto c : text)
+            if (static_cast<unsigned char>(c) >= 32 && c != 127) filtered += c;
+        session.insert(filtered);
+    } else session.insert(text);
+}
+
+void TextInput::composition(std::string_view text, size_t cursor)
+{
+    preedit = text;
+    preeditCursor = std::min(cursor, preedit.size());
+    while (preeditCursor && preeditCursor < preedit.size() && (static_cast<unsigned char>(preedit[preeditCursor]) & 0xc0) == 0x80)
+        --preeditCursor;
+}
+
+void TextInput::edit(Key key, Modifiers mods)
+{
+    if (!preedit.empty()) {
+        if (key == Key::Escape) preedit.clear();
+        return;
+    }
+    if (mods.primary && key == Key::A) {
+        session.selectAll();
+        return;
+    }
+    if (mods.primary && key == Key::Z) {
+        if (mods.shift) session.redo();
+        else session.undo();
+        return;
+    }
+    if (mods.primary && key == Key::Y) {
+        session.redo();
+        return;
+    }
     switch (key) {
-        case Key::Left: cursor = previous(value, cursor); break;
-        case Key::Right: cursor = next(value, cursor); break;
-        case Key::Home: cursor = 0; break;
-        case Key::End: cursor = value.size(); break;
-        case Key::Backspace: {
-            auto start = previous(value, cursor);
-            value.erase(start, cursor - start);
-            cursor = start;
-            break;
-        }
-        case Key::Delete: value.erase(cursor, next(value, cursor) - cursor); break;
+        case Key::Left: session.move(mods.word ? tn::Move::WordLeft : tn::Move::Left, mods.shift); break;
+        case Key::Right: session.move(mods.word ? tn::Move::WordRight : tn::Move::Right, mods.shift); break;
+        case Key::Home: session.move(tn::Move::Start, mods.shift); break;
+        case Key::End: session.move(tn::Move::End, mods.shift); break;
+        case Key::Backspace: session.backspace(mods.word); break;
+        case Key::Delete: session.deleteForward(mods.word); break;
         default: break;
     }
 }
 
 void textField(Context& context, std::string_view id, Rect bounds, TextInput& input, std::string_view placeholder, bool enabled, std::function<bool(Key)> keyHandler, std::string_view icon, const Appearance& appearance)
 {
-    auto state = context.control(id, bounds, [&input, keyHandler = std::move(keyHandler)](const Event& event) {
+    float inset = icon.empty() ? 8 : 38;
+    Rect content{bounds.x + inset, bounds.y + 2, std::max(0.0f, bounds.w - inset - 12), bounds.h - 4};
+    auto selection = input.session.selection();
+    auto width = [&](size_t offset) {
+        return context.textWidth(std::string_view(input.value()).substr(0, offset), appearance.fontSize, appearance.bold, input.value());
+    };
+    float offset = context.focused() == id ? std::max(0.0f, width(selection.caret) - content.w + 4) : 0;
+    auto state = context.control(id, bounds, [&input, &context, content, offset, appearance, keyHandler = std::move(keyHandler)](const Event& event) {
         if (event.type == EventType::Text) input.insert(event.text);
-        else if (event.type == EventType::Press) input.cursor = input.value.size();
-        else if (event.type == EventType::Key && (!keyHandler || !keyHandler(event.key))) input.edit(event.key); }, enabled);
+        else if (event.type == EventType::Press || event.type == EventType::Drag) {
+            input.preedit.clear();
+            auto& text = input.value();
+            auto x = event.x - content.x + offset;
+            size_t caret = 0;
+            float previous = 0;
+            while (caret < text.size()) {
+                auto next = input.document.next(caret);
+                float advance = context.textWidth(std::string_view(text).substr(0, next), appearance.fontSize, appearance.bold, text);
+                if (x < (previous + advance) / 2) break;
+                previous = advance;
+                caret = next;
+            }
+            if (event.type == EventType::Press && event.clicks >= 2) input.session.selectAll();
+            else input.session.select(event.type == EventType::Drag || event.modifiers.shift ? input.session.selection().anchor : caret, caret);
+        } else if (event.type == EventType::Key && (event.modifiers.primary || input.preedit.empty()) &&
+                   (!keyHandler || event.modifiers.primary || !keyHandler(event.key))) input.edit(event.key, event.modifiers); }, enabled, ControlFlag::Focusable | ControlFlag::Capture, Cursor::Text, &input);
     const auto& t = context.theme();
     context.rect(bounds, resolve(appearance.fill, t, t.background), appearance.radius >= 0 ? appearance.radius : t.radius,
                  resolve(appearance.border, t, state.focused ? t.accent : t.border), appearance.borderWidth);
     if (!icon.empty()) context.icon(std::string(id) + "/leading", {bounds.x + 8, bounds.y, 22, bounds.h}, icon, t.muted,
                                     {.hovered = state.hovered, .pressed = state.pressed, .enabled = enabled, .focused = state.focused});
-    float inset = icon.empty() ? 8 : 38;
-    Rect content{bounds.x + inset, bounds.y + 2, bounds.w - inset - 12, bounds.h - 4};
-    float cursorWidth = context.textWidth(std::string_view(input.value).substr(0, std::min(input.cursor, input.value.size())), appearance.fontSize, appearance.bold, input.value);
-    float offset = state.focused ? std::max(0.0f, cursorWidth - content.w + 4) : 0;
-    context.text(content, input.value.empty() ? placeholder : std::string_view(input.value), enabled && !input.value.empty() ? resolve(appearance.text, t, t.text) : t.muted,
-                 appearance.fontSize, appearance.bold, Align::Start, offset);
-    if (state.focused) context.rect({content.x + cursorWidth - offset, bounds.y + 9, 1.5f, bounds.h - 18}, t.accent);
+    std::string composed;
+    std::string_view display = input.value();
+    size_t caret = selection.caret;
+    if (!input.preedit.empty()) {
+        composed = input.value();
+        composed.replace(selection.start(), selection.end() - selection.start(), input.preedit);
+        display = composed;
+        caret = selection.start() + input.preeditCursor;
+    }
+    auto measure = [&](size_t position) {
+        return context.textWidth(display.substr(0, position), appearance.fontSize, appearance.bold, display);
+    };
+    float cursorWidth = measure(caret);
+    offset = state.focused ? std::max(0.0f, cursorWidth - content.w + 4) : 0;
+    input.caretBounds = {content.x + cursorWidth - offset, bounds.y + 9, 1.5f, std::max(1.0f, bounds.h - 18)};
+    context.clip(content, [&] {
+        if (state.focused && !selection.empty() && input.preedit.empty()) {
+            float left = measure(selection.start()), right = measure(selection.end());
+            context.rect({content.x + left - offset, content.y, right - left, content.h}, t.selection);
+        }
+        context.text(content, display.empty() ? placeholder : display, enabled && !display.empty() ? resolve(appearance.text, t, t.text) : t.muted,
+                     appearance.fontSize, appearance.bold, Align::Start, offset);
+        if (state.focused && !input.preedit.empty()) {
+            float left = measure(selection.start()), right = measure(selection.start() + input.preedit.size());
+            context.rect({content.x + left - offset, bounds.y + bounds.h - 6, right - left, 1}, t.accent);
+        }
+        if (state.focused) context.rect(input.caretBounds, t.accent);
+    });
 }
 
 }  // namespace ui

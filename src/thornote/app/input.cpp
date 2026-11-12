@@ -26,6 +26,12 @@ ui::Key uiKey(SDL_Keycode key)
         case SDLK_PAGEDOWN: return ui::Key::PageDown;
         case SDLK_BACKSPACE: return ui::Key::Backspace;
         case SDLK_DELETE: return ui::Key::Delete;
+        case SDLK_A: return ui::Key::A;
+        case SDLK_C: return ui::Key::C;
+        case SDLK_X: return ui::Key::X;
+        case SDLK_V: return ui::Key::V;
+        case SDLK_Z: return ui::Key::Z;
+        case SDLK_Y: return ui::Key::Y;
         default: return ui::Key::Unknown;
     }
 }
@@ -74,6 +80,7 @@ size_t byteAt(std::string_view text, int characters)
 
 bool EditorApp::searchFocused() const
 {
+    if (context.input()) return true;
     auto active = workspace.active();
     return palette || findFocused() || (settings.active && (context.focused() == "settings/search" || context.focused() == "settings/fonts/search")) || ((composition == Layout::Note || commandList) && (!active || !editorFocus) && ((commandList && context.focused() == "sidebar/commands/search") || (composition == Layout::Note && !commandList && context.focused() == "notes/search")));
 }
@@ -96,6 +103,11 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
         return true;
     }
     if (composing) {
+        if (auto input = context.input(); input && event.key == SDLK_ESCAPE) {
+            input->composition("", 0);
+            composing = false;
+            return true;
+        }
         if (editorFocus && uiKey(event.key) != ui::Key::Unknown) context.key(uiKey(event.key), mods);
         if (event.key != SDLK_ESCAPE) return false;
         composing = false;
@@ -104,12 +116,42 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
         openPalette();
         return true;
     }
+    if (auto input = context.input(); input && mods.primary) {
+        switch (event.key) {
+            case SDLK_C:
+            case SDLK_X: {
+                auto text = input->session.selectedText();
+                if (!text.empty()) {
+                    SDL_SetClipboardText(text.c_str());
+                    if (event.key == SDLK_X) input->insert("");
+                }
+                return true;
+            }
+            case SDLK_V: {
+                auto text = SDL_GetClipboardText();
+                if (text) input->insert(text);
+                SDL_free(text);
+                return true;
+            }
+            case SDLK_A:
+            case SDLK_Z:
+            case SDLK_Y: context.key(uiKey(event.key), mods); return true;
+        }
+    }
+    if (context.input()) {
+        auto key = uiKey(event.key);
+        if (key == ui::Key::Left || key == ui::Key::Right || key == ui::Key::Home || key == ui::Key::End || key == ui::Key::Backspace || key == ui::Key::Delete) {
+            auto navigation = ui::platform::navigation(key, keys);
+            context.key(key, navigation);
+            return true;
+        }
+    }
     if (palette) {
         if (mods.primary && event.key == SDLK_V) {
             auto value = SDL_GetClipboardText();
             if (value) context.textInput(value);
             SDL_free(value);
-        } else context.key(uiKey(event.key), {.shift = mods.shift});
+        } else context.key(uiKey(event.key), mods);
         return true;
     }
     if (auto tab = visibleDocument(); tab && editorFocus && !settings.active && !searchFocused()) {
@@ -186,7 +228,7 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
         }
     }
     if (settings.active) {
-        context.key(uiKey(event.key), {.shift = mods.shift});
+        context.key(uiKey(event.key), mods);
         return true;
     }
     if (welcomeVisible() && context.scrollKey("welcome/scroll", uiKey(event.key))) return true;
@@ -199,7 +241,7 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
         return true;
     }
     if (event.key == SDLK_ESCAPE) focusEditor(true);
-    else context.key(uiKey(event.key), {.shift = mods.shift});
+    else context.key(uiKey(event.key), mods);
     return false;
 }
 
@@ -213,6 +255,15 @@ bool EditorApp::nativeKeyDown(const SDL_KeyboardEvent& event)
 
 void EditorApp::nativeTextInput(const NativeTextEdit& edit)
 {
+    if (auto input = context.input()) {
+        if (!textInputArea() || edit.document != reinterpret_cast<uintptr_t>(&input->document)) return;
+        input->session.select(edit.begin, edit.end);
+        composing = edit.composition && !edit.text.empty();
+        if (edit.composition) input->composition(edit.text, edit.cursor);
+        else input->insert(edit.text);
+        updateFind();
+        return;
+    }
     auto tab = textInputTarget();
     if (!textInputArea() || !tab || tab->id != edit.document) return;
     auto selection = tab->editor.session().selection();
@@ -252,6 +303,7 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
         case SDL_EVENT_QUIT:
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED: requestQuit(); break;
         case SDL_EVENT_WINDOW_FOCUS_LOST:
+            if (auto input = context.input()) input->composition("", 0);
             windowFocused = false;
             suppressedInputText.clear();
             composing = false;
@@ -292,6 +344,12 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
             }
             break;
         case SDL_EVENT_TEXT_EDITING:
+            if (auto input = context.input()) {
+                auto text = std::string_view(event.edit.text ? event.edit.text : "");
+                composing = !text.empty();
+                input->composition(text, byteAt(text, event.edit.start));
+                break;
+            }
             if (prompt == Prompt::None && !palette && !dialog && menu.empty()) {
                 if (auto tab = visibleDocument(); tab && editorFocus) {
                     auto value = std::string_view(event.edit.text ? event.edit.text : "");
@@ -353,6 +411,7 @@ DocumentTab* EditorApp::textInputTarget() const
 std::optional<ui::Rect> EditorApp::textInputArea()
 {
     if (!windowFocused || dialog || prompt != Prompt::None || !menu.empty()) return {};
+    if (auto input = context.input()) return input->caretBounds;
     if (palette) return ui::Rect{(width - std::min(550.0f, width - 32)) / 2 + 12, std::min(90.0f, height / 8) + (recentPalette ? 43 : 12), 1, 34};
     if (searchFocused()) {
         if (findFocused()) {

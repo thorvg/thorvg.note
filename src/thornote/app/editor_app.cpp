@@ -256,10 +256,10 @@ void EditorApp::registerCommands()
         return ready() && !target()->editor.composing();
     };
     auto matches = [this, searchable] {
-        if (!find.open || !searchable() || find.query.value.empty()) return false;
+        if (!find.open || !searchable() || find.query.value().empty()) return false;
         auto tab = target();
-        if (find.document == tab->id && find.revision == tab->document.revision() && find.searchedQuery == find.query.value) return !find.matches.empty();
-        return tab->document.text().find(find.query.value) != std::string::npos;
+        if (find.document == tab->id && find.revision == tab->document.revision() && find.searchedQuery == find.query.value()) return !find.matches.empty();
+        return tab->document.text().find(find.query.value()) != std::string::npos;
     };
     auto replaceable = [matches, editable] {
         return matches() && editable();

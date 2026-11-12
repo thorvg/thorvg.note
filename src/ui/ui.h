@@ -879,6 +879,8 @@ uint64_t paintKey(const T&... values)
  * @note Keep the borrowed Theme, callback captures, and referenced models alive until
  * the next begin(). Synchronize the Canvas before rebuilding a previously drawn scene.
  */
+struct TextInput;
+
 class Context
 {
 public:
@@ -1009,10 +1011,11 @@ public:
      * @param[in] enabled Whether input can be dispatched to this control.
      * @param[in] flags Focus, scroll, capture, and Tab behavior.
      * @param[in] cursor Cursor requested while the pointer is over this control.
+     * @param[in] input Borrowed text field state exposed to the host while this control is focused.
      *
      * @return Current hover, press, and focus state.
      */
-    State control(std::string_view id, Rect bounds, Handler handler, bool enabled = true, ControlFlag flags = ControlFlag::Focusable, Cursor cursor = Cursor::Default);
+    State control(std::string_view id, Rect bounds, Handler handler, bool enabled = true, ControlFlag flags = ControlFlag::Focusable, Cursor cursor = Cursor::Default, TextInput* input = nullptr);
 
     /**
      * @brief Requests keyboard focus by stable control ID; an empty ID clears focus.
@@ -1139,6 +1142,9 @@ public:
      * @endcode
      */
     void textInput(std::string_view text);
+
+    /** @brief Returns the enabled text field currently holding focus, or nullptr. */
+    TextInput* input() const;
 
     /**
      * @brief Dispatches scroll deltas to the topmost enabled scrollable control under the pointer.
@@ -1419,7 +1425,7 @@ State button(Context& context, std::string_view id, Rect bounds, std::string_vie
 void checkbox(Context& context, std::string_view id, Rect bounds, std::string_view label, bool value, std::function<void(bool)> change, bool enabled = true);
 
 /**
- * @brief Single-line control text with a UTF-8 byte cursor.
+ * @brief Single-line input backed by a Document and EditSession.
  *
  * @code
  * ui::TextInput input;  // Kept by the application; textField() edits it from Text and Key events.
@@ -1434,26 +1440,28 @@ void checkbox(Context& context, std::string_view id, Rect bounds, std::string_vi
  *     if (event.type == ui::EventType::Text) input.insert(event.text);
  *     else if (event.type == ui::EventType::Key) input.edit(event.key);
  * });
- * context.text(bounds, input.value, theme.text);
+ * context.text(bounds, input.value(), theme.text);
  * @endcode
  *
- * @note This value has no Document or undo history. Selection, grapheme navigation,
- * and IME preedit are not implemented.
+ * @note Committed edits use the session undo history; IME preedit stays outside the document.
  */
 struct TextInput
 {
-    std::string value;
-    size_t cursor = 0;
+    tn::Document document;
+    tn::EditSession session{document};
+    std::string preedit;
+    size_t preeditCursor = 0;
+    Rect caretBounds;
 
-    /**
-     * @brief Inserts committed text at the byte cursor and advances the cursor.
-     */
+    TextInput(std::string_view value = {}, size_t cursor = SIZE_MAX);
+    TextInput(const TextInput& other);
+    TextInput& operator=(const TextInput& other);
+
+    const std::string& value() const { return document.text(); }
+    void value(std::string_view text);
     void insert(std::string_view text);
-
-    /**
-     * @brief Applies basic cursor movement or deletion at UTF-8 codepoint boundaries.
-     */
-    void edit(Key key);
+    void edit(Key key, Modifiers modifiers = {});
+    void composition(std::string_view text, size_t cursor);
 };
 
 /**
@@ -1464,7 +1472,7 @@ struct TextInput
  *
  * auto submit = [&](ui::Key key) {
  *     if (key != ui::Key::Enter) return false;
- *     search(query.value);
+ *     search(query.value());
  *     return true;
  * };
  * ui::textField(context, "search", {8, 8, 240, 30}, query, "Search notes", true, submit, "search");
@@ -1474,7 +1482,7 @@ struct TextInput
  * @param[in] icon Optional leading icon name.
  *
  * @note Input state is borrowed through the next Context::begin(). Clipboard and IME
- * composition are not supplied here.
+ * composition events are forwarded by the host through Context::input().
  */
 void textField(Context& context, std::string_view id, Rect bounds, TextInput& input, std::string_view placeholder, bool enabled = true, std::function<bool(Key)> keyHandler = {}, std::string_view icon = {}, const Appearance& appearance = {});
 
@@ -2142,7 +2150,7 @@ public:
      *
      * @code
      * // The text typed into the Input element with the ID "query":
-     * if (auto query = composition.input("query")) filter(query->value);
+     * if (auto query = composition.input("query")) filter(query->value());
      * @endcode
      *
      * @return Borrowed input, or null; invalidated by apply() or destruction.

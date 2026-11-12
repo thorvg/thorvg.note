@@ -326,7 +326,10 @@ private:
         if (auto area = app->textInputArea()) {
             SDL_Rect rect{int(area->x / inputX), int(area->y / inputY), 1, std::max(1, int(std::ceil(area->h / inputY)))};
             auto tab = app->textInputTarget();
-            if (nativeInputReady && tab) {
+            if (auto input = app->context.input(); nativeInputReady && input) {
+                auto selection = input->session.selection();
+                nativeInput.update(reinterpret_cast<uintptr_t>(&input->document), &input->document, selection.anchor, selection.caret, &rect);
+            } else if (nativeInputReady && tab) {
                 auto selection = tab->editor.session().selection();
                 nativeInput.update(tab->id, &tab->document, selection.anchor, selection.caret, &rect);
             } else {

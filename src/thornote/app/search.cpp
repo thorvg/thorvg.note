@@ -16,8 +16,7 @@ void EditorApp::openFind(bool replace)
     configure(*tab);
     auto selected = tab->editor.session().selectedText();
     if (!selected.empty() && selected.find('\n') == std::string::npos) {
-        find.query.value = std::move(selected);
-        find.query.cursor = find.query.value.size();
+        find.query.value(std::move(selected));
     }
     find.open = true;
     find.replace = replace;
@@ -50,16 +49,16 @@ void EditorApp::updateFind()
     }
     if (!tab) return;
     auto revision = tab->document.revision();
-    bool queryChanged = find.searchedQuery != find.query.value;
+    bool queryChanged = find.searchedQuery != find.query.value();
     bool rebuild = queryChanged || find.revision != revision;
     if (rebuild) {
-        find.searchedQuery = find.query.value;
+        find.searchedQuery = find.query.value();
         find.revision = revision;
         find.matches.clear();
-        if (!find.query.value.empty()) {
+        if (!find.query.value().empty()) {
             const auto& text = tab->document.text();
-            for (size_t offset = 0; (offset = text.find(find.query.value, offset)) != std::string::npos;) {
-                auto end = offset + find.query.value.size();
+            for (size_t offset = 0; (offset = text.find(find.query.value(), offset)) != std::string::npos;) {
+                auto end = offset + find.query.value().size();
                 if (tab->document.clamp(offset) == offset && tab->document.clamp(end) == end) find.matches.push_back({offset, end});
                 offset = end;
             }
@@ -115,10 +114,10 @@ void EditorApp::replaceMatch(bool all)
     if (all) {
         batch.edits.reserve(find.matches.size());
         for (const auto& range : find.matches)
-            batch.edits.push_back({range.start, range.end, find.replacement.value});
+            batch.edits.push_back({range.start, range.end, find.replacement.value()});
     } else {
         const auto& range = find.matches[*find.current];
-        batch.edits.push_back({range.start, range.end, find.replacement.value});
+        batch.edits.push_back({range.start, range.end, find.replacement.value()});
     }
     std::string error;
     // A search action must not join a preceding typing or extension edit group.
@@ -130,8 +129,8 @@ void EditorApp::replaceMatch(bool all)
     }
     auto end = batch.edits.front().start;
     // The edit path normalizes CRLF/CR; compute the caret from the resulting document.
-    for (size_t i = 0; i < find.replacement.value.size(); ++i) {
-        if (find.replacement.value[i] == '\r' && i + 1 < find.replacement.value.size() && find.replacement.value[i + 1] == '\n') ++i;
+    for (size_t i = 0; i < find.replacement.value().size(); ++i) {
+        if (find.replacement.value()[i] == '\r' && i + 1 < find.replacement.value().size() && find.replacement.value()[i + 1] == '\n') ++i;
         ++end;
     }
     tab->editor.select(end, end);
@@ -170,7 +169,7 @@ void EditorApp::drawFind(ui::Rect& bounds)
     find.queryBounds = {x, y, std::max(1.0f, right - actionsWidth - countWidth - x - 8), 30};
     ui::textField(context, "find/query", find.queryBounds, find.query, "Find", true, {}, "search");
     auto count = std::to_string(find.current ? *find.current + 1 : 0) + " / " + std::to_string(find.matches.size());
-    context.text({right - actionsWidth - countWidth, y, countWidth, 30}, count, !find.query.value.empty() && find.matches.empty() ? theme.danger : theme.muted, 11, false, ui::Align::Center);
+    context.text({right - actionsWidth - countWidth, y, countWidth, 30}, count, !find.query.value().empty() && find.matches.empty() ? theme.danger : theme.muted, 11, false, ui::Align::Center);
     for (size_t i = 0; i < std::size(navigation); ++i)
         action(navigation[i], "", icons[i], {right - actionsWidth + i * 30, y, 28, 30});
     if (!find.replace) return;

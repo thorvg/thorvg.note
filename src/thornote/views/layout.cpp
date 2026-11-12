@@ -21,21 +21,21 @@ bool matches(std::string_view value, std::string_view query)
 std::vector<DocumentTab*> EditorApp::filteredDocuments() const
 {
     std::vector<DocumentTab*> result;
-    if (searchedQuery != noteSearch.value) {
-        searchedQuery = noteSearch.value;
+    if (searchedQuery != noteSearch.value()) {
+        searchedQuery = noteSearch.value();
         searchHits.clear();
     }
     // Frames ask for the visible document several times; search each text once per revision.
     auto contains = [&](const DocumentTab& tab) {
         auto& hit = searchHits[tab.id];
-        if (hit.first != tab.document.revision() + 1) hit = {tab.document.revision() + 1, matches(tab.document.text(), noteSearch.value)};
+        if (hit.first != tab.document.revision() + 1) hit = {tab.document.revision() + 1, matches(tab.document.text(), noteSearch.value())};
         return hit.second;
     };
     for (const auto& tab : workspace.documents()) {
         if (composition == Layout::Note && !commandList) {
             if (collection == "favorites" && !favorites.count(tab->id)) continue;
             if (collection == "unsaved" && !tab->path.empty()) continue;
-            if (!noteSearch.value.empty() && !matches(tab->title, noteSearch.value) && !contains(*tab)) continue;
+            if (!noteSearch.value().empty() && !matches(tab->title, noteSearch.value()) && !contains(*tab)) continue;
         }
         result.push_back(tab.get());
     }
@@ -112,8 +112,8 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
     if (notes) {
         drawNoteSearch(r, "Search notes");
         top = 54;
-        if (previousQuery != noteSearch.value) {
-            previousQuery = noteSearch.value;
+        if (previousQuery != noteSearch.value()) {
+            previousQuery = noteSearch.value();
             documentScroll = 0;
         }
     }

@@ -25,6 +25,7 @@ struct Control
     bool enabled;
     ControlFlag flags;
     Cursor cursor;
+    TextInput* input = nullptr;
 
     bool visible() const { return bounds.w > 0 && bounds.h > 0; }
 };
@@ -263,10 +264,10 @@ const Theme& Context::theme() const
     return *impl->theme;
 }
 
-State Context::control(std::string_view id, Rect bounds, Handler handler, bool enabled, ControlFlag flags, Cursor cursor)
+State Context::control(std::string_view id, Rect bounds, Handler handler, bool enabled, ControlFlag flags, Cursor cursor, TextInput* input)
 {
     bounds = bounds.intersect(impl->clip);
-    impl->controls.push_back({std::string(id), bounds, std::move(handler), enabled, flags, cursor});
+    impl->controls.push_back({std::string(id), bounds, std::move(handler), enabled, flags, cursor, input});
     return {enabled && bounds.contains(impl->pointerX, impl->pointerY), enabled && impl->pressedId == id, enabled && impl->focusId == id};
 }
 
@@ -383,6 +384,12 @@ void Context::key(Key key, Modifiers modifiers)
 void Context::textInput(std::string_view text)
 {
     impl->send(impl->focusId, {.type = EventType::Text, .text = std::string(text)});
+}
+
+TextInput* Context::input() const
+{
+    auto control = impl->find(impl->focusId);
+    return control && control->enabled ? control->input : nullptr;
 }
 
 bool Context::wheel(float vertical, float horizontal)

@@ -92,11 +92,11 @@ void EditorApp::drawNoteFiles(ui::Rect r)
 {
     context.rect(r, theme.surface);
     drawNoteSearch(r, "Search files");
-    if (previousQuery != noteSearch.value) {
-        previousQuery = noteSearch.value;
+    if (previousQuery != noteSearch.value()) {
+        previousQuery = noteSearch.value();
         noteFileScroll = 0;
     }
-    noteFiles.update(noteBrowser.files(), noteBrowser.revision(), noteSearch.value);
+    noteFiles.update(noteBrowser.files(), noteBrowser.revision(), noteSearch.value());
     ui::Rect body{r.x + 6, r.y + 54, r.w - 12, std::max(0.0f, r.h - 60)};
     struct Draft
     {

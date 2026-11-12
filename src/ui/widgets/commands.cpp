@@ -8,14 +8,14 @@ namespace ui
 void commandList(Context& context, std::string_view id, Rect bounds, const CommandRegistry& registry, CommandListState& state, std::function<void()> executed, CommandListOptions options)
 {
     const auto& t = context.theme();
-    auto matches = registry.matching(state.query.value);
+    auto matches = registry.matching(state.query.value());
     state.selected = matches.empty() ? 0 : std::min(state.selected, matches.size() - 1);
     auto prefix = std::string(id);
     context.control(prefix + "/scroll", bounds, [&registry, &state](const Event& event) {
-        auto matches = registry.matching(state.query.value);
+        auto matches = registry.matching(state.query.value());
         if (event.type == EventType::Scroll && event.y != 0 && !matches.empty()) state.selected = size_t(std::clamp(int(state.selected) - (event.y > 0 ? 1 : -1), 0, int(matches.size()) - 1)); }, true, ControlFlag::Scrollable);
     textField(context, prefix + "/search", {bounds.x, bounds.y, bounds.w, 34}, state.query, options.placeholder, true, [&registry, &state, executed](Key key) {
-        auto matches = registry.matching(state.query.value);
+        auto matches = registry.matching(state.query.value());
         if (matches.empty()) return key == Key::Enter || key == Key::Up || key == Key::Down;
         state.selected = std::min(state.selected, matches.size() - 1);
         if (key == Key::Down) state.selected = (state.selected + 1) % matches.size();

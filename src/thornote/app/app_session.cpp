@@ -22,8 +22,7 @@ std::optional<ui::Rect> EditorApp::restoreSession()
     collection = std::move(saved.collection);
     if (collection.compare(0, 7, "folder:") == 0 && std::find(recent.directories.begin(), recent.directories.end(), utf8Path(collection.substr(7))) == recent.directories.end()) collection = "all";
     folderWorkspace = saved.folderWorkspace && !recent.directories.empty();
-    noteSearch.value = std::move(saved.noteQuery);
-    noteSearch.cursor = noteSearch.value.size();
+    noteSearch.value(std::move(saved.noteQuery));
     commandList = saved.commands;
     settings.category = saved.settingsCategory;
     settings.open = saved.settingsOpen;
@@ -49,7 +48,7 @@ SessionState EditorApp::captureSession(bool contents) const
     result.commands = commandList;
     result.folderWorkspace = folderWorkspace;
     result.collection = collection;
-    result.noteQuery = noteSearch.value;
+    result.noteQuery = noteSearch.value();
     for (const auto& tab : workspace.documents()) {
         SessionDocument doc;
         doc.id = tab->id;

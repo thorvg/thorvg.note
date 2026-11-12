@@ -50,9 +50,57 @@ TEST_CASE_FIXTURE(ui::test::Frame, "text_field_edits_at_the_cursor")
     context.key(Key::Backspace);
     context.textInput("c\n");
     context.key(Key::Enter);
-    CHECK(input.value == "acb");
-    CHECK(input.cursor == 2);
+    CHECK(input.value() == "acb");
+    CHECK(input.session.selection().caret == 2);
     CHECK(submitted);
+}
+
+TEST_CASE_FIXTURE(ui::test::Frame, "text_field_composition_is_transient_and_commits_one_undo_step")
+{
+    ui::TextInput input("prefix suffix");
+    input.session.select(7, 13);
+    auto draw = [&] {
+        render([&] { ui::textField(context, "name", {0, 0, 200, 30}, input, "Name"); });
+    };
+    draw();
+    context.focus("name");
+    REQUIRE(context.input() == &input);
+    input.composition("ㅎ", 3);
+    draw();
+    CHECK(input.value() == "prefix suffix");
+    input.composition("한글", 6);
+    draw();
+    CHECK(input.value() == "prefix suffix");
+    context.textInput("한글");
+    CHECK(input.value() == "prefix 한글");
+    CHECK(input.preedit.empty());
+    context.key(Key::Z, {.primary = true});
+    CHECK(input.value() == "prefix suffix");
+    CHECK(input.session.selectedText() == "suffix");
+    context.key(Key::Z, {.shift = true, .primary = true});
+    CHECK(input.value() == "prefix 한글");
+    context.key(Key::Left, {.shift = true});
+    CHECK(input.session.selectedText() == "글");
+    context.textInput("국");
+    CHECK(input.value() == "prefix 한국");
+}
+
+TEST_CASE("text_field_copies_have_independent_documents_and_sessions")
+{
+    ui::TextInput original;
+    original.insert("한글");
+    ui::TextInput copy(original);
+    copy.insert(" text");
+    CHECK(original.value() == "한글");
+    CHECK(copy.value() == "한글 text");
+    REQUIRE(copy.session.undo());
+    CHECK(copy.value() == "한글");
+    ui::TextInput assigned;
+    assigned = copy;
+    assigned.session.selectAll();
+    assigned.insert("other");
+    CHECK(copy.value() == "한글");
+    CHECK(assigned.value() == "other");
 }
 
 TEST_CASE_FIXTURE(ui::test::Frame, "list_draws_visible_rows_and_reveals_the_selection")
