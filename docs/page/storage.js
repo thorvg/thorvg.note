@@ -68,6 +68,7 @@
         function openFiles(done) {
             var input = document.createElement('input');
             input.type = 'file';
+            input.accept = '.txt,.md';
             input.multiple = true;
             input.hidden = true;
             document.body.appendChild(input);
@@ -81,6 +82,7 @@
                 if (!files.length) return done([], '');
                 try {
                     var contents = await Promise.all(files.map(function (file) {
+                        if (!/\.(txt|md)$/i.test(file.name)) throw new Error('Only .txt and .md files are supported: ' + file.name);
                         if (file.size > 16 * 1024 * 1024) throw new Error('File is too large: ' + file.name);
                         if (!file.name || file.name === '.' || file.name === '..' || /[\/\\\x00-\x1f\x7f]/.test(file.name)) throw new Error('Invalid filename');
                         return file.arrayBuffer();
