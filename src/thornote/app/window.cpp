@@ -176,8 +176,10 @@ public:
                 const char* paths[] = {path.empty() ? nullptr : path.c_str(), nullptr};
                 dialogCallback(request, paths, 0);
             } else {
-                SDL_Unsupported();
-                dialogCallback(request, nullptr, 0);
+                browserOpenFiles([request](const char* const* paths, const char* error) {
+                    if (error) SDL_SetError("%s", error);
+                    dialogCallback(request, error ? nullptr : paths, 0);
+                });
             }
 #else
             if (save) SDL_ShowSaveFileDialog(dialogCallback, request, window, nullptr, 0, request->initial.c_str());

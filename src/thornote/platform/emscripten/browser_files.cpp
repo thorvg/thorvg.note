@@ -9,8 +9,35 @@ extern "C" EMSCRIPTEN_KEEPALIVE void thornoteStorageSynced(void* callback, const
     (*complete)(error ? error : "");
 }
 
+extern "C" EMSCRIPTEN_KEEPALIVE void thornoteFilesOpened(void* callback, const char* const* paths, const char* error)
+{
+    std::unique_ptr<std::function<void(const char* const*, const char*)>> complete(static_cast<std::function<void(const char* const*, const char*)>*>(callback));
+    (*complete)(paths, error);
+}
+
 namespace tn
 {
+void browserOpenFiles(std::function<void(const char* const*, const char*)> complete)
+{
+    auto callback = new std::function<void(const char* const*, const char*)>(std::move(complete));
+    EM_ASM({
+        var finish = function(paths, error) {
+            var names = paths.map(function(path) { return stringToNewUTF8(path); });
+            var list = _malloc((names.length + 1) * 4);
+            names.forEach(function(name, index) { HEAPU32[(list >> 2) + index] = name; });
+            HEAPU32[(list >> 2) + names.length] = 0;
+            var message = error ? stringToNewUTF8(String(error)) : 0;
+            try { _thornoteFilesOpened($0, list, message); }
+            finally {
+                names.forEach(function(name) { _free(name); });
+                _free(list);
+                if (message) _free(message);
+            }
+        };
+        if (Module['onOpenFiles']) Module['onOpenFiles'](finish);
+        else finish([], 'Browser file import is unavailable'); }, callback);
+}
+
 void browserSync(std::function<void(std::string)> complete)
 {
     auto callback = new std::function<void(std::string)>(std::move(complete));

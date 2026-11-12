@@ -65,6 +65,44 @@
                 if (!exists(path) || window.confirm('Replace "' + name + '"?')) return path;
             }
         }
+        function openFiles(done) {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.hidden = true;
+            document.body.appendChild(input);
+            input.addEventListener('cancel', function () {
+                input.remove();
+                done([], '');
+            }, {once: true});
+            input.addEventListener('change', async function () {
+                var files = Array.from(input.files);
+                input.remove();
+                if (!files.length) return done([], '');
+                try {
+                    var contents = await Promise.all(files.map(function (file) {
+                        if (file.size > 16 * 1024 * 1024) throw new Error('File is too large: ' + file.name);
+                        if (!file.name || file.name === '.' || file.name === '..' || /[\/\\\x00-\x1f\x7f]/.test(file.name)) throw new Error('Invalid filename');
+                        return file.arrayBuffer();
+                    }));
+                    var paths = files.map(function (file, index) {
+                        var dot = file.name.lastIndexOf('.');
+                        var stem = dot > 0 ? file.name.slice(0, dot) : file.name;
+                        var extension = dot > 0 ? file.name.slice(dot) : '';
+                        var path = root + '/notes/' + file.name;
+                        for (var number = 2; exists(path); ++number) path = root + '/notes/' + stem + ' (' + number + ')' + extension;
+                        fs.writeFile(path, new Uint8Array(contents[index]));
+                        return path;
+                    });
+                    sync(function (error) { done(error ? [] : paths, error ? 'Could not save imported files: ' + error : ''); });
+                } catch (error) { done([], 'Could not import files: ' + error.message); }
+            }, {once: true});
+            try { input.click(); }
+            catch (error) {
+                input.remove();
+                done([], 'Could not open file picker: ' + error.message);
+            }
+        }
         async function exportFile(name, bytes) {
             try {
                 if (window.showSaveFilePicker) {
@@ -89,6 +127,6 @@
                 setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
             } catch (error) { window.alert('Could not export document: ' + error.message); }
         }
-        return {restore: restore, prepare: prepare, sync: sync, saveAs: saveAs, exportFile: exportFile};
+        return {restore: restore, prepare: prepare, sync: sync, saveAs: saveAs, openFiles: openFiles, exportFile: exportFile};
     };
 })();

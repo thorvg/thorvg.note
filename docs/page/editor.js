@@ -74,6 +74,7 @@
                 storage = window.ThorNoteStorage(Module, notes, settings, sample, theme, layout);
                 Module.onSyncStorage = storage.sync;
                 Module.onSaveAs = storage.saveAs;
+                Module.onOpenFiles = storage.openFiles;
                 Module.onExport = storage.exportFile;
                 Module.addRunDependency('storage');
                 storage.restore(function (error) {
