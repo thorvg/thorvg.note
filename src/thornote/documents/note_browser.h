@@ -60,6 +60,6 @@ private:
     float contentHeight = 0;
 };
 
-std::string creationDate(const std::optional<int64_t>& milliseconds);
+std::string modificationDate(const std::optional<int64_t>& milliseconds);
 std::string documentPreview(std::string_view text);
 }  // namespace tn

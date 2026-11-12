@@ -391,7 +391,7 @@ Result<LoadedFile> load(const Path& path, LoadOptions options = {});
 SaveResult save(const Path& path, std::string_view lfText, SaveOptions options = {});
 
 /**
- * @brief Discovered regular file and optional creation time.
+ * @brief Discovered regular file and optional timestamps.
  */
 struct DirectoryEntry
 {
@@ -404,6 +404,11 @@ struct DirectoryEntry
      * @brief UTC milliseconds since Unix epoch; absent when birth time is unavailable.
      */
     std::optional<int64_t> createdAt;
+
+    /**
+     * @brief UTC milliseconds since Unix epoch; absent when modification time is unavailable.
+     */
+    std::optional<int64_t> modifiedAt;
 };
 
 /**

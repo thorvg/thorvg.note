@@ -48,3 +48,22 @@ TEST_CASE("preview_row_heights_update_scroll_geometry")
     CHECK(visible.first == 2);
     CHECK(visible.second == 3);
 }
+
+TEST_CASE("note_dates_use_modification_time_regardless_of_creation_time")
+{
+    constexpr int64_t created = 1704110400000;
+    constexpr int64_t modified = created + 2 * 24 * 60 * 60 * 1000;
+    std::vector<storage::DirectoryEntry> files{
+        {"created.md", created, modified},
+        {"modified.md", {}, modified},
+        {"unknown.md", created, {}},
+    };
+    tn::NoteFileList list;
+    REQUIRE(list.update(files, 1, {}));
+    REQUIRE(list.rows().size() == 5);
+    CHECK(list.rows()[0].date == tn::modificationDate(modified));
+    CHECK(list.rows()[1].file == 0);
+    CHECK(list.rows()[2].file == 1);
+    CHECK(list.rows()[3].date == "Date unavailable");
+    CHECK(list.rows()[4].file == 2);
+}

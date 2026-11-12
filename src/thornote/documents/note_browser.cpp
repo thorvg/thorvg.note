@@ -47,7 +47,7 @@ bool NoteBrowser::poll()
     if (!needsSort) return true;
     needsSort = false;
     std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
-        if (a.createdAt != b.createdAt) return a.createdAt > b.createdAt;
+        if (a.modifiedAt != b.modifiedAt) return a.modifiedAt > b.modifiedAt;
         auto nameA = a.path.filename(), nameB = b.path.filename();
         return nameA != nameB ? nameA < nameB : a.path < b.path;
     });
@@ -113,7 +113,7 @@ bool NoteFileList::update(const std::vector<storage::DirectoryEntry>& files, uin
     for (size_t i = 0; i < files.size(); ++i) {
         const auto& file = files[i];
         if (!query.empty() && !contains(displayName(file.path)) && !contains(displayPath(file.path.parent_path()))) continue;
-        auto date = creationDate(file.createdAt);
+        auto date = modificationDate(file.modifiedAt);
         if (date != previousDate) {
             entries.push_back({{}, date, contentHeight, 28});
             contentHeight += 28;
@@ -144,7 +144,7 @@ void NoteFileList::rowHeight(size_t row, float height)
         entries[i].top += shift;
 }
 
-std::string creationDate(const std::optional<int64_t>& milliseconds)
+std::string modificationDate(const std::optional<int64_t>& milliseconds)
 {
     if (!milliseconds) return "Date unavailable";
     auto seconds = std::time_t(*milliseconds / 1000);

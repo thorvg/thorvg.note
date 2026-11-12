@@ -42,6 +42,21 @@ TEST_CASE("recursive_listing")
     CHECK_FALSE(listDirectory(directory.file("note.txt")));
 }
 
+TEST_CASE("listing_preserves_modification_time")
+{
+    test::Directory directory;
+    auto path = directory.file("note.txt");
+    test::write(path, "Text");
+    auto expected = std::chrono::sys_time<std::chrono::milliseconds>{std::chrono::milliseconds{1704110400123}};
+    std::filesystem::last_write_time(path, std::chrono::file_clock::from_sys(expected));
+
+    auto result = listDirectory(directory.path);
+    REQUIRE(result);
+    REQUIRE(result.value.size() == 1);
+    REQUIRE(result.value.front().modifiedAt);
+    CHECK(*result.value.front().modifiedAt == expected.time_since_epoch().count());
+}
+
 TEST_CASE("text_filter")
 {
     test::Directory directory;

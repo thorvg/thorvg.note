@@ -1,3 +1,4 @@
+#include <chrono>
 #include "internal.h"
 
 namespace storage::detail
@@ -69,7 +70,10 @@ Result<std::vector<DirectoryEntry>> list(const Path& directory, ListOptions opti
                 }
                 if (!supported.value) continue;
             }
-            result.value.push_back({file, creationTime(file)});
+            auto modified = iterator->last_write_time(statusError);
+            std::optional<int64_t> modifiedAt;
+            if (!statusError) modifiedAt = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::file_clock::to_sys(modified).time_since_epoch()).count();
+            result.value.push_back({file, creationTime(file), modifiedAt});
         }
         if (error) result.error = failure(ErrorCode::Io, "cannot finish listing directory: " + utf8(path), error);
         return result;
