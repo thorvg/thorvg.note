@@ -1,7 +1,7 @@
 icon_assets = [
   'folder', 'file', 'star', 'search', 'check', 'chevron-right', 'grid',
   'command', 'close', 'new', 'save', 'settings', 'menu', 'sidebar',
-  'properties', 'chevron-left', 'plus', 'minus', 'dirty',
+  'properties', 'chevron-left', 'plus', 'minus', 'dirty', 'line-numbers',
   'window-minimize', 'window-maximize', 'window-restore', 'window-fullscreen',
 ]
 icon_rows = []
