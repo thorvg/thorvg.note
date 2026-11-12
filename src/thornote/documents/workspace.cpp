@@ -23,7 +23,7 @@ bool DocumentTab::dirty() const
         checkedRevision = document.revision();
         textChanged = document.text() != savedText;
     }
-    return uncertain || textChanged || format.ending != savedFormat.ending || format.bom != savedFormat.bom;
+    return uncertain || persistenceFailed || textChanged || format.ending != savedFormat.ending || format.bom != savedFormat.bom;
 }
 
 std::string DocumentTab::displayTitle(bool preferContent) const
@@ -171,8 +171,8 @@ void Workspace::write(uint64_t id, storage::Path path, storage::DiskStamp expect
                [this, id, path, snapshot, format](storage::SaveResult result) {
                    auto tab = find(id);
                    if (!tab) return;
-                   tab->saving = false;
                    if (!result) {
+                       tab->saving = false;
                        if (result.state == storage::SaveState::CommittedDurabilityUnknown) {
                            tab->uncertain = true;
                            error = "Save may have completed. Reopen the file before retrying: " + result.error.message;
@@ -182,12 +182,24 @@ void Workspace::write(uint64_t id, storage::Path path, storage::DiskStamp expect
                    tab->path = path;
                    tab->title = displayName(path);
                    tab->stamp = result.stamp;
-                   tab->savedText = *snapshot;
-                   tab->savedFormat = format;
-                   tab->checkedRevision = uint64_t(-1);
-                   tab->uncertain = false;
-                   message = "Saved " + tab->title;
-                   if (fileAccessed) fileAccessed(key(tab->path));
+                   auto complete = [this, id, snapshot, format](std::string failure) {
+                       auto tab = find(id);
+                       if (!tab) return;
+                       tab->saving = false;
+                       tab->persistenceFailed = !failure.empty();
+                       if (!failure.empty()) {
+                           error = "Save failed: " + failure;
+                           return;
+                       }
+                       tab->savedText = *snapshot;
+                       tab->savedFormat = format;
+                       tab->checkedRevision = uint64_t(-1);
+                       tab->uncertain = false;
+                       message = "Saved " + tab->title;
+                       if (fileAccessed) fileAccessed(key(tab->path));
+                   };
+                   if (persist) persist(std::move(complete));
+                   else complete({});
                });
 }
 

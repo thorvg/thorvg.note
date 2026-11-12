@@ -14,6 +14,7 @@
 #include <optional>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <thornote/platform/emscripten/browser_files.h>
 #endif
 
 #ifdef __EMSCRIPTEN__
@@ -127,6 +128,17 @@ public:
             SDL_free(path);
         }
         app = std::make_unique<EditorApp>([mailbox = mailbox] { mailbox->wake(); }, settingsDirectory);
+#ifdef __EMSCRIPTEN__
+        app->workspace.persist = [this](auto complete) {
+            browserSync([this, complete = std::move(complete)](std::string error) {
+                complete(std::move(error));
+                mailbox->wake();
+            });
+        };
+        app->exportFile = [this](uint64_t id) {
+            if (auto tab = app->workspace.find(id)) browserExport(utf8(app->suggestedSavePath(id, "/notes").filename()), tab->document.text(), tab->format);
+        };
+#endif
         app->showTextMenu = [this](float x, float y, std::string_view selection, const ui::CommandRegistry& commands) {
             if (!nativeInputReady) return false;
             SDL_CaptureMouse(false);
@@ -159,9 +171,14 @@ public:
                 request->initial = utf8(app->suggestedSavePath(target, folder ? utf8Path(folder) : storage::Path{}));
             } else request->initial = utf8(directory);
 #ifdef __EMSCRIPTEN__
-            // The WebAssembly port of SDL has no file dialogs.
-            SDL_Unsupported();
-            dialogCallback(request, nullptr, 0);
+            if (save) {
+                auto path = browserSavePath(request->initial);
+                const char* paths[] = {path.empty() ? nullptr : path.c_str(), nullptr};
+                dialogCallback(request, paths, 0);
+            } else {
+                SDL_Unsupported();
+                dialogCallback(request, nullptr, 0);
+            }
 #else
             if (save) SDL_ShowSaveFileDialog(dialogCallback, request, window, nullptr, 0, request->initial.c_str());
             else SDL_ShowOpenFileDialog(dialogCallback, request, window, nullptr, 0, request->initial.empty() ? nullptr : request->initial.c_str(), true);

@@ -248,9 +248,14 @@ void EditorApp::drawStatus(ui::Rect r)
     const char* eol = tab->format.ending == storage::LineEnding::Lf ? "LF" : tab->format.ending == storage::LineEnding::Crlf ? "CRLF"
         : tab->format.ending == storage::LineEnding::Cr                                                                      ? "CR"
                                                                                                                              : "Mixed EOL";
+#ifdef __EMSCRIPTEN__
+    constexpr auto savedLabel = "Saved in browser";
+#else
+    constexpr auto savedLabel = "Saved";
+#endif
     std::string state = tab->loading ? "Opening…" : tab->saving ? "Saving…"
         : tab->dirty()                                          ? "Modified"
-        : tab->stamp.exists()                                   ? "Saved"
+        : tab->stamp.exists()                                   ? savedLabel
                                                                 : "Not saved";
     if (!tab->editor.inputState().status.empty()) state = tab->editor.inputState().status + " · " + state;
     context.text({r.x + 12, r.y, r.w / 2, r.h}, state, theme.muted, 10);

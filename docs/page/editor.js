@@ -45,12 +45,13 @@
     }
 
     function start(notes) {
-        var appArguments = ['--fresh', '--settings-dir', '/settings'];
+        var appArguments = ['--settings-dir', '/settings'];
         if (!notes.some(function (note) { return note.name === sample; })) {
             fail('The document could not be loaded: ' + sample);
             return;
         }
-        appArguments.push('--layout', layout, '/notes/' + sample);
+        appArguments.push('/notes/' + sample);
+        var storage;
         var fontData = fetchFonts().catch(function () {
             fail('The app fonts could not be loaded');
             return null;
@@ -64,16 +65,24 @@
             preRun: [function () {
                 // Keys reach the app only while its text field has focus.
                 Module.ENV.SDL_EMSCRIPTEN_KEYBOARD_ELEMENT = '#keyboard';
-                Module.FS.mkdir('/notes');
-                notes.forEach(function (note) { Module.FS.writeFile('/notes/' + note.name, note.text); });
-                // The recent lists lead to the bundled sample notes.
-                Module.FS.mkdir('/settings');
-                Module.FS.writeFile('/settings/settings.conf', 'thornote-settings 1\n' +
+                var settings = 'thornote-settings 1\ncomposition ' + (layout === 'note' ? '2' : '0') + '\n' +
                     (theme === 'light' || theme === 'dark' ? 'dark ' + (theme === 'dark' ? '1' : '0') + '\n' : '') +
                     (sample === 'README.md' || sample === 'Markdown.md' ? 'layout 0 0 0 1 224 236 216\n' : '') +
-                    (samples.indexOf(sample) !== -1 ? 'font-size 14\n' : '') + notes.map(function (note) {
-                    return 'recent-file "/notes/' + note.name + '"\n';
-                }).join('') + 'recent-directory "/notes"\n');
+                    'font-size 14\n' + notes.map(function (note) {
+                        return 'recent-file "/notes/' + note.name + '"\n';
+                    }).join('') + 'recent-directory "/notes"\n';
+                storage = window.ThorNoteStorage(Module, notes, settings, sample, theme, layout);
+                Module.onSyncStorage = storage.sync;
+                Module.onSaveAs = storage.saveAs;
+                Module.onExport = storage.exportFile;
+                Module.addRunDependency('storage');
+                storage.restore(function (error) {
+                    if (error) {
+                        fail('Browser storage could not be opened. Reload to retry.');
+                        return;
+                    }
+                    Module.removeRunDependency('storage');
+                });
                 Module.addRunDependency('fonts');
                 fontData.then(function (fonts) {
                     if (!fonts) return;
@@ -89,11 +98,15 @@
                     Module.removeRunDependency('fonts');
                 });
             }],
+            onRuntimeInitialized: function () { storage.prepare(); },
             postRun: [function () {
                 // The window starts at its default size; a resize makes it adopt the canvas box.
                 window.dispatchEvent(new Event('resize'));
-                stage.dataset.state = 'running';
-                status.textContent = '';
+                storage.sync(function (error) {
+                    if (error) return fail('Browser storage could not be initialized. Reload to retry.');
+                    stage.dataset.state = 'running';
+                    status.textContent = '';
+                });
             }],
             onAbort: function () { fail('The app stopped unexpectedly'); }
         };

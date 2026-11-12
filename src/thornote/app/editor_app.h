@@ -67,6 +67,7 @@ public:
     Workspace workspace;
     ui::Context context;
     std::function<void(bool save, uint64_t target, const storage::Path& directory)> chooseFile;
+    std::function<void(uint64_t)> exportFile;
     std::function<void(WindowAction)> changeWindow;
     std::function<bool(float x, float y, std::string_view selection, const ui::CommandRegistry&)> showTextMenu;
 
@@ -203,6 +204,7 @@ private:
     Autosave sessionSave{750, false, false};
     float restoredWidth = 1080, restoredHeight = 720;
     std::string submittedSession;
+    bool syncingSession = false, syncingPreferences = false;
     ui::CommandRegistry commands;
     ui::CommandRegistry recentCommands;
     tn::InputExtensions inputExtensions{commands,

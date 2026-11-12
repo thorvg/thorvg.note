@@ -231,6 +231,9 @@ void EditorApp::registerCommands()
     });
     add("file.open", "Open files...", "File", "Mod+O", [this] { findFile(); }, [this] { return !dialog; });
     add("file.recent", "Open recent file", "File", "Mod+P", [this] { openRecentFiles(); }, [this] { return !dialog; });
+#ifdef __EMSCRIPTEN__
+    add("file.export", "Export document...", "File", "", [this] { exportFile(target()->id); }, [this, ready] { return ready() && bool(exportFile); }, "No document is ready");
+#endif
     add("file.save", "Save document", "File", "Mod+S", [this] { if (auto tab = target()) save(tab->id); }, writable, "No document is ready, or a file operation is pending");
     add("file.saveAs", "Save document as...", "File", "Mod+Shift+S", [this] { if (auto tab = target()) save(tab->id, true); }, writable, "No document is ready, or a file operation is pending");
     add("file.close", "Close tab", "File", "Mod+W", [this] { if (settings.active) closeSettings(); else if (auto tab = target()) requestClose(tab->id); }, [this, writable] { return settings.active || writable(); }, "No tab is ready to close");

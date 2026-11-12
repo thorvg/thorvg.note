@@ -81,14 +81,21 @@ SessionState EditorApp::captureSession(bool contents) const
 bool EditorApp::pollSession()
 {
     if (!sessionStore.poll()) return false;
-    if (sessionStore.error().empty()) sessionSave.saved = submittedSession;
-    else workspace.error = sessionStore.error();
+    if (!sessionStore.error().empty()) workspace.error = sessionStore.error();
+    else if (workspace.persist) {
+        syncingSession = true;
+        workspace.persist([this, signature = submittedSession](std::string error) {
+            syncingSession = false;
+            if (error.empty()) sessionSave.saved = signature;
+            else workspace.error = "Recovery could not be saved: " + error;
+        });
+    } else sessionSave.saved = submittedSession;
     return true;
 }
 
 bool EditorApp::checkpointSession(bool force)
 {
-    if (!sessionSave.enabled || workspace.busy()) return false;
+    if (!sessionSave.enabled || workspace.busy() || syncingSession) return false;
     if (force && sessionStore.busy()) {
         if (sessionStore.finish()) sessionSave.saved = submittedSession;
         else workspace.error = sessionStore.error();

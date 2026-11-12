@@ -28,7 +28,7 @@ struct DocumentTab
     storage::FileFormat format, savedFormat;
     storage::DiskStamp stamp;
     std::string savedText;
-    bool loading = false, saving = false, uncertain = false, configured = false;
+    bool loading = false, saving = false, uncertain = false, configured = false, persistenceFailed = false;
     mutable uint64_t checkedRevision = uint64_t(-1);
     mutable bool textChanged = false;
     struct ViewRestore
@@ -59,6 +59,8 @@ public:
     bool busy() const;
     std::string error, message;
     std::function<void(const storage::Path&)> fileAccessed;
+    // A backend can defer save completion until its durable storage has synchronized.
+    std::function<void(std::function<void(std::string)>)> persist;
 
 private:
     void write(uint64_t id, storage::Path, storage::DiskStamp, std::string, storage::FileFormat);

@@ -11,7 +11,9 @@ Things to try
   - F1 opens the command palette.
   - Mod+B shows the open documents. Mod+, opens settings.
   - Settings, Layout switches to Note: the folder as a library.
-  - Mod+S saves this note, in memory, for this tab.
+  - Mod+S saves this note in this browser.
+  - F1, Export document saves a separate file to your device.
 
 Mod is Command on macOS and Ctrl everywhere else.
-Nothing you write here leaves your browser.
+Saved notes and drafts return when you reload this demo.
+Each demo keeps its own notes in this browser.

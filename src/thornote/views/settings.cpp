@@ -136,7 +136,7 @@ void EditorApp::loadPreferences()
 
 bool EditorApp::flushPreferences(bool force)
 {
-    if (preferencesPath.empty() || !preferenceSave.enabled) return false;
+    if (preferencesPath.empty() || !preferenceSave.enabled || syncingPreferences) return false;
     auto text = encodePreferences(preferences());
     if (!preferenceSave.due(text, SDL_GetTicks(), force)) return false;
     std::error_code ec;
@@ -148,8 +148,19 @@ bool EditorApp::flushPreferences(bool force)
     preferenceSave.at = 0;
     if (result) {
         preferencesStamp = result.stamp;
-        preferenceSave.saved = text;
-        settings.saveError.clear();
+        if (workspace.persist) {
+            syncingPreferences = true;
+            workspace.persist([this, text](std::string error) {
+                syncingPreferences = false;
+                if (error.empty()) {
+                    preferenceSave.saved = text;
+                    settings.saveError.clear();
+                } else settings.saveError = "Cannot save settings: " + error;
+            });
+        } else {
+            preferenceSave.saved = text;
+            settings.saveError.clear();
+        }
     } else {
         settings.saveError = "Cannot save settings: " + (ec ? ec.message() : result.error.message);
         if (result.state != storage::SaveState::NotWritten) preferenceSave.enabled = false;
