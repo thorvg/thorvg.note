@@ -385,7 +385,7 @@ private:
     NativeTitleBarInput titleBarInput;
     bool nativeInputReady = false;
     std::vector<uint32_t> pixels;
-    std::unique_ptr<tvg::SwCanvas> canvas{tvg::SwCanvas::gen(tvg::EngineOption::SmartRender)};
+    std::unique_ptr<tvg::SwCanvas> canvas{tvg::SwCanvas::gen(tvg::EngineOption::None)};
     std::shared_ptr<Mailbox> mailbox = std::make_shared<Mailbox>();
     std::unique_ptr<EditorApp> app;
     std::optional<EditorApp::WindowAction> pendingWindowAction;
