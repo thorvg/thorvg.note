@@ -427,7 +427,6 @@ bool TextEditor::Impl::update(double now)
     previousCaretVisible = caretVisible;
     context.begin(themeTokens, {0, 0, width, height}, seconds);
     context.rect({0, 0, width, height}, themeTokens.background);
-    if (configuration.lineNumbers) context.rect({0, 0, gutter, height}, themeTokens.surface);
     auto area = textArea();
     auto selection = editing.selection();
     const auto& geometry = view.layout();
