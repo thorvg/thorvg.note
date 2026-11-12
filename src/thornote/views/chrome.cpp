@@ -77,12 +77,16 @@ void EditorApp::drawTitleBar(ui::Rect r, bool headerOnly)
 {
     auto state = layoutScriptState();
     state["headerOnly"] = headerOnly;
+    state["titlebarWidth"] = double(r.w);
     layoutScript.refreshTitlebar(state);
     context.rect(r, theme.surface);
     auto& bar = layoutScript.titlebar();
     auto types = windowViewTypes(false);
     bar.render(context, "titlebar", r, types, commands);
-    if (composition != Layout::Memo) context.line(r.x, r.y + r.h - 1, r.x + r.w, r.y + r.h - 1, theme.border);
+    if (composition != Layout::Memo) {
+        if (width >= 660) context.line(r.x + r.w - 1, r.y, r.x + r.w - 1, r.y + r.h, theme.border);
+        else context.line(r.x, r.y + r.h - 1, r.x + r.w, r.y + r.h - 1, theme.border);
+    }
 }
 
 void EditorApp::drawAppIcon(ui::Rect r, bool divider)
@@ -248,10 +252,10 @@ void EditorApp::drawTabs(ui::Context& context, ui::Rect r, bool titlebar)
             auto closing = context.control("tabs/close/" + key, close, [this, id](const ui::Event& e) {
             if (e.activated(false)) { if (id) requestClose(id); else closeSettings(); } }, !tab || !tab->busy());
             if (closing.hovered) context.rect(close, theme.raised, 4);
-            if (closing.hovered || closing.focused || active) context.icon("tabs/close/" + key + "/icon", close, "close", theme.muted,
-                                                                           {closing.hovered, closing.pressed, false, !tab || !tab->busy(), closing.focused});
-            else if (tab && tab->dirty()) context.icon("tabs/dirty/" + key, close, "dirty", theme.muted,
-                                                       {state.hovered, state.pressed, true, true, state.focused});
+            if (tab && tab->dirty()) context.icon("tabs/dirty/" + key, close, "dirty", theme.muted,
+                                                  {.hovered = closing.hovered});
+            else if (closing.hovered || closing.focused || active) context.icon("tabs/close/" + key + "/icon", close, "close", theme.muted,
+                                                                                {closing.hovered, closing.pressed, false, !tab || !tab->busy(), closing.focused});
             if (state.focused) context.focusRing(cell.inset(5));
             if (i + 1 < total && i != selected && i + 1 != selected)
                 context.line(cell.x + cellWidth - 1, r.y + r.h / 2 - 8, cell.x + cellWidth - 1, r.y + r.h / 2 + 8, theme.border);

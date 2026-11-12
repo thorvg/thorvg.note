@@ -59,6 +59,9 @@ local definition = {
       }
       menu.enabled = not state.dialog
     end
+    if not memo and state.navigation and (state.titlebarWidth or state.width) < 320 then
+      left = {left[1]}
+    end
     local right = {}
     if state.customTitleBar and not state.headerOnly then
       local function windowButton(action)
@@ -78,7 +81,7 @@ local definition = {
       if state.windowControlsLeading then
         table.insert(left, 1, controls)
       else
-        if not memo then
+        if not memo and not state.navigation then
           table.insert(left, 1, ui.view {id = "window-icon", source = "window-icon", width = 36, height = 40})
         end
         table.insert(right, controls)
@@ -97,7 +100,7 @@ local definition = {
       id = "titlebar", gap = 8, align = "center", overflow = "clip",
       children = {
         group("left", left),
-        ui.view {id = "caption", source = memo and "window-tabs" or "window-title"},
+        ui.view {id = "caption", source = memo and "window-tabs" or "window-drag"},
         group("right", right),
         ui.menu {id = "folder-menu", visible = false, compact = true, items = {
           {text = "Remove", command = "folder.remove"},

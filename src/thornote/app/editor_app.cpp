@@ -59,7 +59,10 @@ EditorApp::EditorApp(std::function<void()> wake, storage::Path settingsDirectory
         auto root = composition == Layout::Note ? recent.rootDirectory(path.parent_path()) : storage::Path{};
         recent.rememberFile(path, root.empty());
         if (!root.empty()) recent.rememberDirectory(root);
-        refreshNoteFiles(true);
+        const auto& files = noteBrowser.files();
+        bool known = std::any_of(files.begin(), files.end(), [&](const auto& file) { return file.path == path; });
+        noteBrowser.invalidatePreview(path);
+        refreshNoteFiles(!known);
     };
 }
 
@@ -146,7 +149,8 @@ void EditorApp::setLayout(Layout value)
 {
     composition = value;
     commandList = false;
-    documentOffset = collectionOffset = 0;
+    documentScroll = 0;
+    collectionOffset = 0;
     revealDocument = true;
     applyAppearance();
     focusEditor(!palette && prompt == Prompt::None && !dialog && menu.empty());
@@ -221,6 +225,7 @@ void EditorApp::registerCommands()
             noteSearch = {};
             if (collection == "favorites") favorites.insert(tab.id);
             else if (collection != "all") collection = "unsaved";
+            if (collection == "all") noteFileScroll = 0;
         }
         focusEditor(true);
     });

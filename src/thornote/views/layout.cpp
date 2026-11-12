@@ -9,24 +9,6 @@ namespace tn
 {
 namespace
 {
-std::string excerpt(std::string_view value)
-{
-    auto start = value.find_first_not_of("\n\r \t");
-    if (start == std::string_view::npos) return "";
-    value.remove_prefix(start);
-    value = value.substr(0, value.find('\n'));
-    auto length = std::min(value.size(), size_t(160));
-    while (length < value.size() && length && (uint8_t(value[length]) & 0xc0) == 0x80)
-        --length;
-    return std::string(value.substr(0, length));
-}
-
-std::string preview(const DocumentTab& tab)
-{
-    auto first = tab.document.text().find('\n');
-    return first == std::string::npos ? "" : excerpt(std::string_view(tab.document.text()).substr(first + 1));
-}
-
 bool matches(std::string_view value, std::string_view query)
 {
     return std::search(value.begin(), value.end(), query.begin(), query.end(), [](unsigned char a, unsigned char b) {
@@ -50,7 +32,7 @@ std::vector<DocumentTab*> EditorApp::filteredDocuments() const
         return hit.second;
     };
     for (const auto& tab : workspace.documents()) {
-        if (composition == Layout::Note && !commandList && !browsingNoteFiles()) {
+        if (composition == Layout::Note && !commandList) {
             if (collection == "favorites" && !favorites.count(tab->id)) continue;
             if (collection == "unsaved" && !tab->path.empty()) continue;
             if (!noteSearch.value.empty() && !matches(tab->title, noteSearch.value) && !contains(*tab)) continue;
@@ -73,7 +55,7 @@ void EditorApp::selectCollection(std::string value)
 {
     settings.active = false;
     collection = std::move(value);
-    documentOffset = 0;
+    documentScroll = 0;
     noteFileScroll = 0;
     refreshNoteFiles();
     auto documents = filteredDocuments();
@@ -83,8 +65,7 @@ void EditorApp::selectCollection(std::string value)
 
 void EditorApp::drawCollections(ui::Rect r)
 {
-    context.rect(r, theme.raised);
-    context.text({r.x + 16, r.y + 10, r.w - 32, 30}, "Library", theme.text, 13, true);
+    context.rect(r, theme.surface);
     size_t favoriteCount = 0, unsaved = 0;
     for (const auto& tab : workspace.documents()) {
         favoriteCount += favorites.count(tab->id);
@@ -95,10 +76,10 @@ void EditorApp::drawCollections(ui::Rect r)
         {"favorites", "Favorites", std::to_string(favoriteCount), "star"},
         {"unsaved", "Unsaved", std::to_string(unsaved), "file"},
     };
-    ui::list(context, "collections", {r.x + 6, r.y + 48, r.w - 12, 108}, collectionItems, collection, collectionList, [this](std::string id) { selectCollection(std::move(id)); }, 36);
-    context.text({r.x + 16, r.y + 170, r.w - 32, 24}, "RECENT FOLDERS", theme.muted, 10, true);
+    ui::list(context, "collections", {r.x + 6, r.y + 8, r.w - 12, 108}, collectionItems, collection, collectionList, [this](std::string id) { selectCollection(std::move(id)); }, 36);
+    context.text({r.x + 16, r.y + 130, r.w - 32, 24}, "RECENT FOLDERS", theme.muted, 10, true);
     folderItems.clear();
-    ui::Rect body{r.x + 6, r.y + 202, r.w - 12, std::max(0.0f, r.h - 214)};
+    ui::Rect body{r.x + 6, r.y + 162, r.w - 12, std::max(0.0f, r.h - 174)};
     size_t count = std::max(size_t(1), size_t(body.h / 36));
     const auto& folders = recent.rootDirectories();
     size_t limit = folders.size() > count ? folders.size() - count : 0;
@@ -123,40 +104,52 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
     }
     context.rect(r, theme.surface);
     auto documents = filteredDocuments();
-    std::string title = !notes ? "Documents" : collection == "favorites" ? "Favorites"
-        : collection == "unsaved"                                        ? "Unsaved"
-                                                                         : "All Notes";
-    context.text({r.x + 14, r.y + 9, r.w - 62, 30}, title, theme.text, 13, true);
-    context.text({r.x + r.w - 44, r.y + 9, 28, 30}, std::to_string(documents.size()), theme.muted, 11, false, ui::Align::End);
+    if (!notes) {
+        context.text({r.x + 14, r.y + 9, r.w - 62, 30}, "Documents", theme.text, 13, true);
+        context.text({r.x + r.w - 44, r.y + 9, 28, 30}, std::to_string(documents.size()), theme.muted, 11, false, ui::Align::End);
+    }
     float top = 48;
     if (notes) {
-        searchBounds = {r.x + 10, r.y + 48, r.w - 20, 30};
-        ui::textField(context, "notes/search", searchBounds, noteSearch, "Search notes", true, {}, "search");
-        top = 92;
+        drawNoteSearch(r, "Search notes");
+        top = 54;
         if (previousQuery != noteSearch.value) {
             previousQuery = noteSearch.value;
-            documentOffset = 0;
+            documentScroll = 0;
         }
     }
     ui::Rect body{r.x + 6, r.y + top, r.w - 12, std::max(0.0f, r.h - top - 6)};
-    float rowHeight = notes ? 72 : 48;
-    size_t count = std::max(size_t(1), size_t(body.h / rowHeight));
-    size_t limit = documents.size() > count ? documents.size() - count : 0;
-    if (revealDocument) {
-        auto found = std::find(documents.begin(), documents.end(), workspace.active());
-        if (found != documents.end()) {
-            size_t index = size_t(found - documents.begin());
-            if (index < documentOffset) documentOffset = index;
-            if (index >= documentOffset + count) documentOffset = index - count + 1;
+    struct Row
+    {
+        std::array<std::string, 3> lines;
+        float top, height;
+    };
+    std::vector<Row> rows;
+    float total = 0;
+    for (const auto* tab : documents) {
+        auto detail = tab->loading ? "Opening…" : tab->saving ? "Saving…"
+            : notes                                           ? documentPreview(tab->document.text())
+            : tab->path.empty()                               ? "Not saved"
+                                                              : displayName(tab->path.parent_path());
+        auto lines = notes ? previewLines(detail, body.w - 20)
+                           : std::array<std::string, 3>{context.elideText(detail, body.w - 28, 10)};
+        auto count = std::count_if(lines.begin(), lines.end(), [](const auto& line) { return !line.empty(); });
+        float height = notes ? 40 + count * 16 : 48;
+        rows.push_back({std::move(lines), total, height});
+        if (revealDocument && tab == workspace.active()) {
+            if (total < documentScroll) documentScroll = total;
+            else if (total + height > documentScroll + body.h) documentScroll = total + height - body.h;
         }
-        revealDocument = false;
+        total += height;
     }
-    context.scroll("documents/scroll", body, documentOffset, limit, {.step = 3});
+    revealDocument = false;
+    context.scroll("documents/scroll", body, documentScroll, std::max(0.0f, total - body.h), {.step = 60});
     context.clip(body, [&] {
-        for (size_t i = documentOffset; i < documents.size() && i < documentOffset + count; ++i) {
+        for (size_t i = 0; i < documents.size(); ++i) {
+            if (rows[i].top + rows[i].height <= documentScroll) continue;
+            if (rows[i].top >= documentScroll + body.h) break;
             auto tab = documents[i];
             auto id = tab->id;
-            ui::Rect row{body.x, body.y + (i - documentOffset) * rowHeight, body.w, rowHeight - 4};
+            ui::Rect row{body.x, body.y + rows[i].top - documentScroll, body.w, rows[i].height - 4};
             auto state = context.control("documents/" + std::to_string(id), row, [this, id](const ui::Event& e) {
                 if (e.activated()) {
                     activateDocument(id);
@@ -164,14 +157,12 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
             });
             bool selected = tab == workspace.active();
             if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);
-            context.text({row.x + 10, row.y + 5, row.w - 38, 24}, context.elideText(tab->displayTitle(notes), row.w - 44, 12, selected || notes), theme.text, 12, selected || notes);
-            auto detail = tab->loading ? "Opening…" : tab->saving ? "Saving…"
-                : tab->path.empty()                               ? "Not saved"
-                : notes                                           ? preview(*tab)
-                                                                  : displayName(tab->path.parent_path());
-            context.text({row.x + 10, row.y + 29, row.w - 20, notes ? 24.0f : 14.0f}, context.elideText(detail, row.w - 28, 10), theme.muted, 10);
-            if (tab->dirty()) context.icon("documents/" + std::to_string(id) + "/dirty", {row.x + row.w - 26, row.y + 5, 24, 24}, "dirty", theme.muted,
-                                           {state.hovered, state.pressed, true, true, state.focused});
+            auto title = context.elideText(tab->displayTitle(notes), row.w - (tab->dirty() ? 44 : 20), 12, selected || notes);
+            context.text({row.x + 10, row.y + 5, row.w - 20, 24}, title, theme.text, 12, selected || notes);
+            for (size_t line = 0; line < rows[i].lines.size(); ++line)
+                if (!rows[i].lines[line].empty()) context.text({row.x + 10, row.y + 29 + line * 16, row.w - 20, 16}, rows[i].lines[line], theme.muted, 10);
+            if (tab->dirty()) context.icon("documents/" + std::to_string(id) + "/dirty", {row.x + 14 + context.textWidth(title, 12, selected || notes), row.y + 5, 20, 24}, "dirty", theme.muted,
+                                           {.hovered = state.hovered});
             if (notes && favorites.count(id)) context.icon("documents/" + std::to_string(id) + "/favorite", {row.x + row.w - 26, row.y + 33, 18, 18}, "star", theme.accent,
                                                            {state.hovered, state.pressed, true, true, state.focused});
             // The ring extends outward by 3px; keep its stroke inside the list clip.
@@ -179,7 +170,7 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
         }
     });
     if (documents.empty()) context.text(body.inset(12), notes ? "No matching notes" : "No open documents", theme.muted, 12, false, ui::Align::Center);
-    ui::scrollbar(context, {r.x + r.w - 4, body.y, 2, body.h}, float(count), float(documents.size()), float(documentOffset), 20);
+    ui::scrollbar(context, {r.x + r.w - 4, body.y, 2, body.h}, body.h, total, documentScroll, 20);
     context.line(r.x + r.w - 1, r.y, r.x + r.w - 1, r.y + r.h, theme.border);
 }
 
@@ -193,15 +184,35 @@ void EditorApp::drawSidebar(ui::Rect r)
 
 void EditorApp::drawNoteHeading(ui::Rect r)
 {
-    context.rect(r, theme.background);
+    context.rect(r, theme.surface);
     auto tab = visibleDocument();
     auto breadcrumb = settings.active ? "Settings" : !tab ? ""
         : tab->path.empty()                               ? "Unsaved / " + tab->displayTitle()
                                                           : displayName(tab->path.parent_path()) + " / " + tab->title;
-    ui::Rect breadcrumbBounds{r.x + options.padding, r.y + 3, r.w - options.padding - 64, 32};
+    ui::Rect breadcrumbBounds{r.x + options.padding, r.y, r.w - options.padding - 92, r.h};
     context.text(breadcrumbBounds, context.elideText(breadcrumb, breadcrumbBounds.w - 6, 11), theme.muted, 11);
+    ui::Rect toggle{r.x + r.w - 78, r.y + (r.h - 28) / 2, 28, 28};
+    bool enabled = tab && !tab->loading;
+    auto state = context.control("note/lineNumbers", toggle, [this](const ui::Event& event) {
+        if (event.activated(false)) {
+            commands.execute("view.lineNumbers.toggle");
+            focusEditor(true);
+        } }, enabled);
+    if (state.hovered) context.rect(toggle, theme.raised, 5);
+    context.icon("note/lineNumbers/icon", toggle, "line-numbers", theme.muted,
+                 {state.hovered, state.pressed, options.lineNumbers, enabled, state.focused});
+    if (state.focused) context.focusRing(toggle);
+    if (state.hovered) {
+        hint = options.lineNumbers ? "Hide line numbers" : "Show line numbers";
+        hintBounds = toggle;
+    }
+    drawNoteFavorite({r.x + r.w - 42, r.y + (r.h - 28) / 2, 28, 28});
+}
+
+void EditorApp::drawNoteFavorite(ui::Rect star)
+{
+    auto tab = visibleDocument();
     if (!tab) return;
-    ui::Rect star{r.x + r.w - 48, r.y + 4, 28, 28};
     auto state = context.control("note/favorite", star, [this](const ui::Event& e) {
         if (e.activated(false)) commands.execute("note.favorite.toggle"); }, !tab->loading);
     if (state.hovered) context.rect(star, theme.raised, 5);
@@ -348,22 +359,41 @@ void EditorApp::render(float w, float h, double seconds)
             element.resizable = resizable;
             return element;
         };
-        auto tree = ui::column({
-            pane("titlebar", true, {}, ui::fixed(40)),
-            ui::row({
-                pane("collections", notes && navigation && w >= 940, ui::preferred(state.sidebarWidth, 150, 260), {}, true),
-                pane("documents", navigation, ui::preferred(notes ? state.notesWidth : commandList ? 260
-                                                                                                   : state.sidebarWidth,
-                                                            180, 340),
-                     {}, true),
-                ui::column({
-                    pane("tabs", composition != Layout::Memo && (settings.open || (!notes && workspace.documents().size() > 1)), {}, ui::fixed(34)),
-                    pane("note-heading", notes, {}, ui::fixed(38)),
-                    pane("content", true, {}),
-                }),
-            }),
-            pane("status", true, {}, ui::fixed(22)),
-        });
+        bool sidebarTitle = composition == Layout::Note && navigation;
+        bool categories = notes && navigation;
+        auto categoryList = pane("collections", true, {});
+        categoryList.id = "collection-list";
+        std::vector<ui::Element> categoryChildren;
+        if (sidebarTitle && categories) categoryChildren.push_back(pane("titlebar", true, {}, ui::fixed(40)));
+        categoryChildren.push_back(std::move(categoryList));
+        auto categoryPane = ui::column(std::move(categoryChildren));
+        categoryPane.id = "collections";
+        categoryPane.width = ui::preferred(state.sidebarWidth, customTitleBarVisible() && !windowControls.leading() ? 200 : 150, 260);
+        categoryPane.visible = categories;
+        categoryPane.resizable = true;
+        auto documentList = pane("documents", true, {});
+        documentList.id = "document-list";
+        std::vector<ui::Element> documentChildren;
+        if (sidebarTitle && !categories) documentChildren.push_back(pane("titlebar", true, {}, ui::fixed(40)));
+        documentChildren.push_back(std::move(documentList));
+        auto documentPane = ui::column(std::move(documentChildren));
+        documentPane.id = "documents";
+        documentPane.width = ui::preferred(notes ? state.notesWidth : commandList ? 260
+                                                                                  : state.sidebarWidth,
+                                           180, 340);
+        documentPane.visible = navigation;
+        documentPane.resizable = true;
+        std::vector<ui::Element> children;
+        if (!sidebarTitle) children.push_back(pane("titlebar", true, {}, ui::fixed(40)));
+        std::vector<ui::Element> content{
+            pane("tabs", composition != Layout::Memo && (settings.open || (!notes && workspace.documents().size() > 1)), {}, ui::fixed(34)),
+            pane("note-heading", notes && !settings.active, {}, ui::fixed(40)),
+            pane("content", true, {}),
+        };
+        if (composition == Layout::Note) content.push_back(pane("status", true, {}, ui::fixed(22)));
+        children.push_back(ui::row({std::move(categoryPane), std::move(documentPane), ui::column(std::move(content))}));
+        if (composition != Layout::Note) children.push_back(pane("status", true, {}, ui::fixed(22)));
+        auto tree = ui::column(std::move(children));
         std::string error;
         if (workbench.apply(std::move(tree), error)) workbench.render(context, "workspace", {0, 0, w, h}, types, commands);
     }

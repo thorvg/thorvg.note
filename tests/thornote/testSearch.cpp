@@ -1,5 +1,6 @@
 #include <common/doctest/doctest.h>
 #include <common/engine.h>
+#include <storage/common/files.h>
 #include <thornote/app/editor_app.h>
 
 namespace tn::test
@@ -26,6 +27,8 @@ public:
     }
 
     auto& state() { return app->find; }
+    auto& browser() { return app->noteBrowser; }
+    const auto& collection() const { return app->collection; }
     bool run(std::string_view command) { return app->commands.execute(command); }
     bool enabled(std::string_view command) { return app->commands.find(command)->enabled(); }
     void draw(float width = 800) { app->render(width, 600); }
@@ -315,6 +318,40 @@ TEST_CASE("theme_highlight_tokens_round_trip_and_follow_defaults")
     CHECK(restored.colors.highlight.a == 0x78);
     REQUIRE(tn::parseTheme("return {schema=1, colors={text='#222222'}}", "theme.lua", true, restored, error));
     CHECK(restored.colors.highlight.r == tn::defaultTheme(true).colors.highlight.r);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "opening_a_listed_note_preserves_sidebar_geometry")
+{
+    storage::test::Directory directory;
+    storage::test::write(directory.file(), "# Title\n\nBody preview\n");
+    app->setLayout(tn::Layout::Note);
+    browser().show({directory.path});
+    auto wait = [&](const auto& complete) {
+        auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!complete() && std::chrono::steady_clock::now() < end) {
+            app->poll();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return complete();
+    };
+    REQUIRE(wait([&] { return !browser().loading(); }));
+    auto revision = browser().revision();
+    auto id = app->workspace.open(directory.file());
+    REQUIRE(wait([&] { return !app->workspace.find(id)->loading; }));
+    CHECK_FALSE(browser().loading());
+    CHECK(browser().revision() == revision);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "new_drafts_remain_in_all_notes")
+{
+    app->setLayout(tn::Layout::Note);
+    REQUIRE(run("file.new"));
+    CHECK(collection() == "all");
+    REQUIRE(app->workspace.active());
+    CHECK(app->workspace.active()->path.empty());
+    REQUIRE(run("file.new"));
+    CHECK(collection() == "all");
+    CHECK(app->workspace.documents().size() == 2);
 }
 
 TEST_SUITE_END();

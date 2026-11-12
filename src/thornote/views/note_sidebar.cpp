@@ -46,32 +46,116 @@ void EditorApp::removeNoteFolder(const storage::Path& path)
     refreshNoteFiles(true);
 }
 
+std::array<std::string, 3> EditorApp::previewLines(std::string_view text, float width) const
+{
+    std::array<std::string, 3> lines;
+    for (size_t line = 0; line < lines.size(); ++line) {
+        auto start = text.find_first_not_of(" \t");
+        if (start == std::string_view::npos) break;
+        text.remove_prefix(start);
+        if (line + 1 == lines.size()) {
+            lines[line] = context.elideText(text, width, 10);
+            break;
+        }
+        size_t end = 0, word = 0;
+        while (end < text.size()) {
+            auto next = end + 1;
+            while (next < text.size() && (uint8_t(text[next]) & 0xc0) == 0x80)
+                ++next;
+            if (end && context.textWidth(text.substr(0, next), 10) > width) break;
+            if (text[end] == ' ' || text[end] == '\t') word = next;
+            end = next;
+        }
+        if (end < text.size() && word) end = word;
+        auto value = text.substr(0, end);
+        auto last = value.find_last_not_of(" \t");
+        if (last != std::string_view::npos) lines[line] = value.substr(0, last + 1);
+        text.remove_prefix(end);
+    }
+    return lines;
+}
+
+void EditorApp::drawNoteSearch(ui::Rect r, std::string_view placeholder)
+{
+    searchBounds = {r.x + 10, r.y + 10, r.w - 56, 30};
+    ui::textField(context, "notes/search", searchBounds, noteSearch, placeholder, true, {}, "search");
+    ui::Rect button{r.x + r.w - 40, r.y + 10, 30, 30};
+    auto state = ui::button(context, "notes/new", button, "", [this] { commands.execute("file.new"); },
+                            {.style = ui::ButtonStyle::Quiet, .icon = "plus", .enabled = !dialog});
+    if (state.hovered) {
+        hint = "New document";
+        hintBounds = button;
+    }
+}
+
 void EditorApp::drawNoteFiles(ui::Rect r)
 {
     context.rect(r, theme.surface);
-    std::string title = "All";
-    if (collection != "all") {
-        auto path = utf8Path(collection.substr(7));
-        title = displayName(path);
-        if (title.empty()) title = displayPath(path);
-    }
-    context.text({r.x + 14, r.y + 9, r.w - 62, 30}, context.elideText(title, r.w - 66, 13, true), theme.text, 13, true);
-    searchBounds = {r.x + 10, r.y + 48, r.w - 20, 30};
-    ui::textField(context, "notes/search", searchBounds, noteSearch, "Search files", true, {}, "search");
+    drawNoteSearch(r, "Search files");
     if (previousQuery != noteSearch.value) {
         previousQuery = noteSearch.value;
         noteFileScroll = 0;
     }
     noteFiles.update(noteBrowser.files(), noteBrowser.revision(), noteSearch.value);
-    context.text({r.x + r.w - 44, r.y + 9, 28, 30}, std::to_string(noteFiles.count()), theme.muted, 11, false, ui::Align::End);
-    ui::Rect body{r.x + 6, r.y + 92, r.w - 12, std::max(0.0f, r.h - 98)};
-    float limit = std::max(0.0f, noteFiles.height() - body.h);
+    ui::Rect body{r.x + 6, r.y + 54, r.w - 12, std::max(0.0f, r.h - 60)};
+    struct Draft
+    {
+        DocumentTab* tab;
+        std::array<std::string, 3> lines;
+        float top, height;
+    };
+    std::vector<Draft> drafts;
+    float draftHeight = 0;
+    if (collection == "all") {
+        for (auto* tab : filteredDocuments()) {
+            if (!tab->path.empty()) continue;
+            if (drafts.empty()) draftHeight = 28;
+            auto lines = previewLines(documentPreview(tab->document.text()), body.w - 20);
+            auto count = std::count_if(lines.begin(), lines.end(), [](const auto& line) { return !line.empty(); });
+            float height = 40 + count * 16;
+            drafts.push_back({tab, std::move(lines), draftHeight, height});
+            draftHeight += height;
+        }
+    }
+    auto linesFor = [&](size_t file) {
+        const auto& path = noteBrowser.files()[file].path;
+        auto opened = std::find_if(workspace.documents().begin(), workspace.documents().end(), [&](const auto& tab) { return tab->path == path && !tab->loading; });
+        auto detail = opened != workspace.documents().end() ? documentPreview((*opened)->document.text()) : noteBrowser.preview(file);
+        return previewLines(detail, body.w - 20);
+    };
+    auto firstRow = noteFiles.visibleRows(noteFileScroll - draftHeight, body.h).first;
+    for (size_t i = firstRow; i < noteFiles.rows().size() && noteFiles.rows()[i].top + draftHeight < noteFileScroll + body.h; ++i) {
+        if (!noteFiles.rows()[i].file) continue;
+        auto lines = linesFor(*noteFiles.rows()[i].file);
+        auto count = std::count_if(lines.begin(), lines.end(), [](const auto& line) { return !line.empty(); });
+        noteFiles.rowHeight(i, 40 + count * 16);
+    }
+    float limit = std::max(0.0f, draftHeight + noteFiles.height() - body.h);
     context.scroll("note-files/scroll", body, noteFileScroll, limit, {.step = 60, .enabled = !dialog});
     context.clip(body, [&] {
-        auto [first, last] = noteFiles.visibleRows(noteFileScroll, body.h);
+        if (!drafts.empty()) context.text({body.x + 10, body.y - noteFileScroll, body.w - 20, 24}, "Unsaved", theme.muted, 10, true);
+        for (const auto& draft : drafts) {
+            if (draft.top + draft.height <= noteFileScroll) continue;
+            if (draft.top >= noteFileScroll + body.h) break;
+            auto* tab = draft.tab;
+            auto key = "note-drafts/" + std::to_string(tab->id);
+            ui::Rect row{body.x, body.y + draft.top - noteFileScroll, body.w, draft.height - 4};
+            auto state = context.control(key, row, [this, id = tab->id](const ui::Event& event) {
+                if (event.activated()) activateDocument(id); }, !dialog);
+            bool selected = !settings.active && tab == workspace.active();
+            if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);
+            auto title = context.elideText(tab->displayTitle(true), row.w - (tab->dirty() ? 44 : 20), 12, true);
+            context.text({row.x + 10, row.y + 4, row.w - 20, 24}, title, theme.text, 12, true);
+            if (tab->dirty()) context.icon(key + "/dirty", {row.x + 14 + context.textWidth(title, 12, true), row.y + 4, 20, 24}, "dirty", theme.muted,
+                                           {.hovered = state.hovered});
+            for (size_t line = 0; line < draft.lines.size(); ++line)
+                if (!draft.lines[line].empty()) context.text({row.x + 10, row.y + 29 + line * 16, row.w - 20, 16}, draft.lines[line], theme.muted, 10);
+            if (state.focused) context.focusRing(row.inset(4));
+        }
+        auto [first, last] = noteFiles.visibleRows(noteFileScroll - draftHeight, body.h);
         for (size_t i = first; i < last; ++i) {
             const auto& entry = noteFiles.rows()[i];
-            ui::Rect row{body.x, body.y + entry.top - noteFileScroll, body.w, entry.height - 4};
+            ui::Rect row{body.x, body.y + draftHeight + entry.top - noteFileScroll, body.w, entry.height - 4};
             if (!entry.file) {
                 context.text({row.x + 10, row.y, row.w - 20, row.h}, entry.date, theme.muted, 10, true);
                 continue;
@@ -84,12 +168,16 @@ void EditorApp::drawNoteFiles(ui::Rect r)
             auto active = workspace.active();
             bool selected = !settings.active && active && active->path == path;
             if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);
-            context.text({row.x + 10, row.y + 4, row.w - 20, 24}, context.elideText(displayName(path), row.w - 20, 12, true), theme.text, 12, true);
+            auto opened = std::find_if(workspace.documents().begin(), workspace.documents().end(), [&](const auto& tab) { return tab->path == path; });
+            bool modified = opened != workspace.documents().end() && (*opened)->dirty();
+            auto title = context.elideText(displayName(path), row.w - (modified ? 44 : 20), 12, true);
+            context.text({row.x + 10, row.y + 4, row.w - 20, 24}, title, theme.text, 12, true);
+            if (modified) context.icon(key + "/dirty", {row.x + 14 + context.textWidth(title, 12, true), row.y + 4, 20, 24}, "dirty", theme.muted,
+                                       {.hovered = state.hovered});
             auto folder = path.parent_path();
-            auto detail = displayName(folder);
-            if (detail.empty()) detail = displayPath(folder);
-            else detail += " · " + displayPath(folder.parent_path());
-            context.text({row.x + 10, row.y + 29, row.w - 20, 18}, context.elideText(detail, row.w - 20, 10), theme.muted, 10);
+            auto lines = linesFor(*entry.file);
+            for (size_t line = 0; line < lines.size(); ++line)
+                if (!lines[line].empty()) context.text({row.x + 10, row.y + 29 + line * 16, row.w - 20, 16}, lines[line], theme.muted, 10);
             if (state.hovered) {
                 hint = displayPath(folder);
                 hintBounds = row;
@@ -97,13 +185,13 @@ void EditorApp::drawNoteFiles(ui::Rect r)
             if (state.focused) context.focusRing(row.inset(4));
         }
     });
-    if (noteFiles.rows().empty()) {
+    if (noteFiles.rows().empty() && drafts.empty()) {
         auto message = noteBrowser.loading() ? "Loading files…" : !noteBrowser.error().empty() ? noteBrowser.error()
             : recent.directories.empty()                                                       ? "Open a file to add its folder"
                                                                                                : "No matching files";
         context.text(body.inset(12), message, theme.muted, 12, false, ui::Align::Center);
     }
-    ui::scrollbar(context, {r.x + r.w - 4, body.y, 2, body.h}, body.h, noteFiles.height(), noteFileScroll, 20);
+    ui::scrollbar(context, {r.x + r.w - 4, body.y, 2, body.h}, body.h, draftHeight + noteFiles.height(), noteFileScroll, 20);
     context.line(r.x + r.w - 1, r.y, r.x + r.w - 1, r.y + r.h, theme.border);
 }
 }  // namespace tn

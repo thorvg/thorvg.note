@@ -121,6 +121,7 @@ private:
     void drawCollections(ui::Rect);
     void drawDocuments(ui::Rect, bool notes);
     void drawNoteHeading(ui::Rect);
+    void drawNoteFavorite(ui::Rect);
     void drawStatus(ui::Rect);
     void drawEditor(ui::Rect);
     void drawFind(ui::Rect&);
@@ -143,6 +144,8 @@ private:
     void openFolderMenu(const storage::Path&, ui::Rect);
     void removeNoteFolder(const storage::Path&);
     void drawNoteFiles(ui::Rect);
+    void drawNoteSearch(ui::Rect, std::string_view placeholder);
+    std::array<std::string, 3> previewLines(std::string_view, float width) const;
     void drawPrompt(ui::Rect);
     DocumentTab* target() const;
     DocumentTab* visibleDocument() const;
@@ -240,8 +243,8 @@ private:
     storage::Path menuFolder;
     std::optional<ui::Rect> contextMenuAnchor;
     ui::MenuDefinition menuDefinition;
-    size_t menuSelection = 0, documentOffset = 0, collectionOffset = 0;
-    float noteFileScroll = 0;
+    size_t menuSelection = 0, collectionOffset = 0;
+    float noteFileScroll = 0, documentScroll = 0;
     ui::TextInput noteSearch;
     mutable std::string searchedQuery;
     mutable std::unordered_map<uint64_t, std::pair<uint64_t, bool>> searchHits;  // tab id -> (revision + 1, match)
