@@ -245,15 +245,17 @@ Rect TextView::caretRect() const
 
 std::vector<Rect> TextView::selectionRects(std::optional<Rect> viewport) const
 {
-    std::vector<Rect> result;
     auto selection = impl->selecting.selection();
-    if (selection.empty()) return result;
+    if (selection.empty()) return {};
+    return rangeRects(selection.start(), selection.end(), viewport);
+}
+
+std::vector<Rect> TextView::rangeRects(size_t start, size_t end, std::optional<Rect> viewport) const
+{
+    std::vector<Rect> result;
     for (const auto& line : impl->lines) {
-        if (line.offsets.empty() || selection.end() <= line.offsets.front() || selection.start() > line.offsets.back()) continue;
-        float left = line.position(std::max(selection.start(), line.offsets.front()));
-        float right = line.position(std::min(selection.end(), line.offsets.back()));
-        if (selection.end() > line.offsets.back()) right += line.breakWidth;
-        Rect rect{left, line.bounds.y, right - left, line.bounds.h};
+        if (viewport && (line.bounds.y + line.bounds.h <= viewport->y || line.bounds.y >= viewport->y + viewport->h)) continue;
+        auto rect = line.rangeRect(start, end);
         if (viewport) rect = rect.intersect(*viewport);
         if (rect.w > 0 && rect.h > 0) result.push_back(rect);
     }

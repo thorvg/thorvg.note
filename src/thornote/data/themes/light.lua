@@ -12,6 +12,8 @@ local definition = {
     accent = "#267A72",
     accentText = "#FFFFFF",
     selection = "#C9DED4",
+    highlight = "#FFEEB0",
+    highlightActive = "#F9D775",
     success = "#317E51",
     danger = "#AC4343",
   },

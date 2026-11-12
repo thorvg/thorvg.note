@@ -465,7 +465,7 @@ bool NativeTextInput::contextMenu(float x, float y, std::string_view selection, 
         bool shift;
     };
     const Entry entries[]{
-        {"Undo", "edit.undo", "z", false}, {"Redo", "edit.redo", "z", true}, {"Cut", "edit.cut", "x", false}, {"Copy", "edit.copy", "c", false}, {"Paste", "edit.paste", "v", false}, {"Select All", "edit.selectAll", "a", false}};
+        {"Undo", "edit.undo", "z", false}, {"Redo", "edit.redo", "z", true}, {"Cut", "edit.cut", "x", false}, {"Copy", "edit.copy", "c", false}, {"Paste", "edit.paste", "v", false}, {"Select All", "edit.selectAll", "a", false}, {"Find…", "edit.find", "f", false}, {"Replace…", "edit.replace", "", false}};
     NSInteger index = 0;
     for (const auto& entry : entries) {
         if (index == 2) [menu insertItem:NSMenuItem.separatorItem atIndex:index++];

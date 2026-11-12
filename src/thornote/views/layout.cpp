@@ -265,6 +265,8 @@ void EditorApp::drawEditor(ui::Rect r)
         tab->editor.scroll(saved.x, saved.y);
         tab->restoreView.reset();
     }
+    drawFind(r);
+    editorBounds = r;
     tab->editor.render(context, "editor", editorBounds);
 }
 
@@ -288,6 +290,7 @@ void EditorApp::render(float w, float h, double seconds)
         focusEditor(!searchFocused() && !palette && menu.empty() && prompt == Prompt::None && !dialog);
     }
     syncInputExtensions();
+    updateFind();
     hint.clear();
     if (!std::isfinite(seconds) || seconds < 0) seconds = ui::frameTime();
     context.begin(theme, {0, 0, w, h}, seconds);
@@ -298,6 +301,7 @@ void EditorApp::render(float w, float h, double seconds)
     if (notes) refreshNoteFiles();
     bool navigation = (composition == Layout::Note || commandList) && w >= 660;
     editorBounds = sidebarBounds = searchBounds = headerDragBounds = {};
+    find.queryBounds = find.replacementBounds = {};
     if (!menu.empty()) menuButton = contextMenuAnchor.value_or(ui::Rect{});
     windowDragBounds.clear();
     layoutScript.refresh(composition, layoutScriptState());

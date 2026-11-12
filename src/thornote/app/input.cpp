@@ -75,7 +75,7 @@ size_t byteAt(std::string_view text, int characters)
 bool EditorApp::searchFocused() const
 {
     auto active = workspace.active();
-    return palette || (settings.active && (context.focused() == "settings/search" || context.focused() == "settings/fonts/search")) || ((composition == Layout::Note || commandList) && (!active || !editorFocus) && ((commandList && context.focused() == "sidebar/commands/search") || (composition == Layout::Note && !commandList && context.focused() == "notes/search")));
+    return palette || findFocused() || (settings.active && (context.focused() == "settings/search" || context.focused() == "settings/fonts/search")) || ((composition == Layout::Note || commandList) && (!active || !editorFocus) && ((commandList && context.focused() == "sidebar/commands/search") || (composition == Layout::Note && !commandList && context.focused() == "notes/search")));
 }
 
 bool EditorApp::key(const SDL_KeyboardEvent& event)
@@ -137,6 +137,11 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
             case SDLK_W: command = "file.close"; break;
             case SDLK_Q: command = "file.quit"; break;
             case SDLK_COMMA: command = "settings.open"; break;
+            case SDLK_F: command = keys.alt ? "edit.replace" : "edit.find"; break;
+#ifndef __APPLE__
+            case SDLK_H: command = "edit.replace"; break;
+#endif
+            case SDLK_G: command = mods.shift ? "edit.find.previous" : "edit.find.next"; break;
             case SDLK_TAB: command = mods.shift ? "tab.previous" : "tab.next"; break;
             case SDLK_EQUALS:
             case SDLK_PLUS: command = "editor.font.increase"; break;
@@ -168,6 +173,18 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
             return true;
         }
     }
+    if (find.open && !settings.active) {
+        if (event.key == SDLK_ESCAPE) {
+            commands.execute("edit.find.close");
+            return true;
+        }
+        if (event.key == SDLK_F3 || (findFocused() && (event.key == SDLK_RETURN || event.key == SDLK_KP_ENTER))) {
+            auto command = event.key != SDLK_F3 && findFocused() && context.focused() == "find/replacement" ? "edit.replace.current" : mods.shift ? "edit.find.previous"
+                                                                                                                                                  : "edit.find.next";
+            commands.execute(command);
+            return true;
+        }
+    }
     if (settings.active) {
         context.key(uiKey(event.key), {.shift = mods.shift});
         return true;
@@ -190,6 +207,7 @@ bool EditorApp::nativeKeyDown(const SDL_KeyboardEvent& event)
 {
     bool handled = key(event);
     syncInputExtensions();
+    updateFind();
     return handled;
 }
 
@@ -206,6 +224,7 @@ void EditorApp::nativeTextInput(const NativeTextEdit& edit)
         tab->editor.composition(edit.text, edit.cursor);
     } else commitText(tab->id, edit.text);
     syncInputExtensions();
+    updateFind();
 }
 
 void EditorApp::commitText(uint64_t id, std::string_view text)
@@ -322,6 +341,7 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
         }
     }
     syncInputExtensions();
+    updateFind();
 }
 
 DocumentTab* EditorApp::textInputTarget() const
@@ -335,6 +355,10 @@ std::optional<ui::Rect> EditorApp::textInputArea()
     if (!windowFocused || dialog || prompt != Prompt::None || !menu.empty()) return {};
     if (palette) return ui::Rect{(width - std::min(550.0f, width - 32)) / 2 + 12, std::min(90.0f, height / 8) + (recentPalette ? 43 : 12), 1, 34};
     if (searchFocused()) {
+        if (findFocused()) {
+            auto r = context.focused() == "find/query" ? find.queryBounds : find.replacementBounds;
+            return ui::Rect{r.x + 8, r.y, 1, r.h};
+        }
         if (settings.active && (context.focused() == "settings/search" || context.focused() == "settings/fonts/search")) {
             auto r = context.focused() == "settings/fonts/search" ? settings.fontSearchBounds : settings.searchBounds;
             return ui::Rect{r.x + 38, r.y, 1, r.h};

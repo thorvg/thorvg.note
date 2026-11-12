@@ -5,3 +5,11 @@ test(
   depends: thornote,
   timeout: 120,
 )
+
+app_tests = executable(
+  'app-tests',
+  '../common/main.cpp',
+  'testSearch.cpp',
+  dependencies: [test_dep, thornote_app_dep],
+)
+test('search', app_tests, timeout: 120)

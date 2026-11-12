@@ -123,6 +123,13 @@ private:
     void drawNoteHeading(ui::Rect);
     void drawStatus(ui::Rect);
     void drawEditor(ui::Rect);
+    void drawFind(ui::Rect&);
+    void openFind(bool replace = false);
+    void closeFind();
+    void updateFind();
+    void findMatch(int direction);
+    void replaceMatch(bool all = false);
+    bool findFocused() const;
     void drawMenu();
     void openMenu(std::string_view);
     void openEditorMenu(float x, float y);
@@ -173,6 +180,16 @@ private:
         tn::Document sample;
         ui::TextEditor preview{sample};
     } settings;
+    struct Find
+    {
+        bool open = false, replace = false;
+        ui::TextInput query, replacement;
+        ui::Rect queryBounds{}, replacementBounds{};
+        uint64_t document = 0, revision = uint64_t(-1);
+        std::string searchedQuery;
+        std::vector<ui::TextDecoration> matches;
+        std::optional<size_t> current;
+    } find;
     storage::Path preferencesPath;
     storage::DiskStamp preferencesStamp;
     Autosave preferenceSave{500, true, true};

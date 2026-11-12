@@ -17,4 +17,15 @@ float TextLine::position(size_t offset) const
     return x.empty() ? bounds.x : x[std::min(size_t(found - offsets.begin()), x.size() - 1)];
 }
 
+Rect TextLine::rangeRect(size_t start, size_t end) const
+{
+    if (offsets.empty() || start > end || start > offsets.back() || end < offsets.front()) return {};
+    if (start == end) return {position(start), bounds.y, 1.5f, bounds.h};
+    if (end == offsets.front()) return {};
+    float left = position(std::max(start, offsets.front()));
+    float right = position(std::min(end, offsets.back()));
+    if (end > offsets.back()) right += breakWidth;
+    return {left, bounds.y, right - left, bounds.h};
+}
+
 }  // namespace ui

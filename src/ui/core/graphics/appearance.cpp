@@ -20,6 +20,8 @@ bool styleColor(std::string_view value, StyleColor& output)
         {"accent", &Theme::accent},
         {"accentText", &Theme::accentText},
         {"selection", &Theme::selection},
+        {"highlight", &Theme::highlight},
+        {"highlightActive", &Theme::highlightActive},
         {"success", &Theme::success},
         {"danger", &Theme::danger},
     };

@@ -442,18 +442,19 @@ bool TextEditor::Impl::update(double now)
     context.clip(area, [&] {
         auto caret = owner.caretRect();
         if (hasFocus) context.rect({area.x, caret.y, area.w, caret.h}, themeTokens.surface);
+        if (preedit.empty()) paintDecorations(first, end, false);
         if (!preedit.empty()) {
             for (auto rect : preeditRects) {
                 rect.x += area.x - horizontal;
                 rect.y += area.y - vertical;
                 context.rect(rect, themeTokens.raised);
             }
-        } else
-            for (auto rect : view.selectionRects(Rect{horizontal, vertical, area.w, area.h})) {
-                rect.x += area.x - horizontal;
-                rect.y += area.y - vertical;
-                context.rect(rect, themeTokens.selection);
+        } else if (!selection.empty())
+            for (size_t row = first; row < end; ++row) {
+                auto rect = rangeRect(geometry[row], selection.start(), selection.end());
+                if (rect.w > 0 && rect.h > 0) context.rect(rect, themeTokens.selection);
             }
+        if (preedit.empty()) paintDecorations(first, end, true);
         for (size_t row = first; row < end; ++row) {
             auto& line = *linePaints.at(row);
             auto text = line.body;

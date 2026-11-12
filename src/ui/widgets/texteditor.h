@@ -36,6 +36,18 @@ struct TextEditor::Impl
     std::unique_ptr<tvg::Text> measurer;
     std::map<size_t, std::unique_ptr<RenderLine>> linePaints;
     std::vector<std::string> displayLines;
+    struct Decoration
+    {
+        TextDecoration range;
+        size_t maxEnd;
+    };
+    struct DecorationLayer
+    {
+        std::string owner;
+        uint64_t revision;
+        std::vector<Decoration> ranges;
+    };
+    std::vector<DecorationLayer> decorations;
     FontId documentFont = 0, lineNumberFont = 0, preferredFont = 0, preferredNumberFont = 0;
     float documentTop = 0;
     uint64_t textStyleRevision = 1;
@@ -91,6 +103,8 @@ struct TextEditor::Impl
     std::vector<TextLine> layoutRows(std::string_view text, size_t base, std::vector<std::string>& display);
     size_t replaceRows(size_t first, size_t count, std::string_view text, size_t base);
     RenderLine& prepareLine(size_t row);
+    void paintDecorations(size_t first, size_t end, bool borders);
+    Rect rangeRect(const TextLine& line, size_t start, size_t end) const;
 };
 
 }  // namespace ui

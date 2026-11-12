@@ -32,6 +32,8 @@ constexpr ColorField colorFields[]{
     {"accent", &ui::Theme::accent},
     {"accentText", &ui::Theme::accentText},
     {"selection", &ui::Theme::selection},
+    {"highlight", &ui::Theme::highlight},
+    {"highlightActive", &ui::Theme::highlightActive},
     {"success", &ui::Theme::success},
     {"danger", &ui::Theme::danger},
 };
@@ -53,8 +55,8 @@ bool color(std::string_view value, ui::Color& result)
 ThemeProfile defaultTheme(bool dark)
 {
     ui::Theme colors = dark
-        ? ui::Theme{{30, 30, 30}, {42, 42, 42}, {49, 49, 49}, {64, 64, 64}, {245, 245, 245}, {163, 163, 163}, {120, 174, 237}, {255, 255, 255}, {43, 65, 88}, {74, 180, 125}, {246, 119, 119}}
-        : ui::Theme{{255, 255, 255}, {250, 250, 250}, {242, 242, 242}, {222, 222, 222}, {38, 38, 38}, {112, 112, 112}, {35, 112, 206}, {255, 255, 255}, {225, 236, 249}, {42, 138, 81}, {190, 53, 53}};
+        ? ui::Theme{{30, 30, 30}, {42, 42, 42}, {49, 49, 49}, {64, 64, 64}, {245, 245, 245}, {163, 163, 163}, {120, 174, 237}, {255, 255, 255}, {43, 65, 88}, {74, 180, 125}, {246, 119, 119}, {76, 64, 32}, {107, 80, 26}}
+        : ui::Theme{{255, 255, 255}, {250, 250, 250}, {242, 242, 242}, {222, 222, 222}, {38, 38, 38}, {112, 112, 112}, {35, 112, 206}, {255, 255, 255}, {225, 236, 249}, {42, 138, 81}, {190, 53, 53}, {255, 238, 176}, {249, 215, 117}};
     colors.radius = 6;
     return {std::move(colors), dark ? "Dark" : "Light"};
 }

@@ -145,7 +145,7 @@ void TextEditor::Impl::relayout()
         measurer->size(configuration.fontSize * fontPointsPerLogicalPixel);
         tvg::TextMetrics metrics{};
         measurer->metrics(metrics);
-        lineHeight = std::max(configuration.fontSize * 1.5f, metrics.advance);
+        lineHeight = std::max(configuration.fontSize * 1.3f, metrics.advance);
         documentTop = (lineHeight - (metrics.ascent - metrics.descent)) / 2;
         digitWidth = 0;
         if (configuration.lineNumbers) {

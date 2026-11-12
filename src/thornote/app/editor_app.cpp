@@ -247,6 +247,36 @@ void EditorApp::registerCommands()
         };
         commands.add({std::string("edit.") + entry.first, title, "Edit", shortcut, [this, key] { editorCommand(key); }, available, "No document or text selection is available"});
     }
+    auto searchable = [this, ready] {
+        return ready() && !target()->editor.composing();
+    };
+    auto matches = [this, searchable] {
+        if (!find.open || !searchable() || find.query.value.empty()) return false;
+        auto tab = target();
+        if (find.document == tab->id && find.revision == tab->document.revision() && find.searchedQuery == find.query.value) return !find.matches.empty();
+        return tab->document.text().find(find.query.value) != std::string::npos;
+    };
+    auto replaceable = [matches, editable] {
+        return matches() && editable();
+    };
+    add("edit.find", "Find", "Edit", "Mod+F", [this] { openFind(); }, searchable);
+#ifdef __APPLE__
+    const char* replaceShortcut = "Mod+Alt+F";
+#else
+    const char* replaceShortcut = "Mod+H";
+#endif
+    add("edit.replace", "Find and replace", "Edit", replaceShortcut, [this] { openFind(true); }, searchable);
+    add("edit.find.next", "Find next", "Edit", "Mod+G", [this] { findMatch(1); }, matches);
+    add("edit.find.previous", "Find previous", "Edit", "Mod+Shift+G", [this] { findMatch(-1); }, matches);
+    add("edit.find.close", "Close find", "Edit", "Escape", [this] { closeFind(); }, [this] { return find.open; });
+    add("edit.replace.toggle", "Toggle replacement field", "Edit", "", [this] {
+        if (!find.open) openFind(true);
+        else {
+            find.replace = !find.replace;
+            if (!find.replace && context.focused() == "find/replacement") context.focus("find/query");
+        } }, searchable);
+    add("edit.replace.current", "Replace current match", "Edit", "", [this] { replaceMatch(); }, replaceable);
+    add("edit.replace.all", "Replace all matches", "Edit", "", [this] { replaceMatch(true); }, replaceable);
     add("ui.commands.open", "Open Command Palette", "Commands", "Mod+Shift+P", [this] { openPalette(); });
     add("settings.open", "Open Settings", "Settings", "Mod+,", [this] { openSettings(); });
     add("settings.editor.open", "Open editor settings", "Settings", "", [this] {

@@ -92,4 +92,27 @@ TEST_CASE_FIXTURE(View, "pointer_drags_and_selects_words")
     checkSelection(6, 1);
 }
 
+TEST_CASE_FIXTURE(View, "range_geometry_is_independent_of_selection_and_clips_to_the_viewport")
+{
+    auto first = line(0, 11, 0);
+    first.breakWidth = 10;
+    REQUIRE(view.layout({first, line(12, 11, 20)}));
+    session.select(1, 3);
+    auto rectangles = view.rangeRects(6, 15);
+    REQUIRE(rectangles.size() == 2);
+    CHECK(rectangles[0].x == 60);
+    CHECK(rectangles[0].w == 60);
+    CHECK(rectangles[1].w == 30);
+    checkSelection(1, 3);
+    rectangles = view.rangeRects(6, 15, ui::Rect{10, 20, 100, 20});
+    REQUIRE(rectangles.size() == 1);
+    CHECK(rectangles[0].x == 10);
+    CHECK(rectangles[0].w == 20);
+    rectangles = view.rangeRects(14, 14);
+    REQUIRE(rectangles.size() == 1);
+    CHECK(rectangles[0].x == 20);
+    CHECK(rectangles[0].w == doctest::Approx(1.5f));
+    CHECK(view.rangeRects(15, 6).empty());
+}
+
 TEST_SUITE_END();

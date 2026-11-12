@@ -8,5 +8,6 @@ thornote_sources += files(
   'app_session.cpp',
   'editor_app.cpp',
   'input.cpp',
+  'search.cpp',
   'window.cpp',
 )

@@ -26,6 +26,7 @@
 #include <variant>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -180,6 +181,7 @@ struct Theme
 {
     Color background, surface, raised, border, text, muted;
     Color accent, accentText, selection, success, danger;
+    Color highlight{0, 0, 0, 0}, highlightActive{0, 0, 0, 0};
     float radius = 7;
     float fontSize = 13;  // Nominal em in logical px, independent of font-point and output-pixel units.
     float rowHeight = 32;
@@ -2234,6 +2236,9 @@ struct TextLine
      * @note Positions outside the line are clamped to its first/last stored boundary.
      */
     float position(size_t offset) const;
+
+    /** @brief Returns document-space range geometry on this line; an empty range draws a caret. */
+    Rect rangeRect(size_t start, size_t end) const;
 };
 
 /**
@@ -2306,6 +2311,9 @@ public:
      * @param[in] viewport Optional document-space viewport restricting the queried lines.
      */
     std::vector<Rect> selectionRects(std::optional<Rect> viewport = {}) const;
+
+    /** @brief Returns document-space rectangles for a byte range without changing selections. */
+    std::vector<Rect> rangeRects(size_t start, size_t end, std::optional<Rect> viewport = {}) const;
 
     /**
      * @brief Starts or extends selection at document-space coordinates.
@@ -2407,6 +2415,19 @@ struct EditorInputState
     bool text = true;                    ///< Whether committed text is inserted; false also keeps the IME off.
     CaretStyle caret = CaretStyle::Bar;  ///< Caret shape drawn by the editor.
     std::string status;                  ///< Mode label for the application to display, such as "NORMAL".
+};
+
+/**
+ * @brief Passive UTF-8 byte range styled with semantic theme colors.
+ *
+ * @note Transparent styles disable that paint. Empty ranges draw carets.
+ * Decorations do not affect selections, input, or undo history.
+ */
+struct TextDecoration
+{
+    size_t start = 0, end = 0;
+    StyleColor background{.token = &Theme::highlight};
+    StyleColor border{};
 };
 
 /**
@@ -2636,6 +2657,22 @@ public:
      * @brief Selects the complete Document through this editor.
      */
     void selectAll();
+
+    /**
+     * @brief Replaces one owner's decoration layer at the current document revision.
+     *
+     * @return False for a stale revision, empty owner, or invalid UTF-8 byte ranges; existing layers remain intact.
+     * @note Ranges may overlap. Layers paint in insertion order; borders paint above selection backgrounds.
+     * Layers are hidden during composition and after document changes until their owner supplies the new revision.
+     * Theme changes recolor decorations without resubmitting ranges.
+     */
+    bool decorations(std::string_view owner, uint64_t revision, std::span<const TextDecoration> ranges);
+
+    /** @brief Removes only the named owner's decoration layer. */
+    void clearDecorations(std::string_view owner);
+
+    /** @brief Returns visible range rectangles in editor-local coordinates for host overlays and anchors. */
+    std::vector<Rect> rangeRects(size_t start, size_t end);
 
     /**
      * @brief Returns the caret in editor-local logical coordinates, including scrolling.

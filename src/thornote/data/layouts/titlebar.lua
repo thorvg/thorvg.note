@@ -17,6 +17,8 @@ local definition = {
         items = {
           {text = "Save", command = "file.save", icon = ui.icons.save},
           {text = "Save As…", command = "file.saveAs"},
+          {text = "Find…", command = "edit.find", icon = ui.icons.search},
+          {text = "Replace…", command = "edit.replace"},
           {separator = true},
           {id = "layout", text = "Layout", items = {
             {text = "Memo", command = "layout.memo", checked = state.mode == "memo"},

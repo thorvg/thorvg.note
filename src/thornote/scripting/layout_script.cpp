@@ -371,7 +371,7 @@ std::optional<ui::MenuDefinition> LayoutScript::menu(std::string_view id) const
         menu.id = id;
         menu.compact = true;
         for (const auto& entry : std::vector<std::pair<const char*, const char*>>{
-                 {"Undo", "edit.undo"}, {"Redo", "edit.redo"}, {"", ""}, {"Cut", "edit.cut"}, {"Copy", "edit.copy"}, {"Paste", "edit.paste"}, {"Select All", "edit.selectAll"}}) {
+                 {"Undo", "edit.undo"}, {"Redo", "edit.redo"}, {"", ""}, {"Cut", "edit.cut"}, {"Copy", "edit.copy"}, {"Paste", "edit.paste"}, {"Select All", "edit.selectAll"}, {"", ""}, {"Find…", "edit.find"}, {"Replace…", "edit.replace"}}) {
             ui::MenuItem item;
             item.title = entry.first;
             item.command = entry.second;
