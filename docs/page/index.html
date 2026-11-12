@@ -75,6 +75,9 @@ a:focus-visible { outline: 2px solid #7377e0; outline-offset: 5px; border-radius
 .headline { max-width: 1120px; margin: 48px auto 0; color: #fff; text-align: center; }
 h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 4.2vw, 56px); font-weight: 500; line-height: 1.2857; letter-spacing: -1.3px; text-wrap: balance; }
 .headline p { max-width: 960px; margin: 12px auto 0; color: #edebe8; font-size: 23px; font-weight: 400; line-height: 1.45; text-wrap: balance; }
+.try-button { display: inline-flex; align-items: center; justify-content: center; min-width: 112px; min-height: 44px; margin-top: 24px; padding: 10px 28px; border-radius: 6px; background: #f3cd91; color: #25292e; font-size: 16px; font-weight: 600; text-decoration: none; transition: background 0.15s; }
+.try-button:hover { background: #ffdfab; }
+.try-button:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
 .demo { max-width: 1300px; margin-inline: auto; }
 .stage { position: relative; width: 100%; aspect-ratio: 13 / 8; min-height: 440px; overflow: hidden; background: #fff; border: 1px solid rgb(0 0 0 / 12%); border-radius: 14px; box-shadow: 0 24px 64px rgb(0 0 0 / 25%); transition: box-shadow 0.2s; }
 .stage[data-focus] { box-shadow: 0 0 0 3px rgb(255 255 255 / 30%), 0 24px 64px rgb(0 0 0 / 25%); }
@@ -267,6 +270,7 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
         <div class="headline">
             <h1 id="page-title">Note application powered by ThorVG</h1>
             <p>A plain-text editor rendered entirely as vectors. Try it in your browser.</p>
+            <a class="try-button" href="note.html">Try</a>
         </div>
     </section>
     <section class="shortcuts" aria-labelledby="shortcuts-title">

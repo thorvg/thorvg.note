@@ -5,7 +5,7 @@
     var status = document.getElementById('status');
     var options = new URLSearchParams(window.location.search);
     var theme = options.get('theme');
-    var layout = options.get('layout') === 'note' ? 'note' : 'memo';
+    var layout = (options.get('layout') || stage.dataset.layout) === 'note' ? 'note' : 'memo';
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
     var samples = ['README.md', 'Markdown.md', 'Theme.md', 'Welcome.md', 'Rendering.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
     var sample = options.get('sample') || stage.dataset.sample || 'Welcome.md';
@@ -117,6 +117,7 @@
     }
 
     var composing = false;
+    stage.addEventListener('contextmenu', function (event) { event.preventDefault(); });
     keyboard.addEventListener('compositionstart', function () { composing = true; });
     keyboard.addEventListener('compositionend', function () { composing = false; });
     canvas.addEventListener('mousedown', function (event) {
