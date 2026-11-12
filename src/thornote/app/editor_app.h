@@ -84,7 +84,6 @@ private:
     void closePalette();
     void openRecentFiles();
     void findFile(const storage::Path& directory = {});
-    void openRecentDirectory(const storage::Path&);
     bool openLatest(const storage::Path& directory);
     void drawWelcome(ui::Rect);
     bool welcomeVisible() const { return workspace.documents().empty() && !settings.active && (composition != Layout::Note || !folderWorkspace); }

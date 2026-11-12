@@ -42,17 +42,6 @@ bool EditorApp::openLatest(const storage::Path& directory)
     return true;
 }
 
-void EditorApp::openRecentDirectory(const storage::Path& path)
-{
-    std::error_code error;
-    if (!std::filesystem::is_directory(path, error)) {
-        workspace.error = "Directory is unavailable: " + displayPath(path);
-        return;
-    }
-    recent.rememberDirectory(path);
-    findFile(path);
-}
-
 void EditorApp::openRecentFiles()
 {
     if (prompt != Prompt::None || dialog) return;
@@ -75,12 +64,12 @@ void EditorApp::drawWelcome(ui::Rect viewport)
     constexpr float statusHeight = 22;
     ui::Rect body{viewport.x, viewport.y + titleHeight, viewport.w, std::max(0.0f, viewport.h - titleHeight - statusHeight)};
     constexpr float contentWidth = 480, pageWidth = contentWidth + 80, margin = 40, scrollbarSize = 12;
-    constexpr float rowHeight = 34, directoryHeight = 32;
-    constexpr float actionsGap = 22, directoriesGap = 20, headingHeight = 24;
+    constexpr float rowHeight = 34, fileHeight = 32;
+    constexpr float actionsGap = 22, historyGap = 20, headingHeight = 24;
     constexpr float logoWidth = 144, logoHeight = logoWidth * 185 / 172.359f;
-    auto directoryCount = std::min(recent.directories.size(), size_t(5));
-    float historyHeight = directoryCount ? directoryCount * directoryHeight : 32;
-    float fixedHeight = actionsGap + 5 * rowHeight + directoriesGap + headingHeight + historyHeight;
+    auto fileCount = std::min(recent.files.size(), size_t(5));
+    float historyHeight = fileCount ? fileCount * fileHeight : 32;
+    float fixedHeight = actionsGap + 5 * rowHeight + historyGap + headingHeight + historyHeight;
     float contentHeight = margin * 2 + logoHeight + fixedHeight;
     bool vertical = contentHeight > body.h;
     bool horizontal = pageWidth > body.w - (vertical ? scrollbarSize : 0);
@@ -126,17 +115,17 @@ void EditorApp::drawWelcome(ui::Rect viewport)
             context.text(key, shortcut, theme.muted, 11, false, ui::Align::Center);
             if (state.focused) context.focusRing(row.inset(2));
         }
-        float directoriesY = y + 5 * rowHeight + directoriesGap;
-        context.text({actionsX + 12, directoriesY, actionsWidth - 24, headingHeight}, "Recent Directories", theme.muted, 12, true);
-        if (recent.directories.empty())
-            context.text({actionsX + 12, directoriesY + headingHeight, actionsWidth - 24, directoryHeight}, "Folders appear here as you open files.", theme.muted, 11);
-        for (size_t i = 0; i < directoryCount; ++i) {
-            auto path = recent.directories[i];
-            ui::Rect row{actionsX, directoriesY + headingHeight + i * directoryHeight, actionsWidth, directoryHeight};
-            auto state = context.control("welcome/directory/" + std::to_string(i), row, [this, path](const ui::Event& event) {
-                if (event.activated()) openRecentDirectory(path); }, !dialog);
+        float historyY = y + 5 * rowHeight + historyGap;
+        context.text({actionsX + 12, historyY, actionsWidth - 24, headingHeight}, "Recent Files", theme.muted, 12, true);
+        if (recent.files.empty())
+            context.text({actionsX + 12, historyY + headingHeight, actionsWidth - 24, fileHeight}, "Files appear here as you open them.", theme.muted, 11);
+        for (size_t i = 0; i < fileCount; ++i) {
+            auto path = recent.files[i];
+            ui::Rect row{actionsX, historyY + headingHeight + i * fileHeight, actionsWidth, fileHeight};
+            auto state = context.control("welcome/file/" + std::to_string(i), row, [this, path](const ui::Event& event) {
+                if (event.activated()) activateDocument(workspace.open(path, false)); }, !dialog);
             if (state.hovered || state.pressed) context.rect(row, theme.raised, theme.radius);
-            context.icon("welcome/directory/" + utf8(path) + "/icon", {row.x + 12, row.y + (row.h - 18) / 2, 18, 18}, "folder", theme.muted,
+            context.icon("welcome/file/" + utf8(path) + "/icon", {row.x + 12, row.y + (row.h - 18) / 2, 18, 18}, "file", theme.muted,
                          {state.hovered, state.pressed, false, !dialog, state.focused});
             auto name = displayName(path);
             if (name.empty()) name = displayPath(path);
