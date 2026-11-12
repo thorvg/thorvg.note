@@ -62,6 +62,7 @@
         if (!entry.animation) return;
         var state = entry.card.disabled ? 'disabled' : entry.pressed ? 'pressed' : entry.active ? 'active'
             : entry.hovered ? 'hover' : entry.focused ? 'focused' : 'idle';
+        if (!entry.poses[state]) state = entry.hovered && entry.poses.hover ? 'hover' : 'idle';
         if (state === entry.state) return;
         var now = performance.now(), from = sample(entry, now), to = entry.poses[state];
         var peak = entry.poses[state + '-overshoot'];
