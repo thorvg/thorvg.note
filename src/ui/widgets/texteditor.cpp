@@ -120,6 +120,13 @@ float TextEditor::Impl::maxVerticalScroll() const
     // a viewport shorter than a line still shows the last line.
     auto total = contentHeight(), overflow = total - textArea().h;
     if (overflow <= 0) return 0;
+    if (configuration.markdown) {
+        const auto& rows = view.layout();
+        if (rows.empty()) return 0;
+        if (rows.back().bounds.h > textArea().h) return overflow;
+        auto next = std::lower_bound(rows.begin(), rows.end(), overflow, [](const auto& row, float y) { return row.bounds.y < y; });
+        return next == rows.end() ? rows.back().bounds.y : next->bounds.y;
+    }
     return std::max(0.0f, std::min(std::ceil(overflow / lineHeight - lineEdge) * lineHeight, total - lineHeight));
 }
 
@@ -234,9 +241,20 @@ void TextEditor::Impl::wheel(float y, float x)
     float steps = std::trunc(wheelCarry);
     wheelCarry -= steps;
     if (steps != 0) {
-        float top = vertical / lineHeight, edge = std::round(top);
-        if (std::abs(top - edge) < lineEdge) top = edge;
-        vertical = (steps > 0 ? std::floor(top + steps) : std::ceil(top + steps)) * lineHeight;
+        if (configuration.markdown) {
+            const auto& rows = view.layout();
+            float epsilon = lineHeight * lineEdge;
+            auto next = steps > 0
+                ? std::upper_bound(rows.begin(), rows.end(), vertical + epsilon, [](float y, const auto& row) { return y < row.bounds.y; })
+                : std::lower_bound(rows.begin(), rows.end(), vertical - epsilon, [](const auto& row, float y) { return row.bounds.y < y; });
+            auto jump = ptrdiff_t(std::clamp(steps, -float(rows.size()), float(rows.size())));
+            auto target = std::clamp((next - rows.begin()) + jump - (steps > 0 ? 1 : 0), ptrdiff_t(0), ptrdiff_t(rows.size() - 1));
+            vertical = steps > 0 && next == rows.end() ? maxVerticalScroll() : rows[size_t(target)].bounds.y;
+        } else {
+            float top = vertical / lineHeight, edge = std::round(top);
+            if (std::abs(top - edge) < lineEdge) top = edge;
+            vertical = (steps > 0 ? std::floor(top + steps) : std::ceil(top + steps)) * lineHeight;
+        }
     }
     horizontal -= x * configuration.fontSize * 3;
     clampScroll();
@@ -435,13 +453,17 @@ bool TextEditor::Impl::update(double now)
         if (configuration.lineNumbers)
             for (size_t row = first; row < end; ++row) {
                 auto& line = *linePaints.at(row);
-                transform(line.number, {1, 0, gutter - configuration.padding - line.numberWidth, 0, 1, area.y + geometry[row].bounds.y + line.numberTop - vertical, 0, 0, 1});
+                transform(line.number, {1, 0, gutter - configuration.padding - line.numberWidth, 0, 1, area.y + geometry[row].bounds.y - vertical, 0, 0, 1});
                 context.add(line.number);
             }
     });
     context.clip(area, [&] {
         auto caret = owner.caretRect();
         if (hasFocus) context.rect({area.x, caret.y, area.w, caret.h}, themeTokens.surface);
+        if (configuration.markdown)
+            for (size_t row = first; row < end; ++row)
+                for (const auto& run : rowRuns[row])
+                    if (run.format.code) context.rect({area.x + run.left - horizontal, area.y + geometry[row].bounds.y - vertical, run.width, geometry[row].bounds.h}, markdownColor(&Theme::markdownCodeBackground), 2);
         if (preedit.empty()) paintDecorations(first, end, false);
         if (!preedit.empty()) {
             for (auto rect : preeditRects) {
@@ -457,9 +479,22 @@ bool TextEditor::Impl::update(double now)
         if (preedit.empty()) paintDecorations(first, end, true);
         for (size_t row = first; row < end; ++row) {
             auto& line = *linePaints.at(row);
-            auto text = line.body;
-            transform(text, {1, 0, area.x + line.bodyLeft - horizontal, 0, 1, area.y + geometry[row].bounds.y + documentTop - vertical, 0, 0, 1});
-            context.add(text);
+            if (configuration.markdown) {
+                for (size_t i = 0; i < rowRuns[row].size(); ++i) {
+                    const auto& run = rowRuns[row][i];
+                    auto text = i ? line.runs[i - 1]->text : line.body;
+                    float x = area.x + run.left - horizontal, y = area.y + geometry[row].bounds.y - vertical;
+                    transform(text, {1, 0, x + run.leading, 0, 1, y + run.top, 0, 0, 1});
+                    context.add(text);
+                    auto color = markdownColor(run.format.color);
+                    if (run.format.strike) context.line(x, y + geometry[row].bounds.h * 0.55f, x + run.width, y + geometry[row].bounds.h * 0.55f, color);
+                    if (run.format.link) context.line(x, y + geometry[row].bounds.h * 0.85f, x + run.width, y + geometry[row].bounds.h * 0.85f, color);
+                }
+            } else {
+                auto text = line.body;
+                transform(text, {1, 0, area.x + line.bodyLeft - horizontal, 0, 1, area.y + geometry[row].bounds.y + documentTop - vertical, 0, 0, 1});
+                context.add(text);
+            }
         }
         if (!preedit.empty()) {
             for (auto rect : preeditRects) {

@@ -348,7 +348,9 @@ bool TextView::key(Key key, Modifiers mods, float pageHeight)
         auto height = std::max(1.0f, line.bounds.h);
         float distance = key == Key::PageUp || key == Key::PageDown ? std::max(1.0f, std::floor(pageHeight / height)) * height : height;
         float y = line.bounds.y + (up ? -distance : distance);
-        if (up)
+        if (key == Key::Up) target = current ? current - 1 : 0;
+        else if (key == Key::Down) target = std::min(current + 1, impl->lines.size() - 1);
+        else if (up)
             while (target && impl->lines[target].bounds.y > y)
                 --target;
         else

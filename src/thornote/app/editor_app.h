@@ -161,7 +161,7 @@ private:
     RecentItems recent;
     storage::Path findDirectory;  // Folder shown by the pending open dialog.
     std::unique_ptr<tvg::Picture> titleBarIcon;
-    ui::TextEditorOptions options;
+    ui::TextEditorOptions options{.markdown = true};
     ui::TabOptions tabOptions{ui::TabStyle::Connected, 7, 6};
     ui::FontId editorFont = 0, lineNumberFont = 0;
     std::array<ui::FontId, 2> bundledFonts{};

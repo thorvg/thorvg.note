@@ -8,4 +8,5 @@ ui_sources += files(
   'texteditor_api.cpp',
   'texteditor_decorations.cpp',
   'texteditor_layout.cpp',
+  'texteditor_markdown.cpp',
 )

@@ -53,32 +53,52 @@ float TextEditor::Impl::measure(std::string_view text, FontId font) const
     return width;
 }
 
-std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t base, std::vector<std::string>& display)
+std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& styles)
 {
     auto* fonts = documentFont ? &detail::fontManager() : nullptr;
     std::vector<TextLine> lines;
-    float scale = fonts ? configuration.fontSize / fonts->unitsPerEm(documentFont) : 0;
-    auto breakWidth = measure(" ");
+    constexpr float headingScale[] = {1, 2, 1.65f, 1.4f, 1.2f, 1.1f, 1.05f};
     for (size_t begin = 0;;) {
         auto stop = std::min(text.find('\n', begin), text.size());
+        auto rowFormat = formatAt(base + begin);
+        float sizeScale = headingScale[std::min(rowFormat.heading, 6u)];
+        float size = configuration.fontSize * sizeScale;
+        float rowHeight = lineHeight * sizeScale;
         TextLine line;
         std::string shown;
+        std::vector<Run> runs;
+        Format current;
+        FontId font = documentFont;
+        bool leading = true;
         uint32_t previous = 0;
         float x = 0;
         size_t column = 0;
         line.offsets.push_back(base + begin);
         line.x.push_back(0);
+        measurer->font(fonts ? fonts->textFont(font) : themeTokens.font.c_str());
+        measurer->size(size * fontPointsPerLogicalPixel);
+        tvg::GlyphMetrics space{};
+        glyphMetrics(measurer.get(), " ", space);
+        line.breakWidth = space.advance;
         auto append = [&](std::string_view value, uint32_t cp, bool caret) {
             tvg::GlyphMetrics metrics{};
             glyphMetrics(measurer.get(), value, metrics);
             if (fonts) {
-                auto glyph = fonts->glyph(documentFont, cp);
-                x += fonts->textKerning(documentFont, previous, glyph) * scale;
+                auto glyph = fonts->glyph(font, cp);
+                x += fonts->textKerning(font, previous, glyph) * size / fonts->unitsPerEm(font);
                 previous = glyph;
             }
             if (caret) line.x.back() = x;
+            if (!runs.empty() && leading && cp != ' ') {
+                runs.back().leading = x - runs.back().left;
+                leading = false;
+            }
             x += metrics.advance;
             shown.append(value);
+            if (!runs.empty()) {
+                runs.back().end = shown.size();
+                runs.back().width = x - runs.back().left;
+            }
         };
         for (size_t offset = begin; offset < stop;) {
             auto next = offset + 1;
@@ -86,6 +106,21 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 ++next;
             auto value = text.substr(offset, next - offset);
             auto cp = codepoint(value);
+            auto format = formatAt(base + offset);
+            auto face = format.bold ? boldDocumentFont : documentFont;
+            if (fonts && face != documentFont && !fonts->glyph(face, cp)) face = documentFont;
+            if (configuration.markdown && (runs.empty() || format.start != current.start || format.end != current.end || face != font)) {
+                current = format;
+                font = face;
+                measurer->font(fonts ? fonts->textFont(font) : themeTokens.font.c_str());
+                measurer->size(size * fontPointsPerLogicalPixel);
+                tvg::TextMetrics metrics{};
+                measurer->metrics(metrics);
+                rowHeight = std::max(rowHeight, metrics.advance);
+                runs.push_back({.first = shown.size(), .left = x, .top = metrics.ascent - metrics.descent, .scale = sizeScale, .font = font, .format = format});
+                leading = true;
+                previous = 0;
+            }
             if (cp == '\t') {
                 auto spaces = 4 - column % 4;
                 for (size_t i = 0; i < spaces; ++i)
@@ -99,28 +134,40 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
             line.x.push_back(x);
             offset = next;
         }
-        line.bounds = {0, 0, x, lineHeight};
-        line.breakWidth = breakWidth;
+        for (auto& run : runs)
+            run.top = (rowHeight - run.top) / 2;
+        line.bounds = {0, 0, x, rowHeight};
         lines.push_back(std::move(line));
         display.push_back(std::move(shown));
-        if (stop == text.size()) return lines;
+        styles.push_back(std::move(runs));
+        if (stop == text.size()) break;
         begin = stop + 1;
     }
+    measurer->font(fonts ? fonts->textFont(documentFont) : themeTokens.font.c_str());
+    measurer->size(configuration.fontSize * fontPointsPerLogicalPixel);
+    return lines;
 }
 
 size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_view text, size_t base)
 {
     std::vector<std::string> display;
-    auto lines = layoutRows(text, base, display);
-    for (size_t i = 0; i < lines.size(); ++i)
-        lines[i].bounds.y = (first + i) * lineHeight;
-    // Later rows keep their measurements and move with the replaced text.
+    std::vector<std::vector<Run>> runs;
+    auto lines = layoutRows(text, base, display, runs);
     const auto& old = view.layout();
+    float top = first < old.size() ? old[first].bounds.y : contentHeight();
+    float bottom = first + count < old.size() ? old[first + count].bounds.y : contentHeight();
+    float y = top;
+    for (auto& line : lines) {
+        line.bounds.y = y;
+        y += line.bounds.h;
+    }
     auto shift = first + count < old.size() ? ptrdiff_t(base + text.size() + 1) - ptrdiff_t(old[first + count].offsets.front()) : 0;
     auto rows = lines.size();
-    view.layout(first, count, std::move(lines), shift, (float(rows) - float(count)) * lineHeight);
+    view.layout(first, count, std::move(lines), shift, y - bottom);
     displayLines.erase(displayLines.begin() + first, displayLines.begin() + first + count);
     displayLines.insert(displayLines.begin() + first, std::make_move_iterator(display.begin()), std::make_move_iterator(display.end()));
+    rowRuns.erase(rowRuns.begin() + first, rowRuns.begin() + first + count);
+    rowRuns.insert(rowRuns.begin() + first, std::make_move_iterator(runs.begin()), std::make_move_iterator(runs.end()));
     return rows;
 }
 
@@ -137,10 +184,21 @@ void TextEditor::Impl::relayout()
     auto change = document.changedSince(measuredRevision, start, end);
     auto font = preferredFont ? preferredFont : detail::fontManager().find(themeTokens.font);
     if (!font) fonts = nullptr;
-    bool full = layoutDirty || change == tn::ChangeStatus::Untracked || font != documentFont || generation != measuredFontGeneration || (composedRows && measuredRevision != document.revision());
+    bool markdownChanged = configuration.markdown && markdownRevision != document.revision();
+    if (markdownChanged) parseMarkdown();
+    bool full = markdownChanged || layoutDirty || change == tn::ChangeStatus::Untracked || font != documentFont || generation != measuredFontGeneration || (composedRows && measuredRevision != document.revision());
     if (full) {
         if (font != documentFont || generation != measuredFontGeneration) ++textStyleRevision;
         documentFont = font;
+        boldDocumentFont = documentFont;
+        if (fonts) {
+            for (const auto& info : fonts->fonts()) {
+                if (info.id != documentFont) continue;
+                auto bold = fonts->find(info.family, 700);
+                if (bold) boldDocumentFont = bold;
+                break;
+            }
+        }
         measurer->font(fonts ? fonts->textFont(documentFont) : themeTokens.font.c_str());
         measurer->size(configuration.fontSize * fontPointsPerLogicalPixel);
         tvg::TextMetrics metrics{};
@@ -179,12 +237,12 @@ void TextEditor::Impl::relayout()
         preeditRects.clear();
         for (size_t row = first; row < first + composedRows; ++row) {
             const auto& line = view.layout()[row];
-            if (cursor >= line.offsets.front() && cursor <= line.offsets.back()) preeditCaret = {line.position(cursor), line.bounds.y, 1.5f, lineHeight};
+            if (cursor >= line.offsets.front() && cursor <= line.offsets.back()) preeditCaret = {line.position(cursor), line.bounds.y, 1.5f, line.bounds.h};
             if (finish > line.offsets.front() && begin <= line.offsets.back()) {
                 float left = line.position(std::max(begin, line.offsets.front()));
                 float right = line.position(std::min(finish, line.offsets.back()));
                 if (finish > line.offsets.back()) right += line.breakWidth;
-                preeditRects.push_back({left, line.bounds.y, right - left, lineHeight});
+                preeditRects.push_back({left, line.bounds.y, right - left, line.bounds.h});
             }
         }
     }
@@ -225,11 +283,15 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
         style(cached->body, documentFont, themeTokens.text);
         style(cached->number, lineNumberFont, themeTokens.muted);
         cached->numberWidth = measure(std::to_string(row + 1), lineNumberFont);
-        tvg::TextMetrics metrics{};
-        cached->number->metrics(metrics);
-        cached->numberTop = (lineHeight - metrics.ascent + metrics.descent) / 2;
         cached->style = textStyleRevision;
     }
+    if (configuration.markdown) {
+        if (restyled || !cached->assigned || cached->value != displayLines[row]) prepareRuns(*cached, row);
+        cached->value = displayLines[row];
+        cached->assigned = true;
+        return *cached;
+    }
+    cached->runs.clear();
     if (restyled || !cached->assigned || cached->value != displayLines[row]) {
         cached->value = displayLines[row];
         auto first = cached->value.find_first_not_of(' ');

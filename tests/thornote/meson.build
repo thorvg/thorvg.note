@@ -10,6 +10,7 @@ app_tests = executable(
   'app-tests',
   '../common/main.cpp',
   'testSearch.cpp',
+  'testMarkdownTheme.cpp',
   dependencies: [test_dep, thornote_app_dep],
 )
 test('search', app_tests, timeout: 120)

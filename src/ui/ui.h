@@ -182,6 +182,13 @@ struct Theme
     Color background, surface, raised, border, text, muted;
     Color accent, accentText, selection, success, danger;
     Color highlight{0, 0, 0, 0}, highlightActive{0, 0, 0, 0};
+    Color markdownHeading{0, 0, 0, 0}, markdownMarker{0, 0, 0, 0}, markdownCode{0, 0, 0, 0};
+    Color markdownLink{0, 0, 0, 0}, markdownImage{0, 0, 0, 0}, markdownQuote{0, 0, 0, 0}, markdownCodeBackground{0, 0, 0, 0};
+    Color markdownHeadingMarker{0, 0, 0, 0}, markdownStrong{0, 0, 0, 0}, markdownStrongMarker{0, 0, 0, 0};
+    Color markdownEmphasis{0, 0, 0, 0}, markdownEmphasisMarker{0, 0, 0, 0}, markdownStrike{0, 0, 0, 0};
+    Color markdownStrikeMarker{0, 0, 0, 0}, markdownCodeMarker{0, 0, 0, 0}, markdownLinkMarker{0, 0, 0, 0};
+    Color markdownImageMarker{0, 0, 0, 0}, markdownList{0, 0, 0, 0}, markdownListMarker{0, 0, 0, 0};
+    Color markdownQuoteMarker{0, 0, 0, 0}, markdownNumber{0, 0, 0, 0}, markdownNumberMarker{0, 0, 0, 0};
     float radius = 7;
     float fontSize = 13;  // Nominal em in logical px, independent of font-point and output-pixel units.
     float rowHeight = 32;
@@ -2387,6 +2394,7 @@ struct TextEditorOptions
     float fontSize = 16;
     float padding = 12;  // Horizontal inset; font metrics and line spacing provide vertical space.
     bool lineNumbers = true, readOnly = false;
+    bool markdown = false;  ///< Style parsed Markdown while preserving all source characters and byte offsets.
 };
 
 /**

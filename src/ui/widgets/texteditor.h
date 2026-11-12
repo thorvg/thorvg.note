@@ -1,11 +1,32 @@
 #pragma once
 
 #include <ui/ui.h>
+#include <text/markdown.h>
 
 namespace ui
 {
 struct TextEditor::Impl
 {
+    struct Format
+    {
+        size_t start = 0, end = 0;
+        Color Theme::*color = &Theme::text;
+        unsigned heading = 0;
+        bool bold = false, italic = false, code = false, strike = false, link = false;
+    };
+    struct Run
+    {
+        size_t first = 0, end = 0;
+        float left = 0, leading = 0, width = 0, top = 0, scale = 1;
+        FontId font = 0;
+        Format format;
+    };
+    struct RenderRun
+    {
+        tvg::Text* text = tvg::Text::gen();
+        RenderRun() { text->ref(); }
+        ~RenderRun() { text->unref(); }
+    };
     struct RenderLine
     {
         tvg::Text* body = tvg::Text::gen();
@@ -13,7 +34,8 @@ struct TextEditor::Impl
         uint64_t style = 0;
         std::string value;
         bool assigned = false;
-        float bodyLeft = 0, numberWidth = 0, numberTop = 0;
+        std::vector<std::unique_ptr<RenderRun>> runs;
+        float bodyLeft = 0, numberWidth = 0;
         RenderLine()
         {
             body->ref();
@@ -36,6 +58,10 @@ struct TextEditor::Impl
     std::unique_ptr<tvg::Text> measurer;
     std::map<size_t, std::unique_ptr<RenderLine>> linePaints;
     std::vector<std::string> displayLines;
+    std::vector<std::vector<Run>> rowRuns;
+    std::vector<Format> markdownFormats;
+    uint64_t markdownRevision = uint64_t(-1);
+    FontId boldDocumentFont = 0;
     struct Decoration
     {
         TextDecoration range;
@@ -100,7 +126,11 @@ struct TextEditor::Impl
     float contentHeight() const;
 
     float measure(std::string_view text, FontId font = 0) const;
-    std::vector<TextLine> layoutRows(std::string_view text, size_t base, std::vector<std::string>& display);
+    std::vector<TextLine> layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& runs);
+    void parseMarkdown();
+    Format formatAt(size_t offset) const;
+    Color markdownColor(Color Theme::*token) const;
+    void prepareRuns(RenderLine& line, size_t row);
     size_t replaceRows(size_t first, size_t count, std::string_view text, size_t base);
     RenderLine& prepareLine(size_t row);
     void paintDecorations(size_t first, size_t end, bool borders);

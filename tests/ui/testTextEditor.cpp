@@ -1,4 +1,5 @@
 #include "common/frame.h"
+#include <fstream>
 
 namespace
 {
@@ -311,6 +312,211 @@ TEST_CASE_FIXTURE(Editor, "decoration_borders_keep_the_same_footprint_as_selecti
             CHECK(differences == 0);
         }
     }
+}
+
+TEST_CASE_FIXTURE(Editor, "markdown_headings_scale_relative_to_font_and_preserve_navigation")
+{
+    bounds.h = 280;
+    REQUIRE(document.text("# title\ntext\n## subtitle\nlast"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    draw();
+    editor.select(0, 0);
+    auto h1 = editor.caretRect();
+    editor.select(document.lineStart(1), document.lineStart(1));
+    auto body = editor.caretRect();
+    editor.select(document.lineStart(2), document.lineStart(2));
+    auto h2 = editor.caretRect();
+    CHECK(h1.h == doctest::Approx(body.h * 2));
+    CHECK(h2.h == doctest::Approx(body.h * 1.65f));
+    CHECK(body.y == doctest::Approx(h1.y + h1.h));
+    context.focus("editor");
+    draw();
+    context.key(Key::Up);
+    CHECK(document.lineAt(editor.session().selection().caret) == 1);
+    context.key(Key::Down);
+    CHECK(document.lineAt(editor.session().selection().caret) == 2);
+    options.fontSize *= 1.5f;
+    editor.options(options);
+    editor.select(0, 0);
+    CHECK(editor.caretRect().h == doctest::Approx(h1.h * 1.5f));
+    editor.select(document.lineStart(1), document.lineStart(1));
+    CHECK(editor.caretRect().h == doctest::Approx(body.h * 1.5f));
+    options.markdown = false;
+    editor.options(options);
+    editor.select(0, 0);
+    CHECK(editor.caretRect().h == doctest::Approx(body.h * 1.5f));
+}
+
+TEST_CASE_FIXTURE(Editor, "markdown_uses_theme_colors_and_keeps_line_number_size")
+{
+    bounds.h = 280;
+    REQUIRE(document.text("# aaaa\naaaa\n- aaaa\n`aaaa`\n[aaaa](target)\n![aaaa](image)"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    theme.markdownHeading = {221, 37, 58};
+    theme.markdownCode = {32, 169, 108};
+    theme.markdownLink = {65, 77, 205};
+    theme.markdownImage = {181, 45, 165};
+    editor.theme(theme);
+    CHECK(pixels(theme.markdownHeading) > 0);
+    CHECK(pixels(theme.markdownCode) > 0);
+    CHECK(pixels(theme.markdownLink) > 0);
+    CHECK(pixels(theme.markdownImage) > 0);
+    int numberTop = 0;
+    auto numberHeight = [&](size_t offset) {
+        editor.select(offset, offset);
+        auto row = editor.caretRect();
+        const auto& image = raster();
+        int top = 300, bottom = -1;
+        auto gutter = editor.textViewport().x;
+        for (int y = int(bounds.y + row.y); y < std::min(300, int(bounds.y + row.y + row.h)); ++y)
+            for (int x = int(bounds.x); x < int(bounds.x + gutter); ++x) {
+                auto pixel = image[size_t(y) * 400 + x];
+                auto r = (pixel >> 16) & 255, g = (pixel >> 8) & 255, b = pixel & 255;
+                if (r == theme.muted.r && g == theme.muted.g && b == theme.muted.b) {
+                    top = std::min(top, y);
+                    bottom = std::max(bottom, y);
+                }
+            }
+        numberTop = top - int(bounds.y + row.y);
+        return bottom >= top ? bottom - top + 1 : 0;
+    };
+    auto headingNumber = numberHeight(0);
+    auto headingTop = numberTop;
+    auto bodyNumber = numberHeight(document.lineStart(1));
+    CHECK(headingNumber > 0);
+    CHECK(std::abs(headingTop - numberTop) <= 1);
+    CHECK(std::abs(headingNumber - bodyNumber) <= 1);
+    options.markdown = false;
+    editor.options(options);
+    CHECK(std::abs(headingNumber - numberHeight(0)) <= 1);
+    options.markdown = true;
+    editor.options(options);
+    auto previous = theme.markdownHeading;
+    theme.markdownHeading = {12, 181, 201};
+    editor.theme(theme);
+    CHECK(pixels(previous) == 0);
+    CHECK(pixels(theme.markdownHeading) > 0);
+}
+
+TEST_CASE_FIXTURE(Editor, "markdown_reparses_edits_and_preserves_composition_and_decorations")
+{
+    REQUIRE(document.text("# title\nplain\nlast"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    context.focus("editor");
+    draw();
+    editor.select(0, 0);
+    float headingHeight = editor.caretRect().h;
+    std::string error;
+    REQUIRE(editor.applyEdits({.revision = document.revision(), .edits = {{0, 2, ""}}}, error));
+    CHECK(editor.caretRect().h == doctest::Approx(headingHeight / 2));
+    CHECK(editor.undo());
+    CHECK(editor.caretRect().h == doctest::Approx(headingHeight));
+    editor.select(document.lineStart(1), document.lineStart(1));
+    editor.composition("composed\ntext", 8);
+    draw();
+    CHECK(editor.composing());
+    CHECK(editor.caretRect().h == doctest::Approx(headingHeight / 2));
+    context.key(Key::Escape);
+    draw();
+    CHECK(!editor.composing());
+    ui::TextDecoration decoration{0, 7};
+    REQUIRE(editor.decorations("test", document.revision(), std::span(&decoration, 1)));
+    CHECK(pixels(theme.highlight) > 0);
+    CHECK(document.text() == "# title\nplain\nlast");
+}
+
+TEST_CASE_FIXTURE(Editor, "markdown_operators_and_operands_have_independent_colors")
+{
+    bounds.h = 280;
+    REQUIRE(document.text("# aaaa\n**aaaa** *aaaa* ~~aaaa~~\n- aaaa\n1. aaaa\n`aaaa`\n[aaaa](aaaa)\n![aaaa](aaaa)\n> aaaa"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    ui::Color ui::Theme::*tokens[] = {
+        &ui::Theme::markdownHeading, &ui::Theme::markdownHeadingMarker,
+        &ui::Theme::markdownStrong, &ui::Theme::markdownStrongMarker,
+        &ui::Theme::markdownEmphasis, &ui::Theme::markdownEmphasisMarker,
+        &ui::Theme::markdownStrike, &ui::Theme::markdownStrikeMarker,
+        &ui::Theme::markdownList, &ui::Theme::markdownListMarker,
+        &ui::Theme::markdownCode, &ui::Theme::markdownCodeMarker,
+        &ui::Theme::markdownLink, &ui::Theme::markdownLinkMarker,
+        &ui::Theme::markdownImage, &ui::Theme::markdownImageMarker,
+        &ui::Theme::markdownNumber, &ui::Theme::markdownNumberMarker,
+        &ui::Theme::markdownQuote, &ui::Theme::markdownQuoteMarker};
+    for (size_t i = 0; i < std::size(tokens); ++i)
+        theme.*tokens[i] = {uint8_t(30 + i * 10), 57, 179};
+    editor.theme(theme);
+    for (auto token : tokens)
+        CHECK(pixels(theme.*token) > 0);
+    auto operand = theme.markdownHeading;
+    auto marker = theme.markdownHeadingMarker;
+    theme.markdownHeadingMarker = {19, 211, 83};
+    editor.theme(theme);
+    CHECK(pixels(marker) == 0);
+    CHECK(pixels(theme.markdownHeadingMarker) > 0);
+    CHECK(pixels(operand) > 0);
+}
+
+TEST_CASE_FIXTURE(Editor, "markdown_bold_falls_back_when_the_bold_face_lacks_hangul")
+{
+    // Multilingual input: a Latin-only bold face belongs to the document face's family.
+    std::ifstream input(ui::test::fontPath("M1Plain.ttf"), std::ios::binary);
+    REQUIRE(input);
+    std::vector<char> bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    auto tableCount = (uint8_t(bytes[4]) << 8) | uint8_t(bytes[5]);
+    bool marked = false;
+    for (int i = 0; i < tableCount; ++i) {
+        auto at = size_t(12 + i * 16);
+        auto tag = std::string_view(bytes.data() + at, 4);
+        if (tag != "head" && tag != "hmtx") continue;
+        size_t table = 0;
+        for (size_t j = 8; j < 12; ++j)
+            table = (table << 8) | uint8_t(bytes[at + j]);
+        REQUIRE(table + 45 < bytes.size());
+        if (tag == "head") {
+            bytes[table + 45] |= 1;
+            marked = true;
+        } else {
+            // Distinguish a missing glyph's advance from the fallback glyph's advance.
+            bytes[table] = 0;
+            bytes[table + 1] = 100;
+        }
+    }
+    REQUIRE(marked);
+    auto bold = ui::loadFont("M1Fallback", bytes.data(), bytes.size());
+    REQUIRE(bold);
+    REQUIRE(fonts.manager->find("M1Fallback", 700) == bold);
+    REQUIRE(fonts.manager->glyph(fonts.fallback, 0xac00));
+    REQUIRE(!fonts.manager->glyph(bold, 0xac00));
+    editor.font(fonts.fallback);
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    theme.markdownHeading = {205, 44, 71};
+    theme.markdownStrong = {71, 205, 44};
+    editor.theme(theme);
+    REQUIRE(document.text("# 가가\n가가\n**가가**\n# A가A가"));
+    CHECK(pixels(theme.text) > 0);
+    CHECK(pixels(theme.markdownHeading) > 0);
+    CHECK(pixels(theme.markdownStrong) > 0);
+    auto body = editor.rangeRects(document.lineStart(1), document.lineEnd(1));
+    auto heading = editor.rangeRects(2, document.lineEnd(0));
+    auto strong = editor.rangeRects(document.lineStart(2) + 2, document.lineEnd(2) - 2);
+    REQUIRE(body.size() == 1);
+    REQUIRE(heading.size() == 1);
+    REQUIRE(strong.size() == 1);
+    CHECK(heading.front().w == doctest::Approx(body.front().w * 2));
+    CHECK(strong.front().w == doctest::Approx(body.front().w));
+    auto start = document.lineStart(3) + 3;
+    auto rects = editor.rangeRects(start, start + 3);
+    REQUIRE(rects.size() == 1);
+    CHECK(rects.front().w > 0);
 }
 
 TEST_SUITE_END();
