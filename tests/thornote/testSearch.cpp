@@ -454,3 +454,46 @@ TEST_CASE_FIXTURE(EditorTest, "settings_search_leaves_printable_native_keys_for_
     app->nativeTextInput({id, 0, 0, 0, "font", false});
     CHECK(field->value() == "font");
 }
+
+TEST_CASE_FIXTURE(EditorTest, "editor_leaves_printable_native_keys_for_text_interpretation")
+{
+    auto& tab = document("");
+    draw();
+    REQUIRE(editorFocused());
+    for (auto key : {SDLK_A, SDLK_C, SDLK_X, SDLK_V, SDLK_Z, SDLK_Y, SDLK_B, SDLK_SPACE}) {
+        SDL_KeyboardEvent event{};
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key = key;
+        CHECK_FALSE(app->nativeKeyDown(event));
+        event.mod = SDL_KMOD_SHIFT;
+        CHECK_FALSE(app->nativeKeyDown(event));
+    }
+    SDL_KeyboardEvent option{};
+    option.type = SDL_EVENT_KEY_DOWN;
+    option.key = SDLK_A;
+    option.mod = SDL_KMOD_ALT;
+    CHECK_FALSE(app->nativeKeyDown(option));
+    CHECK(tab.document.text().empty());
+    app->nativeTextInput({tab.id, 0, 0, 0, "a", false});
+    CHECK(tab.document.text() == "a");
+    app->nativeTextInput({tab.id, 1, 1, 3, "한", true});
+    CHECK(tab.document.text() == "a");
+    app->nativeTextInput({tab.id, 1, 1, 0, "한", false});
+    CHECK(tab.document.text() == "a한");
+#ifdef __APPLE__
+    constexpr auto primary = SDL_KMOD_GUI;
+#else
+    constexpr auto primary = SDL_KMOD_CTRL;
+#endif
+    SDL_KeyboardEvent shortcut{};
+    shortcut.type = SDL_EVENT_KEY_DOWN;
+    shortcut.key = SDLK_A;
+    shortcut.mod = primary;
+    CHECK(app->nativeKeyDown(shortcut));
+    CHECK(tab.editor.session().selectedText() == "a한");
+    app->nativeTextInput({tab.id, 0, 4, 0, "A", false});
+    CHECK(tab.document.text() == "A");
+    shortcut.key = SDLK_Z;
+    CHECK(app->nativeKeyDown(shortcut));
+    CHECK(tab.document.text() == "a한");
+}

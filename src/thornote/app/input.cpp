@@ -234,6 +234,7 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
     }
     if (welcomeVisible() && context.scrollKey("welcome/scroll", uiKey(event.key))) return true;
     if (visibleDocument() && editorFocus) {
+        if (printable(event) && !mods.primary && !keys.control) return false;
         auto key = uiKey(event.key);
         // The typed character of Space arrives as text input.
         if (key == ui::Key::Unknown || key == ui::Key::Space) return false;
