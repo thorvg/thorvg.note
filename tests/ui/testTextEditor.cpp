@@ -138,6 +138,33 @@ TEST_CASE_FIXTURE(Editor, "wheel_is_released_when_content_fits")
     CHECK(editor.scrollY() == 0);
 }
 
+TEST_CASE_FIXTURE(Editor, "markdown_wheel_preserves_fractional_input_across_heading_sizes")
+{
+    std::string text = "body\n# heading\n## subheading\n";
+    for (int i = 0; i < 50; ++i)
+        text += "body\n";
+    REQUIRE(document.text(text));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    draw();
+    float step = editor.caretRect().h;
+    context.pointerMove(bounds.x + 20, bounds.y + 20);
+    CHECK(context.wheel(-0.25f));
+    CHECK(editor.scrollY() == doctest::Approx(step * 0.25f));
+    CHECK(context.wheel(-0.25f));
+    CHECK(editor.scrollY() == doctest::Approx(step * 0.5f));
+    CHECK(context.wheel(0.125f));
+    CHECK(editor.scrollY() == doctest::Approx(step * 0.375f));
+    CHECK(context.wheel(-2));
+    CHECK(editor.scrollY() == doctest::Approx(step * 2.375f));
+    CHECK(context.wheel(-1000));
+    auto limit = editor.scrollY();
+    CHECK(!context.wheel(-1));
+    CHECK(context.wheel(0.25f));
+    CHECK(editor.scrollY() == doctest::Approx(limit - step * 0.25f));
+}
+
 TEST_CASE_FIXTURE(Editor, "composition_and_read_only_leave_the_document_unchanged")
 {
     REQUIRE(document.text("note"));

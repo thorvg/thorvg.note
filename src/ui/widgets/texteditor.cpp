@@ -120,13 +120,7 @@ float TextEditor::Impl::maxVerticalScroll() const
     // a viewport shorter than a line still shows the last line.
     auto total = contentHeight(), overflow = total - textArea().h;
     if (overflow <= 0) return 0;
-    if (configuration.markdown) {
-        const auto& rows = view.layout();
-        if (rows.empty()) return 0;
-        if (rows.back().bounds.h > textArea().h) return overflow;
-        auto next = std::lower_bound(rows.begin(), rows.end(), overflow, [](const auto& row, float y) { return row.bounds.y < y; });
-        return next == rows.end() ? rows.back().bounds.y : next->bounds.y;
-    }
+    if (configuration.markdown) return overflow;
     return std::max(0.0f, std::min(std::ceil(overflow / lineHeight - lineEdge) * lineHeight, total - lineHeight));
 }
 
@@ -232,6 +226,15 @@ void TextEditor::Impl::wheel(float y, float x)
 {
     if (!std::isfinite(y) || !std::isfinite(x)) return;
     relayout();
+    if (configuration.markdown) {
+        // Use the body line height so headings do not change wheel sensitivity.
+        vertical -= y * lineHeight;
+        horizontal -= x * configuration.fontSize * 3;
+        wheelCarry = 0;
+        clampScroll();
+        invalidate();
+        return;
+    }
     // One line a tick, counted from a line edge so the top line stays whole. Trackpads and
     // high-resolution wheels send fractions, which carry over until they make a line; turning
     // back drops what was carried the other way.
@@ -241,20 +244,9 @@ void TextEditor::Impl::wheel(float y, float x)
     float steps = std::trunc(wheelCarry);
     wheelCarry -= steps;
     if (steps != 0) {
-        if (configuration.markdown) {
-            const auto& rows = view.layout();
-            float epsilon = lineHeight * lineEdge;
-            auto next = steps > 0
-                ? std::upper_bound(rows.begin(), rows.end(), vertical + epsilon, [](float y, const auto& row) { return y < row.bounds.y; })
-                : std::lower_bound(rows.begin(), rows.end(), vertical - epsilon, [](const auto& row, float y) { return row.bounds.y < y; });
-            auto jump = ptrdiff_t(std::clamp(steps, -float(rows.size()), float(rows.size())));
-            auto target = std::clamp((next - rows.begin()) + jump - (steps > 0 ? 1 : 0), ptrdiff_t(0), ptrdiff_t(rows.size() - 1));
-            vertical = steps > 0 && next == rows.end() ? maxVerticalScroll() : rows[size_t(target)].bounds.y;
-        } else {
-            float top = vertical / lineHeight, edge = std::round(top);
-            if (std::abs(top - edge) < lineEdge) top = edge;
-            vertical = (steps > 0 ? std::floor(top + steps) : std::ceil(top + steps)) * lineHeight;
-        }
+        float top = vertical / lineHeight, edge = std::round(top);
+        if (std::abs(top - edge) < lineEdge) top = edge;
+        vertical = (steps > 0 ? std::floor(top + steps) : std::ceil(top + steps)) * lineHeight;
     }
     horizontal -= x * configuration.fontSize * 3;
     clampScroll();
