@@ -8,7 +8,9 @@ namespace
 {
 storage::Path normalizedDirectory(const storage::Path& path)
 {
-    auto normalized = path.lexically_normal();
+    std::error_code error;
+    auto normalized = std::filesystem::weakly_canonical(path, error);
+    if (error) normalized = path.lexically_normal();
     if (normalized != normalized.root_path() && normalized.filename().empty()) normalized = normalized.parent_path();
     return normalized;
 }

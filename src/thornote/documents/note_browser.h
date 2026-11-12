@@ -23,6 +23,7 @@ public:
     void invalidatePreview(const storage::Path& path) { snippets.erase(path); }
 
 private:
+    void loadPreview(const storage::Path&);
     std::vector<storage::Path> folders;
     std::vector<storage::DirectoryEntry> entries, incoming;
     std::string message;

@@ -51,6 +51,7 @@ DocumentTab& Workspace::create()
     auto id = nextId++;
     tabs.push_back(std::make_unique<DocumentTab>(id, "Untitled " + std::to_string(id)));
     selected = id;
+    pendingSelection = 0;
     return *tabs.back();
 }
 
@@ -63,7 +64,11 @@ DocumentTab* Workspace::find(uint64_t id) const
 
 void Workspace::select(uint64_t id)
 {
-    if (find(id)) selected = id;
+    auto tab = find(id);
+    if (!tab) return;
+    auto current = active();
+    pendingSelection = tab->loading && current && !current->loading ? id : 0;
+    if (!pendingSelection) selected = id;
 }
 
 bool Workspace::busy() const
@@ -76,18 +81,21 @@ uint64_t Workspace::open(const storage::Path& path, bool allowMissing)
     auto destination = key(path);
     for (const auto& tab : tabs) {
         if (!tab->path.empty() && key(tab->path) == destination) {
-            selected = tab->id;
+            select(tab->id);
             if (!tab->loading && tab->stamp.exists() && fileAccessed) fileAccessed(key(tab->path));
-            return selected;
+            return tab->id;
         }
     }
+    auto previous = selected;
     auto& tab = create();
-    tab.path = path;
+    tab.path = destination;
     tab.title = displayName(path);
     tab.loading = true;
     auto id = tab.id;
+    if (previous) selected = previous;
+    select(id);
     error.clear();
-    files.open(path, {allowMissing, fileLimit}, [this, id](storage::Result<storage::LoadedFile> result) {
+    files.open(destination, {allowMissing, fileLimit}, [this, id](storage::Result<storage::LoadedFile> result) {
         auto tab = find(id);
         if (!tab) return;
         if (!result) {
@@ -106,6 +114,7 @@ uint64_t Workspace::open(const storage::Path& path, bool allowMissing)
         tab->savedText = tab->document.text();
         tab->checkedRevision = uint64_t(-1);
         tab->loading = false;
+        if (pendingSelection == id) select(id);
         message = "Opened " + tab->title;
         if (tab->stamp.exists() && fileAccessed) fileAccessed(key(tab->path));
     });
@@ -117,7 +126,7 @@ void Workspace::restore(SessionDocument state)
     if (find(state.id)) return;
     auto restored = std::make_unique<DocumentTab>(state.id, composedText(state.content.title));
     auto& tab = *restored;
-    tab.path = state.content.originalPath;
+    if (!state.content.originalPath.empty()) tab.path = key(state.content.originalPath);
     if (!tab.document.text(state.content.text)) return;
     tab.format = state.content.format;
     tab.restoreView = DocumentTab::ViewRestore{state.anchor, state.caret, state.scrollX, state.scrollY};
@@ -179,7 +188,7 @@ void Workspace::write(uint64_t id, storage::Path path, storage::DiskStamp expect
                        } else error = "Save failed: " + displayPath(path) + ": " + result.error.message;
                        return;
                    }
-                   tab->path = path;
+                   tab->path = key(path);
                    tab->title = displayName(path);
                    tab->stamp = result.stamp;
                    auto complete = [this, id, snapshot, format](std::string failure) {
@@ -253,6 +262,7 @@ void Workspace::erase(uint64_t id)
     if (found == tabs.end()) return;
     auto index = size_t(found - tabs.begin());
     tabs.erase(found);
+    if (pendingSelection == id) pendingSelection = 0;
     if (selected == id) selected = tabs.empty() ? 0 : tabs[std::min(index, tabs.size() - 1)]->id;
 }
 

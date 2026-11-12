@@ -1,5 +1,6 @@
 #include <storage/common/files.h>
 #include <thornote/documents/note_browser.h>
+#include <thornote/documents/recent.h>
 
 TEST_CASE("note_previews_skip_titles_and_preserve_utf8_boundaries")
 {
@@ -29,6 +30,7 @@ TEST_CASE("file_previews_load_without_opening_documents_and_refresh_after_edits"
 
     storage::test::write(directory.file(), "# Title\n\nUpdated preview\n");
     browser.show({directory.path}, true);
+    CHECK(browser.preview(0) == "First preview");
     REQUIRE(wait([&] { return !browser.loading(); }));
     REQUIRE(wait([&] { return browser.preview(0) == "Updated preview"; }));
 }
@@ -66,4 +68,19 @@ TEST_CASE("note_dates_use_modification_time_regardless_of_creation_time")
     CHECK(list.rows()[2].file == 1);
     CHECK(list.rows()[3].date == "Date unavailable");
     CHECK(list.rows()[4].file == 2);
+}
+
+TEST_CASE("note_roots_resolve_directory_aliases_before_opening_files")
+{
+    storage::test::Directory directory;
+    auto alias = directory.path / "alias";
+    auto notes = directory.path / "notes";
+    std::filesystem::create_directory(notes);
+    std::filesystem::create_directory_symlink(notes, alias);
+    tn::RecentItems recent;
+    recent.directories = {alias, notes};
+    REQUIRE(recent.rootDirectories().size() == 1);
+    CHECK(recent.rootDirectories().front() == notes);
+    CHECK(recent.rootDirectory(notes) == notes);
+    CHECK(recent.rootDirectory(alias) == notes);
 }

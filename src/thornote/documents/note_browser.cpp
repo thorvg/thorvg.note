@@ -17,13 +17,15 @@ void NoteBrowser::show(const std::vector<storage::Path>& paths, bool force)
     if (!force && roots == folders) return;
     service.cancel();
     previews.cancel();
-    snippets.clear();
     if (roots != folders) {
+        snippets.clear();
         entries.clear();
         ++filesVersion;
     }
     folders = std::move(roots);
     auto version = ++generation;
+    for (const auto& snippet : snippets)
+        loadPreview(snippet.first);
     incoming.clear();
     message.clear();
     pending = folders.size();
@@ -60,24 +62,27 @@ const std::string& NoteBrowser::preview(size_t index)
 {
     const auto& path = entries[index].path;
     auto [found, inserted] = snippets.try_emplace(path);
-    if (inserted) {
-        auto version = generation;
-        previews.submit([this, path, version](task::TaskContext& context) -> task::TaskQueue::Completion {
-            if (context.cancelled()) return {};
-            std::ifstream input(path, std::ios::binary);
-            char buffer[1028];
-            input.read(buffer, sizeof(buffer));
-            auto count = size_t(input.gcount());
-            auto length = std::min(count, size_t(1024));
-            while (length < count && length && (uint8_t(buffer[length]) & 0xc0) == 0x80)
-                --length;
-            auto snippet = documentPreview(std::string_view(buffer, length));
-            return [this, path, version, snippet = std::move(snippet)]() mutable {
-                if (version == generation) snippets[path] = std::move(snippet);
-            };
-        });
-    }
+    if (inserted) loadPreview(path);
     return found->second;
+}
+
+void NoteBrowser::loadPreview(const storage::Path& path)
+{
+    auto version = generation;
+    previews.submit([this, path, version](task::TaskContext& context) -> task::TaskQueue::Completion {
+        if (context.cancelled()) return {};
+        std::ifstream input(path, std::ios::binary);
+        char buffer[1028];
+        input.read(buffer, sizeof(buffer));
+        auto count = size_t(input.gcount());
+        auto length = std::min(count, size_t(1024));
+        while (length < count && length && (uint8_t(buffer[length]) & 0xc0) == 0x80)
+            --length;
+        auto snippet = documentPreview(std::string_view(buffer, length));
+        return [this, path, version, snippet = std::move(snippet)]() mutable {
+            if (version == generation) snippets[path] = std::move(snippet);
+        };
+    });
 }
 
 std::string documentPreview(std::string_view text)
