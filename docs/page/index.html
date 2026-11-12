@@ -102,17 +102,17 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
 .features { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-block: 0 64px; }
 .features h2 { margin: 0 0 32px; padding-top: 40px; border-top: 1px solid var(--rule); font-size: clamp(36px, 4vw, 48px); font-weight: 600; letter-spacing: -1.2px; }
 .feature-label { margin: 0 0 20px; font-size: 21px; font-weight: 600; letter-spacing: -0.4px; }
-.feature-demos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.feature-demos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-bottom: 48px; }
 .feature-card { overflow: hidden; background: #fff; border: 1px solid #e1e2e4; border-radius: 10px; }
 .feature-card.dark { color: #ededed; background: #1e1e1e; border-color: #363636; }
 .feature-card iframe { display: block; width: 100%; height: 440px; border: 0; }
 .feature-card.markdown { margin-bottom: 48px; }
-.feature-card.markdown iframe { height: 560px; }
+.feature-card.markdown iframe, .feature-card.layout iframe { height: 560px; }
 .motion-icons { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-bottom: 64px; }
 .motion-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; padding-top: 40px; border-top: 1px solid var(--rule); }
 .motion-heading h2 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px; }
 .motion-hint { margin: 0; color: var(--muted); font-size: 12px; }
-.motion-description { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
+.feature-description, .motion-description { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
 .icon-sheet { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; overflow: hidden; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; }
 .motion-icon { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-width: 0; min-height: 140px; margin: 0; padding: 20px 8px; border: 0; background: #fff; font: inherit; cursor: pointer; }
 .motion-icon:hover, .motion-icon[aria-pressed="true"] { background: #fafafa; }
@@ -307,6 +307,11 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
                 <iframe src="editor.html?theme=dark&amp;sample=Theme.md" title="ThorNote dark mode editor" loading="eager" allow="clipboard-read; clipboard-write"></iframe>
             </article>
         </div>
+        <h3 class="feature-label" id="layout-title">Layout</h3>
+        <p class="feature-description">Two default layouts are available: Memo for working with files in tabs, and Note for browsing a folder with favorites and search.</p>
+        <article class="feature-card layout" aria-labelledby="layout-title">
+            <iframe src="editor.html?layout=note&amp;sample=Layout.md" title="ThorNote Note layout editor" loading="eager" allow="clipboard-read; clipboard-write"></iframe>
+        </article>
     </section>
     <section class="motion-icons" id="motion-icons" aria-labelledby="motion-title">
         <div class="motion-heading">
@@ -413,6 +418,7 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
     </section>
 </main>
 
+<script src="storage.js"></script>
 <script src="editor.js"></script>
 <script src="motion-icons.js"></script>
 </body>

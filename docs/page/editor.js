@@ -5,6 +5,7 @@
     var status = document.getElementById('status');
     var options = new URLSearchParams(window.location.search);
     var theme = options.get('theme');
+    var layout = options.get('layout') === 'note' ? 'note' : 'memo';
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
     var samples = ['README.md', 'Markdown.md', 'Theme.md', 'Welcome.md', 'Rendering.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
     var sample = options.get('sample') || stage.dataset.sample || 'Welcome.md';
@@ -49,7 +50,7 @@
             fail('The document could not be loaded: ' + sample);
             return;
         }
-        appArguments.push('--layout', 'memo', '/notes/' + sample);
+        appArguments.push('--layout', layout, '/notes/' + sample);
         var fontData = fetchFonts().catch(function () {
             fail('The app fonts could not be loaded');
             return null;
