@@ -157,14 +157,15 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
             });
             bool selected = tab == workspace.active();
             if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);
-            auto title = context.elideText(tab->displayTitle(notes), row.w - (tab->dirty() ? 44 : 20), 12, selected || notes);
+            bool favorite = notes && favorites.count(id);
+            auto title = context.elideText(tab->displayTitle(notes), row.w - (tab->dirty() ? 44 : 20) - (favorite ? 20 : 0), 12, selected || notes);
             context.text({row.x + 10, row.y + 5, row.w - 20, 24}, title, theme.text, 12, selected || notes);
             for (size_t line = 0; line < rows[i].lines.size(); ++line)
                 if (!rows[i].lines[line].empty()) context.text({row.x + 10, row.y + 29 + line * 16, row.w - 20, 16}, rows[i].lines[line], theme.muted, 10);
             if (tab->dirty()) context.icon("documents/" + std::to_string(id) + "/dirty", {row.x + 14 + context.textWidth(title, 12, selected || notes), row.y + 5, 20, 24}, "dirty", theme.muted,
                                            {.hovered = state.hovered});
-            if (notes && favorites.count(id)) context.icon("documents/" + std::to_string(id) + "/favorite", {row.x + row.w - 26, row.y + 33, 18, 18}, "star", theme.accent,
-                                                           {state.hovered, state.pressed, true, true, state.focused});
+            if (favorite) context.icon("documents/" + std::to_string(id) + "/favorite", {row.x + row.w - 22, row.y + 10, 14, 14}, "star", theme.accent,
+                                       {state.hovered, state.pressed, true, true, state.focused});
             // The ring extends outward by 3px; keep its stroke inside the list clip.
             if (state.focused) context.focusRing(row.inset(4));
         }

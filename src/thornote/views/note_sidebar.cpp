@@ -144,10 +144,13 @@ void EditorApp::drawNoteFiles(ui::Rect r)
                 if (event.activated()) activateDocument(id); }, !dialog);
             bool selected = !settings.active && tab == workspace.active();
             if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);
-            auto title = context.elideText(tab->displayTitle(true), row.w - (tab->dirty() ? 44 : 20), 12, true);
+            bool favorite = favorites.count(tab->id);
+            auto title = context.elideText(tab->displayTitle(true), row.w - (tab->dirty() ? 44 : 20) - (favorite ? 20 : 0), 12, true);
             context.text({row.x + 10, row.y + 4, row.w - 20, 24}, title, theme.text, 12, true);
             if (tab->dirty()) context.icon(key + "/dirty", {row.x + 14 + context.textWidth(title, 12, true), row.y + 4, 20, 24}, "dirty", theme.muted,
                                            {.hovered = state.hovered});
+            if (favorite) context.icon(key + "/favorite", {row.x + row.w - 22, row.y + 10, 14, 14}, "star", theme.accent,
+                                       {state.hovered, state.pressed, true, true, state.focused});
             for (size_t line = 0; line < draft.lines.size(); ++line)
                 if (!draft.lines[line].empty()) context.text({row.x + 10, row.y + 29 + line * 16, row.w - 20, 16}, draft.lines[line], theme.muted, 10);
             if (state.focused) context.focusRing(row.inset(4));
@@ -170,18 +173,16 @@ void EditorApp::drawNoteFiles(ui::Rect r)
             if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);
             auto opened = std::find_if(workspace.documents().begin(), workspace.documents().end(), [&](const auto& tab) { return tab->path == path; });
             bool modified = opened != workspace.documents().end() && (*opened)->dirty();
-            auto title = context.elideText(displayName(path), row.w - (modified ? 44 : 20), 12, true);
+            bool favorite = opened != workspace.documents().end() && favorites.count((*opened)->id);
+            auto title = context.elideText(displayName(path), row.w - (modified ? 44 : 20) - (favorite ? 20 : 0), 12, true);
             context.text({row.x + 10, row.y + 4, row.w - 20, 24}, title, theme.text, 12, true);
             if (modified) context.icon(key + "/dirty", {row.x + 14 + context.textWidth(title, 12, true), row.y + 4, 20, 24}, "dirty", theme.muted,
                                        {.hovered = state.hovered});
-            auto folder = path.parent_path();
+            if (favorite) context.icon(key + "/favorite", {row.x + row.w - 22, row.y + 10, 14, 14}, "star", theme.accent,
+                                       {state.hovered, state.pressed, true, true, state.focused});
             auto lines = linesFor(*entry.file);
             for (size_t line = 0; line < lines.size(); ++line)
                 if (!lines[line].empty()) context.text({row.x + 10, row.y + 29 + line * 16, row.w - 20, 16}, lines[line], theme.muted, 10);
-            if (state.hovered) {
-                hint = displayPath(folder);
-                hintBounds = row;
-            }
             if (state.focused) context.focusRing(row.inset(4));
         }
     });
