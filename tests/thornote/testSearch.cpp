@@ -408,3 +408,49 @@ TEST_CASE_FIXTURE(EditorTest, "find_field_native_composition_preserves_replaceme
     REQUIRE(field.session.undo());
     CHECK(field.value().empty());
 }
+TEST_CASE_FIXTURE(EditorTest, "palette_leaves_printable_native_keys_for_text_interpretation")
+{
+    document("Original document");
+    draw();
+    REQUIRE(run("ui.commands.open"));
+    draw();
+    auto field = app->context.input();
+    REQUIRE(field);
+    REQUIRE(app->context.focused() == "palette/search");
+    for (auto key : {SDLK_A, SDLK_E, SDLK_SPACE}) {
+        SDL_KeyboardEvent event{};
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key = key;
+        CHECK_FALSE(app->nativeKeyDown(event));
+    }
+    SDL_KeyboardEvent option{};
+    option.type = SDL_EVENT_KEY_DOWN;
+    option.key = SDLK_E;
+    option.mod = SDL_KMOD_ALT;
+    CHECK_FALSE(app->nativeKeyDown(option));
+    auto id = reinterpret_cast<uintptr_t>(&field->document);
+    app->nativeTextInput({id, 0, 0, 0, "find", false});
+    CHECK(field->value() == "find");
+    SDL_KeyboardEvent backspace{};
+    backspace.type = SDL_EVENT_KEY_DOWN;
+    backspace.key = SDLK_BACKSPACE;
+    CHECK(app->nativeKeyDown(backspace));
+    CHECK(field->value() == "fin");
+}
+
+TEST_CASE_FIXTURE(EditorTest, "settings_search_leaves_printable_native_keys_for_text_interpretation")
+{
+    REQUIRE(run("settings.open"));
+    draw();
+    app->context.focus("settings/search");
+    draw();
+    auto field = app->context.input();
+    REQUIRE(field);
+    SDL_KeyboardEvent event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key = SDLK_A;
+    CHECK_FALSE(app->nativeKeyDown(event));
+    auto id = reinterpret_cast<uintptr_t>(&field->document);
+    app->nativeTextInput({id, 0, 0, 0, "font", false});
+    CHECK(field->value() == "font");
+}

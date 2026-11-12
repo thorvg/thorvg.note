@@ -138,6 +138,7 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
             case SDLK_Y: context.key(uiKey(event.key), mods); return true;
         }
     }
+    if (searchFocused() && printable(event) && !mods.primary && !keys.control) return false;
     if (context.input()) {
         auto key = uiKey(event.key);
         if (key == ui::Key::Left || key == ui::Key::Right || key == ui::Key::Home || key == ui::Key::End || key == ui::Key::Backspace || key == ui::Key::Delete) {
