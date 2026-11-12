@@ -6,7 +6,9 @@
     var options = new URLSearchParams(window.location.search);
     var theme = options.get('theme');
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
-    var samples = ['Welcome.md', 'Rendering.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
+    var samples = ['README.md', 'Markdown.md', 'Theme.md', 'Welcome.md', 'Rendering.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
+    var sample = options.get('sample') || stage.dataset.sample || 'Welcome.md';
+    if (samples.indexOf(sample) === -1) sample = 'Welcome.md';
     // Shown alone when the sample notes cannot be fetched, as when the page is opened from disk.
     var spare = '# Welcome to thor.note\n\nYou are typing into the real editor.\nClick here and type. F1 opens the command palette.\n\nServe this folder over HTTP to load the sample notes.\n';
 
@@ -20,8 +22,12 @@
             return fetch('notes/' + encodeURIComponent(name)).then(function (response) {
                 if (!response.ok) throw new Error(name);
                 return response.text();
-            }).then(function (text) { return {name: name, text: text}; });
-        })).catch(function () { return [{name: 'Welcome.md', text: spare}]; });
+            }).then(function (text) { return {name: name, text: text}; }).catch(function () {
+                return name === 'Welcome.md' ? {name: name, text: spare} : null;
+            });
+        })).then(function (notes) {
+            return notes.filter(function (note) { return note !== null; });
+        });
     }
 
     function fetchFonts() {
@@ -39,8 +45,11 @@
 
     function start(notes) {
         var appArguments = ['--fresh', '--settings-dir', '/settings'];
-        var sample = options.get('sample');
-        if (samples.indexOf(sample) !== -1) appArguments.push('--layout', 'memo', '/notes/' + sample);
+        if (!notes.some(function (note) { return note.name === sample; })) {
+            fail('The document could not be loaded: ' + sample);
+            return;
+        }
+        appArguments.push('--layout', 'memo', '/notes/' + sample);
         var fontData = fetchFonts().catch(function () {
             fail('The app fonts could not be loaded');
             return null;
@@ -56,10 +65,11 @@
                 Module.ENV.SDL_EMSCRIPTEN_KEYBOARD_ELEMENT = '#keyboard';
                 Module.FS.mkdir('/notes');
                 notes.forEach(function (note) { Module.FS.writeFile('/notes/' + note.name, note.text); });
-                // The app opens on its welcome screen; its recent lists lead to the sample notes.
+                // The recent lists lead to the bundled sample notes.
                 Module.FS.mkdir('/settings');
                 Module.FS.writeFile('/settings/settings.conf', 'thornote-settings 1\n' +
                     (theme === 'light' || theme === 'dark' ? 'dark ' + (theme === 'dark' ? '1' : '0') + '\n' : '') +
+                    (sample === 'README.md' || sample === 'Markdown.md' ? 'layout 0 0 0 1 224 236 216\n' : '') +
                     (samples.indexOf(sample) !== -1 ? 'font-size 14\n' : '') + notes.map(function (note) {
                     return 'recent-file "/notes/' + note.name + '"\n';
                 }).join('') + 'recent-directory "/notes"\n');

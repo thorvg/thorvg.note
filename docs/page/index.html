@@ -106,6 +106,8 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
 .feature-card { overflow: hidden; background: #fff; border: 1px solid #e1e2e4; border-radius: 10px; }
 .feature-card.dark { color: #ededed; background: #1e1e1e; border-color: #363636; }
 .feature-card iframe { display: block; width: 100%; height: 440px; border: 0; }
+.feature-card.markdown { margin-bottom: 48px; }
+.feature-card.markdown iframe { height: 560px; }
 .motion-icons { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-bottom: 64px; }
 .motion-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; padding-top: 40px; border-top: 1px solid var(--rule); }
 .motion-heading h2 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px; }
@@ -239,7 +241,7 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
             </svg>
         </div>
         <div class="demo" id="demo">
-            <div class="stage" id="stage">
+            <div class="stage" id="stage" data-sample="README.md">
                 <canvas id="canvas" aria-label="ThorNote editor"></canvas>
                 <textarea id="keyboard" aria-label="Editor text input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
                 <div class="stage-status" id="status" role="status">Starting the app</div>
@@ -292,13 +294,17 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
     </section>
     <section class="features" aria-labelledby="features-title">
         <h2 id="features-title">Features</h2>
+        <h3 class="feature-label" id="markdown-title">Markdown Base</h3>
+        <article class="feature-card markdown" aria-labelledby="markdown-title">
+            <iframe src="editor.html?sample=Markdown.md" title="ThorNote Markdown syntax editor" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+        </article>
         <h3 class="feature-label" id="appearance-title">Dark / Light mode</h3>
         <div class="feature-demos" aria-labelledby="appearance-title">
             <article class="feature-card">
-                <iframe src="editor.html?theme=light&amp;sample=Rendering.md" title="ThorNote light mode editor" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+                <iframe src="editor.html?theme=light&amp;sample=Theme.md" title="ThorNote light mode editor" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
             </article>
             <article class="feature-card dark">
-                <iframe src="editor.html?theme=dark&amp;sample=Rendering.md" title="ThorNote dark mode editor" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+                <iframe src="editor.html?theme=dark&amp;sample=Theme.md" title="ThorNote dark mode editor" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
             </article>
         </div>
     </section>
