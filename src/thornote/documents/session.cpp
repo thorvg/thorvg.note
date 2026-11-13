@@ -5,6 +5,9 @@
 #include <limits>
 #include <set>
 #include <sstream>
+#ifdef __EMSCRIPTEN__
+#include <thornote/platform/emscripten/browser_files.h>
+#endif
 
 namespace tn
 {
@@ -107,6 +110,12 @@ SessionStore::SessionStore(std::function<void()> wake) :
 
 SessionState SessionStore::load(const storage::Path& path)
 {
+#ifdef __EMSCRIPTEN__
+    if (browserPending) {
+        message = "Cannot load session while recovery is being saved";
+        return {};
+    }
+#endif
     finish();
     blobs.clear();
     message.clear();
@@ -188,6 +197,61 @@ std::string SessionStore::write(SessionState state)
 bool SessionStore::submit(SessionState state)
 {
     if (!writable || writing) return false;
+#ifdef __EMSCRIPTEN__
+    auto next = std::make_shared<SessionState>(std::move(state));
+    auto lifetime = std::weak_ptr<bool>(browserLifetime);
+    BrowserRecoveryCallbacks callbacks;
+    callbacks.prepare = [this, lifetime] {
+        if (lifetime.expired()) return false;
+        auto manifest = storage::load(directory / "session.conf", {true, manifestLimit});
+        if (!manifest) message = "Cannot save session: " + manifest.error.message;
+        else if (manifest.value.stamp.exists() != stamp.exists() || manifest.value.stamp.digest() != stamp.digest()) message = "Cannot save session: session.conf changed on disk";
+        else return true;
+        return false;
+    };
+    callbacks.commit = [this, lifetime, next] {
+        if (lifetime.expired()) return false;
+        auto saved = storage::save(directory / "session.conf", encodeSession(*next), {{}, stamp, manifestLimit});
+        if (!saved) {
+            message = "Cannot save session: " + saved.error.message;
+            return false;
+        }
+        stamp = saved.stamp;
+        blobs.clear();
+        for (const auto& doc : next->documents)
+            blobs.emplace(doc.id, metadata(doc));
+        return true;
+    };
+    callbacks.complete = [this, lifetime](std::string error) {
+        if (lifetime.expired()) return;
+        writing = false;
+        browserPending = false;
+        browserCompleted = true;
+        lastSucceeded = error.empty();
+        if (lastSucceeded) message.clear();
+        else if (message.empty()) message = "Cannot save session buffer: " + error;
+    };
+    auto pending = browserRecoveryStart(directory, std::move(callbacks));
+    if (pending) {
+        writing = true;
+        browserPending = true;
+        message.clear();
+        std::set<std::string> retained;
+        for (auto& doc : next->documents) {
+            auto found = blobs.find(doc.id);
+            if (found != blobs.end() && sameContent(found->second, doc)) doc.content.id = found->second.content.id;
+            else doc.content.id = browserRecoveryAdd(pending, doc.content);
+            retained.insert(doc.content.id);
+            std::string{}.swap(doc.content.text);
+        }
+        std::string obsolete;
+        for (const auto& [id, doc] : blobs)
+            if (!retained.count(doc.content.id)) obsolete += doc.content.id + '\n';
+        browserRecoverySubmit(pending, obsolete);
+        return true;
+    }
+    state = std::move(*next);
+#endif
     writing = true;
     queue.submit([this, state = std::move(state)](task::TaskContext&) mutable -> task::TaskQueue::Completion {
         return [this, error = write(std::move(state))]() mutable {
@@ -201,11 +265,20 @@ bool SessionStore::submit(SessionState state)
 
 bool SessionStore::poll()
 {
+#ifdef __EMSCRIPTEN__
+    auto completed = browserCompleted;
+    browserCompleted = false;
+    return queue.poll() != 0 || completed;
+#else
     return queue.poll() != 0;
+#endif
 }
 
 bool SessionStore::finish()
 {
+#ifdef __EMSCRIPTEN__
+    if (browserPending) return false;
+#endif
     queue.wait();
     queue.poll();
     return lastSucceeded;

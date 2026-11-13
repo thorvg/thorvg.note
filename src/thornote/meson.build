@@ -76,6 +76,7 @@ foreach runtime_dep: [thorvg_dep, sdl_dep, lua_dep]
 endforeach
 
 if target_platform == 'emscripten'
+  configure_file(input: 'platform/emscripten/recovery_worker.js', output: 'ThorNote.recovery.js', copy: true)
   thornote_link_args += [
     '-sALLOW_MEMORY_GROWTH=1',
     '-sSTACK_SIZE=1048576',

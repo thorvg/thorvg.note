@@ -2,6 +2,29 @@
 #include <cstdlib>
 #include <memory>
 #include "browser_files.h"
+#include <thornote/path.h>
+
+extern "C" {
+bool thornoteRecoveryStart(void*, const char*);
+char* thornoteRecoveryAdd(void*, const char*, const char*, const char*, unsigned, bool, const char*, size_t);
+void thornoteRecoverySubmit(void*, const char*);
+
+EMSCRIPTEN_KEEPALIVE bool thornoteRecoveryPrepared(void* callback)
+{
+    return static_cast<tn::BrowserRecoveryCallbacks*>(callback)->prepare();
+}
+
+EMSCRIPTEN_KEEPALIVE bool thornoteRecoveryCommitted(void* callback)
+{
+    return static_cast<tn::BrowserRecoveryCallbacks*>(callback)->commit();
+}
+
+EMSCRIPTEN_KEEPALIVE void thornoteRecoveryDone(void* callback, const char* error)
+{
+    std::unique_ptr<tn::BrowserRecoveryCallbacks> complete(static_cast<tn::BrowserRecoveryCallbacks*>(callback));
+    complete->complete(error ? error : "");
+}
+}
 
 extern "C" EMSCRIPTEN_KEEPALIVE void thornoteStorageSynced(void* callback, const char* error)
 {
@@ -17,6 +40,26 @@ extern "C" EMSCRIPTEN_KEEPALIVE void thornoteFilesOpened(void* callback, const c
 
 namespace tn
 {
+void* browserRecoveryStart(const storage::Path& directory, BrowserRecoveryCallbacks callbacks)
+{
+    auto pending = std::make_unique<BrowserRecoveryCallbacks>(std::move(callbacks));
+    if (!thornoteRecoveryStart(pending.get(), utf8(directory).c_str())) return nullptr;
+    return pending.release();
+}
+
+std::string browserRecoveryAdd(void* pending, const storage::RecoverySnapshot& snapshot)
+{
+    auto id = thornoteRecoveryAdd(pending, std::to_string(snapshot.revision).c_str(), snapshot.title.c_str(), utf8(snapshot.originalPath).c_str(), unsigned(snapshot.format.ending), snapshot.format.bom, snapshot.text.data(), snapshot.text.size());
+    std::string result = id ? id : "";
+    std::free(id);
+    return result;
+}
+
+void browserRecoverySubmit(void* pending, const std::string& obsolete)
+{
+    thornoteRecoverySubmit(pending, obsolete.c_str());
+}
+
 void browserOpenFiles(std::function<void(const char* const*, const char*)> complete)
 {
     auto callback = new std::function<void(const char* const*, const char*)>(std::move(complete));

@@ -53,6 +53,10 @@ private:
     std::map<uint64_t, SessionDocument> blobs;
     std::string message;
     bool writable = false, lastSucceeded = true, writing = false;
+#ifdef __EMSCRIPTEN__
+    std::shared_ptr<bool> browserLifetime = std::make_shared<bool>(true);
+    bool browserCompleted = false, browserPending = false;
+#endif
     // Join the worker before destroying the state it writes.
     task::TaskQueue queue;
 };
