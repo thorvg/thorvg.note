@@ -158,6 +158,8 @@ void EditorApp::setLayout(Layout value)
 
 void EditorApp::applyAppearance()
 {
+    previews.clear();
+    nextPreview = 0;
     themeProfiles.refresh(dark);
     theme = themeProfiles.profile(dark).colors;
     options.lineNumbers = layout().lineNumbers;

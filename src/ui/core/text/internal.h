@@ -22,6 +22,7 @@ public:
     float unitsPerEm(FontId font) const;
     uint32_t glyph(FontId font, uint32_t codepoint) const;
     const char* textFont(FontId font);
+    float textWidth(std::string_view text, const char* font, float size);
     float textKerning(FontId font, uint32_t left, uint32_t right) const;
     uint64_t generation() const { return version; }
     const std::string& error() const { return message; }
@@ -31,6 +32,12 @@ private:
     std::vector<std::unique_ptr<Face>> faces;
     std::vector<FontInfo> infos;
     std::unordered_map<FontId, std::string> textFonts;
+    struct TextWidth
+    {
+        std::string text, font;
+        float size = 0, width = 0;
+    };
+    std::vector<TextWidth> textWidths;
     uint64_t version = 1;
     std::string message;
     Face* lookup(FontId id) const { return id && id <= faces.size() ? faces[id - 1].get() : nullptr; }

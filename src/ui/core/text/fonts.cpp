@@ -256,6 +256,7 @@ void FontManager::clear()
     for (const auto& entry : textFonts)
         tvg::Text::unload(entry.second.c_str());
     textFonts.clear();
+    textWidths.clear();
     faces.clear();
     infos.clear();
     message.clear();
@@ -356,12 +357,31 @@ const char* FontManager::textFont(FontId font)
     auto face = lookup(font);
     if (!face) return nullptr;
     const auto& bytes = face->bytes;
-    auto name = "ui-text-" + std::to_string(reinterpret_cast<uintptr_t>(this)) + "-" + std::to_string(font);
+    auto name = "ui-text-" + std::to_string(reinterpret_cast<uintptr_t>(this)) + "-" + std::to_string(version) + "-" + std::to_string(font);
     if (tvg::Text::load(name.c_str(), reinterpret_cast<const char*>(bytes.data()), uint32_t(bytes.size()), "ttf", true) != tvg::Result::Success) {
         message = "ThorVG Text cannot load this font face";
         return nullptr;
     }
     return textFonts.emplace(font, std::move(name)).first->second.c_str();
+}
+float FontManager::textWidth(std::string_view text, const char* font, float size)
+{
+    // Bound both the number and size of retained labels. Long strings are measured without caching.
+    TextWidth* cached = nullptr;
+    if (text.size() <= 512) {
+        if (textWidths.empty()) textWidths.resize(256);
+        auto key = paintHash(text, paintHash(font, paintKey(size)));
+        cached = &textWidths[key % textWidths.size()];
+        if (cached->size == size && cached->font == font && cached->text == text) return cached->width;
+    }
+    std::unique_ptr<tvg::Text> label(tvg::Text::gen());
+    label->font(font);
+    label->size(size);
+    label->text(std::string(text).c_str());
+    float x = 0, y = 0, width = 0, height = 0;
+    label->bounds(&x, &y, &width, &height);
+    if (cached) *cached = {std::string(text), font, size, width};
+    return width;
 }
 float FontManager::textKerning(FontId font, uint32_t left, uint32_t right) const
 {

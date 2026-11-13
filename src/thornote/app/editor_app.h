@@ -145,7 +145,7 @@ private:
     void removeNoteFolder(const storage::Path&);
     void drawNoteFiles(ui::Rect);
     void drawNoteSearch(ui::Rect, std::string_view placeholder);
-    std::array<std::string, 3> previewLines(std::string_view, float width) const;
+    std::array<std::string, 3> previewLines(std::string_view, float width);
     void drawPrompt(ui::Rect);
     DocumentTab* target() const;
     DocumentTab* visibleDocument() const;
@@ -198,6 +198,15 @@ private:
     Autosave preferenceSave{500, true, true};
     NoteBrowser noteBrowser;
     NoteFileList noteFiles;
+    struct Preview
+    {
+        std::string text;
+        std::array<std::string, 3> lines;
+        ui::FontId font;
+        float width;
+    };
+    std::vector<Preview> previews;
+    size_t nextPreview = 0;
     SessionStore sessionStore;
     // Checkpoints recur while typing instead of waiting for idle input.
     Autosave sessionSave{750, false, false};

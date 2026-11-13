@@ -33,6 +33,7 @@ public:
     bool run(std::string_view command) { return app->commands.execute(command); }
     bool enabled(std::string_view command) { return app->commands.find(command)->enabled(); }
     void draw(float width = 800) { app->render(width, 600); }
+    auto preview(std::string_view text, float width) { return app->previewLines(text, width); }
 
     void query(std::string value)
     {
@@ -354,6 +355,57 @@ TEST_CASE_FIXTURE(EditorTest, "new_drafts_remain_in_all_notes")
     REQUIRE(run("file.new"));
     CHECK(collection() == "all");
     CHECK(app->workspace.documents().size() == 2);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "note_previews_reuse_wrapping_and_follow_content_width_and_font_changes")
+{
+    draw();
+    auto fontFor = app->context.fontFor;
+    auto font = fontFor("preview", false);
+    size_t measured = 0;
+    app->context.fontFor = [&](std::string_view, bool) {
+        ++measured;
+        return font;
+    };
+    const auto text = "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda";
+    auto first = preview(text, 70);
+    REQUIRE(!first[1].empty());
+    auto before = measured;
+    CHECK(preview(text, 70) == first);
+    CHECK(measured == before + 1);  // Only resolve the face; no prefix measurements on a cache hit.
+    CHECK(preview("Edited preview", 70) != first);
+    auto wider = preview(text, 200);
+    CHECK(wider[0].size() > first[0].size());
+    font = fontFor("preview", true);
+    before = measured;
+    auto bold = preview(text, 70);
+    CHECK(measured > before + 1);
+    before = measured;
+    CHECK(preview(text, 70) == bold);
+    CHECK(measured == before + 1);
+    REQUIRE(run("theme.toggle"));
+    before = measured;
+    CHECK(preview(text, 70) == bold);
+    CHECK(measured > before + 1);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "note_preview_wrapping_preserves_utf8_and_word_boundaries")
+{
+    draw();
+    auto width = app->context.textWidth("Alpha beta", 10) + 0.01f;
+    auto lines = preview("  Alpha beta gamma delta", width);
+    CHECK(lines[0] == "Alpha beta");
+    CHECK(lines[1] == "gamma");
+    CHECK(lines[2] == "delta");
+    auto narrow = preview("한글中文", 0);
+    CHECK(narrow[0] == "한");
+    CHECK(narrow[1] == "글");
+    CHECK(narrow[2].empty());
+    CHECK(preview(" \t ", 50) == std::array<std::string, 3>{});
+    // Cache replacement must not change wrapping when a previously seen preview returns.
+    for (size_t i = 0; i < 100; ++i)
+        preview("Preview " + std::to_string(i), 70);
+    CHECK(preview("  Alpha beta gamma delta", width) == lines);
 }
 
 TEST_SUITE_END();

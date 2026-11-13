@@ -21,6 +21,56 @@ struct Frame : ui::test::Frame
 
 TEST_SUITE_BEGIN("context");
 
+TEST_CASE_FIXTURE(Frame, "cached_label_widths_match_renderer_ink_bounds")
+{
+    ui::FontId selected = fonts.plain;
+    context.fontFor = [&](std::string_view text, bool bold) {
+        return bold || text == "font context" ? fonts.kern : selected;
+    };
+    context.begin(theme, viewport);
+    for (auto font : {fonts.plain, fonts.kern, fonts.fallback}) {
+        selected = font;
+        for (auto text : {"AVAVA", "  AV  ", "", "한글中文", "…"}) {
+            for (auto size : {10.0f, 16.0f, 24.0f}) {
+                std::unique_ptr<tvg::Text> label(tvg::Text::gen());
+                label->font(fonts.manager->textFont(font));
+                label->size(size * 72 / 96);
+                label->text(text);
+                float x = 0, y = 0, width = 0, height = 0;
+                label->bounds(&x, &y, &width, &height);
+                for (int i = 0; i < 2; ++i)
+                    CHECK(context.textWidth(text, size) == doctest::Approx(width));
+            }
+        }
+    }
+    selected = fonts.plain;
+    CHECK(context.textWidth("AVAVA", 16, true) == context.textWidth("AVAVA", 16, false, "font context"));
+    CHECK(context.textWidth("AVAVA", 16) != context.textWidth("AVAVA", 16, true));
+    CHECK(context.textWidth("AVAVA") == context.textWidth("AVAVA", theme.fontSize));
+    for (size_t i = 0; i < 600; ++i)
+        context.textWidth("AVAVA " + std::to_string(i), 16);
+    CHECK(context.textWidth("AVAVA", 16, true) == context.textWidth("AVAVA", 16, false, "font context"));
+    context.end();
+}
+
+TEST_CASE_FIXTURE(Frame, "label_width_cache_does_not_reuse_unloaded_font_faces")
+{
+    ui::FontId font = fonts.plain;
+    context.fontFor = [&](std::string_view, bool) {
+        return font;
+    };
+    context.begin(theme, viewport);
+    auto plain = context.textWidth("AVAVA", 16);
+    font = fonts.kern;
+    auto kern = context.textWidth("AVAVA", 16);
+    REQUIRE(kern != plain);
+    ui::unloadFonts();
+    font = ui::loadFont(ui::test::fontPath("M1Kern.ttf").c_str());
+    REQUIRE(font == fonts.plain);
+    CHECK(context.textWidth("AVAVA", 16) == kern);
+    context.end();
+}
+
 TEST_CASE_FIXTURE(Frame, "pointer_capture_and_activation")
 {
     context.begin(theme, {0, 0, 200, 100});

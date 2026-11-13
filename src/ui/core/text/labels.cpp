@@ -40,16 +40,10 @@ void Context::text(Rect bounds, std::string_view value, Color color, float size,
 float Context::textWidth(std::string_view value, float size, bool bold, std::string_view fontContext) const
 {
     if (value.empty()) return 0;
-    std::unique_ptr<tvg::Text> label(tvg::Text::gen());
     auto fontId = fontFor ? fontFor(fontContext.empty() ? value : fontContext, bold) : findFont(bold ? theme().boldFont : theme().font);
     auto font = detail::fontManager().textFont(fontId);
-    label->font(font ? font : bold ? theme().boldFont.c_str()
-                                   : theme().font.c_str());
-    label->size((size > 0 ? size : theme().fontSize) * fontPointsPerLogicalPixel);
-    label->text(std::string(value).c_str());
-    float x = 0, y = 0, w = 0, h = 0;
-    label->bounds(&x, &y, &w, &h);
-    return w;
+    if (!font) font = bold ? theme().boldFont.c_str() : theme().font.c_str();
+    return detail::fontManager().textWidth(value, font, (size > 0 ? size : theme().fontSize) * fontPointsPerLogicalPixel);
 }
 
 std::string Context::elideText(std::string_view value, float width, float size, bool bold, std::string_view suffix) const

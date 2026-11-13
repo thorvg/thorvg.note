@@ -46,8 +46,12 @@ void EditorApp::removeNoteFolder(const storage::Path& path)
     refreshNoteFiles(true);
 }
 
-std::array<std::string, 3> EditorApp::previewLines(std::string_view text, float width) const
+std::array<std::string, 3> EditorApp::previewLines(std::string_view text, float width)
 {
+    auto font = context.fontFor ? context.fontFor(text, false) : ui::findFont(theme.font);
+    for (const auto& preview : previews)
+        if (preview.width == width && preview.font == font && preview.text == text) return preview.lines;
+    auto original = text;
     std::array<std::string, 3> lines;
     for (size_t line = 0; line < lines.size(); ++line) {
         auto start = text.find_first_not_of(" \t");
@@ -57,20 +61,34 @@ std::array<std::string, 3> EditorApp::previewLines(std::string_view text, float 
             lines[line] = context.elideText(text, width, 10);
             break;
         }
-        size_t end = 0, word = 0;
-        while (end < text.size()) {
-            auto next = end + 1;
-            while (next < text.size() && (uint8_t(text[next]) & 0xc0) == 0x80)
-                ++next;
-            if (end && context.textWidth(text.substr(0, next), 10) > width) break;
-            if (text[end] == ' ' || text[end] == '\t') word = next;
-            end = next;
+        std::vector<size_t> ends;
+        for (size_t end = 0; end < text.size();) {
+            ++end;
+            while (end < text.size() && (uint8_t(text[end]) & 0xc0) == 0x80)
+                ++end;
+            ends.push_back(end);
         }
+        // Always consume at least one complete character, including in a very narrow sidebar.
+        size_t low = 1, high = ends.size();
+        while (low < high) {
+            auto middle = low + (high - low) / 2;
+            if (context.textWidth(text.substr(0, ends[middle]), 10) <= width) low = middle + 1;
+            else high = middle;
+        }
+        auto end = ends[low - 1];
+        size_t word = text.substr(0, end).find_last_of(" \t");
+        word = word == std::string_view::npos ? 0 : word + 1;
         if (end < text.size() && word) end = word;
         auto value = text.substr(0, end);
         auto last = value.find_last_not_of(" \t");
         if (last != std::string_view::npos) lines[line] = value.substr(0, last + 1);
         text.remove_prefix(end);
+    }
+    Preview preview{std::string(original), lines, font, width};
+    if (previews.size() < 64) previews.push_back(std::move(preview));
+    else {
+        previews[nextPreview] = std::move(preview);
+        nextPreview = (nextPreview + 1) % previews.size();
     }
     return lines;
 }
