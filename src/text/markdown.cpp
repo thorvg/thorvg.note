@@ -341,6 +341,35 @@ std::vector<MarkdownSpan> parseMarkdown(std::string_view source)
 std::vector<MarkdownBlock> parseMarkdownBlocks(std::string_view source)
 {
     if (source.empty()) return {};
+    // Certify bounded rows before giving a giant paragraph to the inline parser.
+    if (independentText(source)) {
+        std::vector<MarkdownBlock> sections;
+        bool complete = true;
+        for (size_t first = 0; first < source.size();) {
+            auto end = first;
+            for (unsigned row = 0; row < 128 && end < source.size(); ++row) {
+                auto newline = source.find('\n', end);
+                end = newline == source.npos ? source.size() : newline + 1;
+            }
+            Parser part{};
+            part.source = source.substr(first, end - first);
+            part.split = true;
+            if (!parse(part)) return {};
+            part.flush(true);
+            if (std::any_of(part.sections.begin(), part.sections.end(), [&](const auto& block) { return !independent(part.source.substr(block.start, block.end - block.start), block.spans); })) {
+                complete = false;
+                break;
+            }
+            for (auto& block : part.sections) {
+                block.start += first;
+                block.end += first;
+                block.independent = true;
+                sections.push_back(std::move(block));
+            }
+            first = end;
+        }
+        if (complete) return sections;
+    }
     Parser parser{};
     parser.source = source;
     parser.split = true;

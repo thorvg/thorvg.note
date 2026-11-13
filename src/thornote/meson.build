@@ -79,6 +79,7 @@ if target_platform == 'emscripten'
   configure_file(input: 'platform/emscripten/recovery_worker.js', output: 'ThorNote.recovery.js', copy: true)
   thornote_link_args += [
     '-sALLOW_MEMORY_GROWTH=1',
+    '-sMAXIMUM_MEMORY=4GB',
     '-sSTACK_SIZE=1048576',
     '-sENVIRONMENT=web',
     '-sEXPORTED_RUNTIME_METHODS=FS,IDBFS,ENV,addRunDependency,removeRunDependency',

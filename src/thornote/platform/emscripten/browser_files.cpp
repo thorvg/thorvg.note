@@ -66,9 +66,9 @@ void browserOpenFiles(std::function<void(const char* const*, const char*)> compl
     EM_ASM({
         var finish = function(paths, error) {
             var names = paths.map(function(path) { return stringToNewUTF8(path); });
-            var list = _malloc((names.length + 1) * 4);
-            names.forEach(function(name, index) { HEAPU32[(list >> 2) + index] = name; });
-            HEAPU32[(list >> 2) + names.length] = 0;
+            var list = _malloc((names.length + 1) * 4) >>> 0;
+            names.forEach(function(name, index) { HEAPU32[(list >>> 2) + index] = name; });
+            HEAPU32[(list >>> 2) + names.length] = 0;
             var message = error ? stringToNewUTF8(String(error)) : 0;
             try { _thornoteFilesOpened($0, list, message); }
             finally {
@@ -113,6 +113,6 @@ void browserExport(std::string_view name, std::string_view text, storage::FileFo
         bytes += ch == '\n' && format.ending == storage::LineEnding::Cr ? '\r' : ch;
     }
     EM_ASM({
-        if (Module['onExport']) Module['onExport'](UTF8ToString($0, $1), HEAPU8.slice($2, $2 + $3)); }, name.data(), name.size(), bytes.data(), bytes.size());
+        if (Module['onExport']) Module['onExport'](UTF8ToString($0, $1), HEAPU8.slice($2 >>> 0, ($2 >>> 0) + ($3 >>> 0))); }, name.data(), name.size(), bytes.data(), bytes.size());
 }
 }  // namespace tn

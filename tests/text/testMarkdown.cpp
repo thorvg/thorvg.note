@@ -166,3 +166,31 @@ TEST_CASE("markdown_independent_chunks_keep_full_parse_offsets")
         CHECK(std::none_of(blocks.begin(), blocks.end(), [](const auto& block) { return block.independent; }));
     }
 }
+
+TEST_CASE("bounded_markdown_parsing_preserves_cross_chunk_context")
+{
+    for (auto variant : {0, 1, 2}) {
+        std::string source;
+        for (unsigned row = 0; row < 384; ++row) {
+            if (row == 127) source += variant == 0 ? "**open\n" : variant == 1 ? "[label][key]\n"
+                                                                               : "<div>\n";
+            else if (row == 256) source += variant == 0 ? "close**\n" : variant == 1 ? "\n[key]: target\n"
+                                                                                     : "</div>\n";
+            else source += "**bold** plainword\n";
+        }
+        auto expected = tn::parseMarkdown(source);
+        auto blocks = tn::parseMarkdownBlocks(source);
+        size_t index = 0;
+        for (const auto& block : blocks) {
+            for (const auto& span : block.spans) {
+                REQUIRE(index < expected.size());
+                CHECK(span.start + block.start == expected[index].start);
+                CHECK(span.end + block.start == expected[index].end);
+                CHECK(span.kind == expected[index].kind);
+                CHECK(span.element == expected[index].element);
+                ++index;
+            }
+        }
+        CHECK(index == expected.size());
+    }
+}
