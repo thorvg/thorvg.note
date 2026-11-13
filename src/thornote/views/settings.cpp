@@ -102,7 +102,7 @@ bool EditorApp::selectFont(const FontChoice& choice)
 
 Preferences EditorApp::preferences() const
 {
-    return {fontChoice, options.fontSize, dark, int(tabOptions.style), layouts, composition, recent};
+    return {fontChoice, options.fontSize, dark, int(tabOptions.style), layouts, composition, recent, options.lineNumberScale, options.lineNumberOffset};
 }
 
 void EditorApp::loadPreferences()
@@ -123,6 +123,8 @@ void EditorApp::loadPreferences()
             } else if (loaded.value.stamp.exists()) {
                 selectFont(value.font);
                 options.fontSize = value.fontSize;
+                options.lineNumberScale = value.lineNumberScale;
+                options.lineNumberOffset = value.lineNumberOffset;
                 dark = value.dark;
                 tabOptions.style = ui::TabStyle(value.tabStyle);
                 layouts = value.layouts;
@@ -204,7 +206,7 @@ void EditorApp::drawSettings(ui::Rect r)
     auto body = viewport.inset(4);
     settings.fontSearchBounds = {};
     auto query = lower(settings.search.value());
-    bool sections[]{query.empty() ? settings.category == 0 : std::string("editor font family size zoom preview line numbers").find(query) != std::string::npos,
+    bool sections[]{query.empty() ? settings.category == 0 : std::string("editor font family size zoom preview line numbers height position offset").find(query) != std::string::npos,
                     query.empty() ? settings.category == 1 : std::string("appearance theme light dark tab style connected segmented underline").find(query) != std::string::npos,
                     query.empty() ? settings.category == 2 : std::string("layout script lua memo note editor").find(query) != std::string::npos};
     auto choiceColumns = [&](size_t count) {
@@ -215,7 +217,7 @@ void EditorApp::drawSettings(ui::Rect r)
     auto choiceRows = [&](size_t count) {
         return (count + choiceColumns(count) - 1) / choiceColumns(count);
     };
-    float editorHeight = 550 + (body.w < 390 ? 32 : 0);
+    float editorHeight = 646 + (body.w < 390 ? 96 : 0);
     float appearanceHeight = 350 + (choiceRows(2) + choiceRows(3) - 2) * 48;
     float layoutHeight = 296 + (choiceRows(layoutCount) - 1) * 48;
     float total = (sections[0] ? editorHeight : 0) + (sections[1] ? appearanceHeight : 0) + (sections[2] ? layoutHeight : 0);
@@ -290,6 +292,21 @@ void EditorApp::drawSettings(ui::Rect r)
             ui::button(context, "settings/size/increase", {x + 112, y, 32, 32}, "", [this] { commands.execute("editor.font.increase"); }, {.icon = "plus"});
             ui::button(context, "settings/size/reset", {x + 156, y, 82, 32}, "Reset", [this] { commands.execute("editor.font.reset"); }, {.style = ui::ButtonStyle::Quiet});
             y += 48;
+            auto adjust = [&](const char* id, const char* label, float ui::TextEditorOptions::*member, float step, float initial, bool percent) {
+                context.text({body.x, y, 150, 32}, label, theme.text, 12, true);
+                if (body.w < 390) y += 32;
+                auto x = body.x + (body.w < 390 ? 0 : std::min(150.0f, body.w - 260));
+                ui::button(context, std::string(id) + "/decrease", {x, y, 32, 32}, "", [this, member, step] { options.*member -= step; applyAppearance(); }, {.icon = "minus"});
+                std::ostringstream value;
+                if (percent) value << std::lround(options.*member * 100) << '%';
+                else value << options.*member << " px";
+                context.text({x + 40, y, 64, 32}, value.str(), theme.text, 12, false, ui::Align::Center);
+                ui::button(context, std::string(id) + "/increase", {x + 112, y, 32, 32}, "", [this, member, step] { options.*member += step; applyAppearance(); }, {.icon = "plus"});
+                ui::button(context, std::string(id) + "/reset", {x + 156, y, 82, 32}, "Reset", [this, member, initial] { options.*member = initial; applyAppearance(); }, {.style = ui::ButtonStyle::Quiet});
+                y += 48;
+            };
+            adjust("settings/numberHeight", "Line number height", &ui::TextEditorOptions::lineNumberScale, 0.05f, 1, true);
+            adjust("settings/numberPosition", "Line number position", &ui::TextEditorOptions::lineNumberOffset, 1, 0, false);
             ui::checkbox(context, "settings/lineNumbers", {body.x, y, body.w, 30}, "Show line numbers in this layout", layout().lineNumbers, [this](bool value) { layout().lineNumbers = value; applyAppearance(); });
             y = top + editorHeight;
         }

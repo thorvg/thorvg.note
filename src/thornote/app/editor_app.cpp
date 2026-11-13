@@ -188,9 +188,15 @@ void EditorApp::applyAppearance()
     options.lineNumbers = layout().lineNumbers;
     options.padding = 16;
     settings.preview.theme(theme);
-    settings.preview.options({options.fontSize, 8, false, true});
+    auto preview = options;
+    preview.padding = 8;
+    preview.lineNumbers = preview.readOnly = true;
+    preview.markdown = false;
+    settings.preview.options(preview);
     // Publish the engine-accepted size to app controls and every document view.
     options.fontSize = settings.preview.options().fontSize;
+    options.lineNumberScale = settings.preview.options().lineNumberScale;
+    options.lineNumberOffset = settings.preview.options().lineNumberOffset;
     for (const auto& tab : workspace.documents()) {
         auto& editor = tab->editor;
         bool zoom = editor.options().fontSize != options.fontSize;

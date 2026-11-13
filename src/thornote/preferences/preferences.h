@@ -20,6 +20,7 @@ struct Preferences
     std::array<LayoutState, layoutCount> layouts = defaultLayouts;
     Layout composition = Layout::Memo;
     RecentItems recent;
+    float lineNumberScale = 1, lineNumberOffset = 0;
 };
 std::string encodePreferences(const Preferences&);
 bool decodePreferences(std::string_view text, Preferences&);

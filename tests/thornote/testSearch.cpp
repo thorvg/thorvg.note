@@ -605,6 +605,22 @@ TEST_CASE_FIXTURE(EditorTest, "repeating_a_theme_selection_does_not_restart_its_
     CHECK(appearance().background.r == tn::defaultTheme(false).colors.background.r);
 }
 
+TEST_CASE("line_number_corrections_round_trip_and_keep_legacy_defaults")
+{
+    tn::Preferences value;
+    value.lineNumberScale = 1.25f;
+    value.lineNumberOffset = -2;
+    tn::Preferences decoded;
+    REQUIRE(decodePreferences(encodePreferences(value), decoded));
+    CHECK(decoded.lineNumberScale == value.lineNumberScale);
+    CHECK(decoded.lineNumberOffset == value.lineNumberOffset);
+    REQUIRE(decodePreferences("thornote-settings 1\nfont-size 20\n", decoded));
+    CHECK(decoded.lineNumberScale == 1);
+    CHECK(decoded.lineNumberOffset == 0);
+    for (auto invalid : {"line-number-scale 0", "line-number-scale 3", "line-number-scale nan", "line-number-offset 17", "line-number-offset -17", "line-number-offset inf"})
+        CHECK_FALSE(decodePreferences(std::string("thornote-settings 1\n") + invalid + '\n', decoded));
+}
+
 TEST_CASE("theme_blending_resolves_inherited_markdown_colors")
 {
     auto from = tn::defaultTheme(false).colors, to = tn::defaultTheme(true).colors;
