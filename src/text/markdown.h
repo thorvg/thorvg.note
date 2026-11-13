@@ -35,6 +35,7 @@ struct MarkdownBlock
     size_t start = 0, end = 0;
     // Span offsets are relative to start, so edits do not rewrite subsequent spans.
     std::vector<MarkdownSpan> spans;
+    bool independent = false;  ///< Inline syntax is closed within each unindented row.
 };
 
 // Ranges refer to the original UTF-8 source, including visible Markdown delimiters.

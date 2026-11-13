@@ -140,3 +140,29 @@ TEST_CASE("markdown_blocks_preserve_full_document_semantics")
         }
     }
 }
+
+TEST_CASE("markdown_independent_chunks_keep_full_parse_offsets")
+{
+    std::string source;
+    for (unsigned row = 0; row < 600; ++row)
+        source += "**bold** plainword\n";
+    auto expected = tn::parseMarkdown(source);
+    auto chunks = tn::parseMarkdownBlocks(source);
+    REQUIRE(chunks.size() == 5);
+    size_t index = 0;
+    for (const auto& chunk : chunks) {
+        CHECK(chunk.independent);
+        for (const auto& span : chunk.spans) {
+            REQUIRE(index < expected.size());
+            CHECK(span.start + chunk.start == expected[index].start);
+            CHECK(span.end + chunk.start == expected[index].end);
+            CHECK(span.kind == expected[index].kind);
+            ++index;
+        }
+    }
+    CHECK(index == expected.size());
+    for (const auto& suffix : {"**open\nnext", "    indented", "[label][key]\n\n[key]: target", "*italic*", "a | b", "**cross\nline**"}) {
+        auto blocks = tn::parseMarkdownBlocks(suffix);
+        CHECK(std::none_of(blocks.begin(), blocks.end(), [](const auto& block) { return block.independent; }));
+    }
+}

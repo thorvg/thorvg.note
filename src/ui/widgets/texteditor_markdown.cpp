@@ -125,7 +125,7 @@ void TextEditor::Impl::parseMarkdown(size_t& start, size_t& end, bool incrementa
     auto lastRow = document.lineEnd(document.lineAt(end));
     auto changed = source.substr(firstRow, lastRow - firstRow);
     auto wordEdit = [&] {
-        if (!incremental || plainMarkdown || referenceMarkdown || markdownBlocks.empty() || composedRows || source.size() > std::numeric_limits<uint32_t>::max() || document.lineCount() != view.lineCount() || firstRow != document.lineStart(document.lineAt(end))) return false;
+        if (!incremental || plainMarkdown || markdownBlocks.empty() || composedRows || source.size() > std::numeric_limits<uint32_t>::max() || document.lineCount() != view.lineCount() || firstRow != document.lineStart(document.lineAt(end))) return false;
         auto row = document.lineAt(start);
         const auto& previous = view.line(row);
         if (previous.start() != firstRow) return false;
@@ -146,6 +146,7 @@ void TextEditor::Impl::parseMarkdown(size_t& start, size_t& end, bool incrementa
         } else if (oldEnd != ptrdiff_t(start)) return false;
         auto index = markdownBlock(start);
         auto& block = markdownBlocks[index];
+        if (referenceMarkdown && !block.independent) return false;
         auto begin = start - block.start, finish = size_t(oldEnd) - block.start;
         if (size_t(oldEnd) > block.end) return false;
         for (const auto& span : block.spans)
@@ -177,6 +178,37 @@ void TextEditor::Impl::parseMarkdown(size_t& start, size_t& end, bool incrementa
     if (wordEdit()) return;
     if (!incremental) plainMarkdown = !markdownSyntax(source);
     else if (plainMarkdown) plainMarkdown = !markdownSyntax(changed);
+    if (incremental && !plainMarkdown && !markdownBlocks.empty() && !composedRows && changed.find("]:") == source.npos) {
+        auto shift = ptrdiff_t(source.size()) - ptrdiff_t(view.line(view.lineCount() - 1).end());
+        auto oldEnd = size_t(ptrdiff_t(end) - shift);
+        auto first = markdownBlock(start), last = markdownBlock(oldEnd);
+        if (std::all_of(markdownBlocks.begin() + first, markdownBlocks.begin() + last + 1, [](const auto& block) { return block.independent; })) {
+            if (first && markdownBlocks[first - 1].independent) --first;
+            if (last + 1 < markdownBlocks.size() && markdownBlocks[last + 1].independent) ++last;
+            auto begin = markdownBlocks[first].start;
+            auto stop = size_t(ptrdiff_t(markdownBlocks[last].end) + shift);
+            // Preserve the boundary rows that isolate an adjacent semantic block, including HTML.
+            bool isolated = (!first || start > document.lineEnd(document.lineAt(begin))) && (last + 1 == markdownBlocks.size() || end < document.lineStart(document.lineAt(stop ? stop - 1 : 0)));
+            auto replacement = isolated ? tn::parseMarkdownBlocks(source.substr(begin, stop - begin)) : std::vector<tn::MarkdownBlock>{};
+            if (!replacement.empty() && std::all_of(replacement.begin(), replacement.end(), [](const auto& block) { return block.independent; })) {
+                for (auto& block : replacement) {
+                    block.start += begin;
+                    block.end += begin;
+                }
+                for (size_t i = last + 1; i < markdownBlocks.size(); ++i) {
+                    markdownBlocks[i].start += shift;
+                    markdownBlocks[i].end += shift;
+                }
+                auto at = markdownBlocks.erase(markdownBlocks.begin() + first, markdownBlocks.begin() + last + 1);
+                markdownBlocks.insert(at, std::make_move_iterator(replacement.begin()), std::make_move_iterator(replacement.end()));
+                markdownFormats.clear();
+                markdownRevision = document.revision();
+                start = begin;
+                end = stop;
+                return;
+            }
+        }
+    }
     markdownFormats.clear();
     if (plainMarkdown) {
         markdownBlocks.clear();
@@ -192,6 +224,11 @@ void TextEditor::Impl::parseMarkdown(size_t& start, size_t& end, bool incrementa
         auto shift = ptrdiff_t(source.size()) - ptrdiff_t(view.line(view.lineCount() - 1).end());
         auto oldEnd = size_t(ptrdiff_t(end) - shift);
         size_t first = markdownBlock(start), last = markdownBlock(oldEnd);
+        // A newly open delimiter can reach every formerly independent row in its paragraph.
+        while (first && markdownBlocks[first].independent && markdownBlocks[first - 1].independent)
+            --first;
+        while (last + 1 < markdownBlocks.size() && markdownBlocks[last].independent && markdownBlocks[last + 1].independent)
+            ++last;
         if (first) --first;
         if (last + 1 < markdownBlocks.size()) ++last;
         auto begin = markdownBlocks[first].start;

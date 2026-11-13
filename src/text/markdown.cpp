@@ -9,6 +9,37 @@ namespace tn
 {
 namespace
 {
+// Only closed strong spans and literal words are admitted. Other syntax retains semantic blocks.
+bool independentText(std::string_view source)
+{
+    bool leading = true;
+    for (auto ch : source) {
+        auto byte = static_cast<unsigned char>(ch);
+        if (ch == '\n') {
+            leading = true;
+            continue;
+        }
+        if (leading && (ch == ' ' || ch == '\t' || ch == '\r')) return false;
+        leading = false;
+        if (ch == '*') continue;
+        if (byte < 0x80 && ch != ' ' && std::string_view(".,;:!?()'\"").find(ch) == std::string_view::npos && !(ch >= 'a' && ch <= 'z') && !(ch >= 'A' && ch <= 'Z') && !(ch >= '0' && ch <= '9')) return false;
+    }
+    return true;
+}
+
+bool independent(std::string_view source, const std::vector<MarkdownSpan>& spans)
+{
+    if (!independentText(source)) return false;
+    size_t markers = 0;
+    auto stars = size_t(std::count(source.begin(), source.end(), '*'));
+    for (const auto& span : spans) {
+        if (source.find('\n', span.start) < span.end) return false;
+        if (span.kind == MarkdownKind::Marker && span.element == MarkdownKind::Strong && span.end - span.start == 2) markers += 2;
+        else if (span.kind != MarkdownKind::Strong) return false;
+    }
+    return markers == stars;
+}
+
 struct Frame
 {
     int type;
@@ -315,6 +346,35 @@ std::vector<MarkdownBlock> parseMarkdownBlocks(std::string_view source)
     parser.split = true;
     if (!parse(parser)) return {};
     parser.flush(true);
-    return std::move(parser.sections);
+    std::vector<MarkdownBlock> sections;
+    for (auto& block : parser.sections) {
+        auto text = source.substr(block.start, block.end - block.start);
+        if (!independent(text, block.spans)) {
+            sections.push_back(std::move(block));
+            continue;
+        }
+        size_t first = 0, span = 0;
+        while (first < text.size()) {
+            auto end = first;
+            for (unsigned row = 0; row < 128 && end < text.size(); ++row) {
+                auto newline = text.find('\n', end);
+                end = newline == text.npos ? text.size() : newline + 1;
+            }
+            MarkdownBlock part{block.start + first, block.start + end, {}, true};
+            auto begin = span;
+            while (span < block.spans.size() && block.spans[span].start < end)
+                ++span;
+            part.spans.reserve(span - begin);
+            for (; begin < span; ++begin) {
+                auto value = block.spans[begin];
+                value.start -= first;
+                value.end -= first;
+                part.spans.push_back(value);
+            }
+            sections.push_back(std::move(part));
+            first = end;
+        }
+    }
+    return sections;
 }
 }  // namespace tn

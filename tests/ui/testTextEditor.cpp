@@ -698,6 +698,116 @@ TEST_CASE_FIXTURE(Editor, "markdown_incremental_edits_match_fresh_layouts")
     std::string source, inserted;
     size_t start = 0, removed = 0, secondWordEdit = 0;
     bool compositionCommit = false, fallbackFont = false;
+    SUBCASE("independent_paragraph_edits")
+    {
+        for (unsigned row = 0; row < 600; ++row)
+            source += "**bold** plainword\n";
+        source += "\n# Tail\n";
+        inserted = "\xed\x95\x9c";
+        fallbackFont = true;
+        SUBCASE("first_character") {}
+        SUBCASE("word_start")
+        {
+            start = 9;
+        }
+        SUBCASE("sentence_punctuation")
+        {
+            start = 12;
+            inserted = ", end.";
+        }
+        SUBCASE("unicode_punctuation")
+        {
+            start = 12;
+            inserted = "\xef\xbc\x81";
+        }
+        SUBCASE("newline")
+        {
+            start = 12;
+            inserted = "\n";
+        }
+        SUBCASE("multiline_paste")
+        {
+            start = 12;
+            inserted = "first\nsecond\nthird";
+        }
+        SUBCASE("chunk_boundary_newline")
+        {
+            start = 128 * 19;
+            inserted = "\n";
+        }
+        SUBCASE("delete_chunk_boundary")
+        {
+            start = 128 * 19 - 1;
+            removed = 1;
+            inserted.clear();
+        }
+        SUBCASE("open_delimiter")
+        {
+            start = 12;
+            inserted = "**open ";
+        }
+        SUBCASE("heading")
+        {
+            start = 128 * 19;
+            inserted = "# ";
+        }
+        SUBCASE("fence")
+        {
+            start = 128 * 19;
+            inserted = "```\n";
+        }
+        SUBCASE("setext")
+        {
+            start = 128 * 19;
+            inserted = "===\n";
+        }
+        SUBCASE("link")
+        {
+            start = 12;
+            inserted = "[label](target)";
+        }
+        SUBCASE("reference_definition")
+        {
+            start = 128 * 19;
+            inserted = "[key]: target\n";
+        }
+        SUBCASE("multiline_emphasis")
+        {
+            start = 12;
+            inserted = "**open\ncontinued**";
+        }
+    }
+    SUBCASE("independent_boundary_merge")
+    {
+        source = "<div>\n\n**bold** plainword\n";
+        start = source.find("\n\n") + 1;
+        removed = 1;
+    }
+    SUBCASE("independent_boundary_split")
+    {
+        source = "**bold** plainword\n\nclose**";
+        start = source.find("\n\n") + 1;
+        removed = 1;
+    }
+    SUBCASE("removing_a_reference_definition_between_independent_blocks")
+    {
+        source = "[label][key]\n\nfirst plainword\n\n[key]: target\n\nlast plainword";
+        start = source.find("plainword");
+        removed = source.rfind("plainword") - start;
+    }
+    SUBCASE("independent_text_in_a_reference_document")
+    {
+        source = "**bold** plainword\n\n[label][key]\n\n[key]: target";
+        start = 12;
+        inserted = "\xe4\xb8\xad";
+        fallbackFont = true;
+    }
+    SUBCASE("multiline_unresolved_reference_label_changes")
+    {
+        source = "[laX\nbel]\n\n[la bel]: target";
+        start = 3;
+        removed = 1;
+    }
     SUBCASE("hangul_word_edits")
     {
         fallbackFont = true;
