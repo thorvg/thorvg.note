@@ -257,6 +257,8 @@ void FontManager::clear()
         tvg::Text::unload(entry.second.c_str());
     textFonts.clear();
     textWidths.clear();
+    fallbackFaces.clear();
+    ++resetVersion;
     faces.clear();
     infos.clear();
     message.clear();
@@ -350,6 +352,40 @@ uint32_t FontManager::glyph(FontId font, uint32_t codepoint) const
     auto face = lookup(font);
     return face ? face->glyph(codepoint) : 0;
 }
+FontId FontManager::fallback(FontId font, uint32_t cp)
+{
+    if (glyph(font, cp)) return font;
+    auto key = uint64_t(font) << 32 | cp;
+    auto found = fallbackFaces.find(key);
+    if (found != fallbackFaces.end()) return found->second;
+    auto preferred = lookup(font);
+    auto weight = preferred ? preferred->info.weight : 400;
+    FontId best = font;
+    unsigned distance = ~0u;
+    for (const auto& info : infos) {
+        auto score = info.weight > weight ? info.weight - weight : weight - info.weight;
+        if (score < distance && glyph(info.id, cp)) {
+            best = info.id;
+            distance = score;
+            if (!score) break;
+        }
+    }
+    if (best != font) fallbackFaces.emplace(key, best);
+    return best;
+}
+
+void FontManager::preferFallback(FontId font, uint32_t cp, FontId substitute)
+{
+    // Seed a new selection from the platform cascade; keep an existing selection stable.
+    if (font && !glyph(font, cp) && glyph(substitute, cp)) fallbackFaces.try_emplace(uint64_t(font) << 32 | cp, substitute);
+}
+
+FontId FontManager::cachedFallback(FontId font, uint32_t cp) const
+{
+    auto found = fallbackFaces.find(uint64_t(font) << 32 | cp);
+    return found == fallbackFaces.end() ? 0 : found->second;
+}
+
 const char* FontManager::textFont(FontId font)
 {
     auto found = textFonts.find(font);

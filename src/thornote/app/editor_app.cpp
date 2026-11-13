@@ -4,6 +4,7 @@
 #include <thornote/platform/clipboard.h>
 #include <thornote/platform/display_text.h>
 #include <ui/ui.h>
+#include <ui/core/text/internal.h>
 #include <algorithm>
 #include <exception>
 #include <limits>
@@ -116,7 +117,7 @@ void EditorApp::configure(DocumentTab& tab)
 
 void EditorApp::prepareFont(DocumentTab& tab, std::string_view added)
 {
-    bool changed = !added.empty() && collectCodepoints(added, tab.codepoints);
+    bool changed = false;
     if (tab.preparedFont != editorFont) {
         tab.codepoints.clear();
         collectCodepoints(tab.document.text(), tab.codepoints);
@@ -129,10 +130,25 @@ void EditorApp::prepareFont(DocumentTab& tab, std::string_view added)
         if (status == tn::ChangeStatus::Untracked) start = 0, end = text.size();
         if (status != tn::ChangeStatus::Unchanged) changed |= collectCodepoints(text.substr(start, end - start), tab.codepoints);
     }
+    if (!added.empty()) changed |= collectCodepoints(added, tab.codepoints);
     tab.fontRevision = tab.document.revision();
     tab.preparedFont = editorFont;
-    // One face draws the document, so a text the chosen face cannot cover moves to the closest substitute.
-    if (changed) tab.editor.font(systemFonts.fontFor(editorFont, tab.codepoints), lineNumberFont);
+    if (changed) {
+        auto& fonts = ui::detail::fontManager();
+        auto bold = editorFont && editorFont <= fonts.fonts().size() ? fonts.find(fonts.fonts()[editorFont - 1].family, 700) : 0;
+        std::vector<uint32_t> point;
+        for (auto preferred : {editorFont, bold == editorFont ? ui::FontId(0) : bold}) {
+            if (!preferred) continue;
+            for (auto cp : tab.codepoints) {
+                if (fonts.glyph(preferred, cp) || fonts.cachedFallback(preferred, cp)) continue;
+                point.assign(1, cp);
+                auto substitute = systemFonts.fontFor(preferred, point);
+                fonts.preferFallback(preferred, cp, substitute);
+            }
+        }
+        // Keep the document face stable; the editor resolves missing glyphs per run.
+        tab.editor.font(editorFont, lineNumberFont);
+    }
 }
 
 void EditorApp::focusEditor(bool focus)

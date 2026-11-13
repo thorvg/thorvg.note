@@ -142,8 +142,13 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
             auto cp = codepoint(value);
             auto format = formatAt(base + offset);
             auto face = format.bold ? boldDocumentFont : documentFont;
-            if (fonts && face != documentFont && !fonts->glyph(face, cp)) face = documentFont;
-            if (configuration.markdown && (runs.empty() || format.start != current.start || format.end != current.end || face != font)) {
+            if (fonts) {
+                auto glyph = cp == '\t' ? uint32_t(' ') : cp;
+                auto resolved = fonts->fallback(face, glyph);
+                if (face != documentFont && !fonts->glyph(resolved, glyph)) resolved = fonts->fallback(documentFont, glyph);
+                face = resolved;
+            }
+            if (runs.empty() || format.start != current.start || format.end != current.end || face != font) {
                 current = format;
                 font = face;
                 measurer->font(fonts ? fonts->textFont(font) : themeTokens.font.c_str());
@@ -155,6 +160,7 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 leading = true;
                 previous = 0;
             }
+            if (fonts && !fonts->glyph(font, cp == '\t' ? uint32_t(' ') : cp)) runs.back().missing = true;
             if (cp == '\t') {
                 auto spaces = 4 - column % 4;
                 for (size_t i = 0; i < spaces; ++i)
@@ -263,14 +269,14 @@ void TextEditor::Impl::measureLine(size_t row)
     lines[0].base = old.base;
     lines[0].top = old.y();
     lines[0].bounds.y = old.bounds.y;
-    lines[0].bounds.h = old.bounds.h;
+    auto displacement = double(lines[0].bounds.h) - old.bounds.h;
     updateWidth(old.bounds.w, lines[0].bounds.w);
     cached->assigned = false;
     cacheTabs(*cached, source);
     cached->display = std::move(display[0]);
     cached->styles = std::move(styles[0]);
     cached->measured = true;
-    view.layout(row, 1, std::move(lines), 0, 0);
+    view.layout(row, 1, std::move(lines), 0, displacement);
 }
 
 size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_view text, size_t base, bool composed)
@@ -333,22 +339,28 @@ void TextEditor::Impl::relayout()
         markdownFormats.clear();
         markdownRevision = uint64_t(-1);
     }
+    auto reset = fonts ? fonts->resetGeneration() : 0;
+    auto bold = font;
+    if (fonts && font && font <= fonts->fonts().size()) {
+        auto match = fonts->find(fonts->fonts()[font - 1].family, 700);
+        if (match) bold = match;
+    }
     bool markdownChanged = configuration.markdown && markdownRevision != document.revision();
-    bool full = layoutDirty || change == tn::ChangeStatus::Untracked || font != documentFont || generation != measuredFontGeneration || (composedRows && measuredRevision != document.revision());
+    bool full = layoutDirty || change == tn::ChangeStatus::Untracked || font != documentFont || reset != measuredFontReset || bold != boldDocumentFont || (composedRows && measuredRevision != document.revision());
+    if (!full && generation != measuredFontGeneration) {
+        // Appending a font affects only rows that previously had an unsupported glyph.
+        for (auto& [row, paint] : linePaints) {
+            if (std::none_of(paint->styles.begin(), paint->styles.end(), [](const auto& run) { return run.missing; })) continue;
+            view.discard(row);
+            paint->measured = paint->assigned = false;
+        }
+    }
     bool replaceComposition = composedRows && !full && change == tn::ChangeStatus::Unchanged && !preedit.empty() && selection.anchor == measuredSelection.anchor && selection.caret == measuredSelection.caret;
     if (markdownChanged) parseMarkdown(start, end, !full && markdownRevision == measuredRevision);
     if (full) {
         if (font != documentFont || generation != measuredFontGeneration) ++textStyleRevision;
         documentFont = font;
-        boldDocumentFont = documentFont;
-        if (fonts) {
-            for (const auto& info : fonts->fonts()) {
-                if (info.id != documentFont) continue;
-                auto bold = fonts->find(info.family, 700);
-                if (bold) boldDocumentFont = bold;
-                break;
-            }
-        }
+        boldDocumentFont = bold;
         measurer->font(fonts ? fonts->textFont(documentFont) : themeTokens.font.c_str());
         measurer->size(configuration.fontSize * fontPointsPerLogicalPixel);
         tvg::TextMetrics metrics{};
@@ -416,6 +428,7 @@ void TextEditor::Impl::relayout()
     measuredPreedit = preedit;
     measuredCursor = preeditCursor;
     measuredFontGeneration = generation;
+    measuredFontReset = reset;
     layoutDirty = false;
     textContentDirty = true;
     dirty = true;
@@ -514,7 +527,7 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
         cached->numberWidth = measure(std::to_string(row + 1), lineNumberFont);
         cached->style = textStyleRevision;
     }
-    if (configuration.markdown) {
+    if (configuration.markdown || cached->styles.size() > 1 || (!cached->styles.empty() && cached->styles.front().font != documentFont)) {
         if (restyled || !cached->assigned || clipped) {
             prepareRuns(*cached);
             if (!cached->group) {
@@ -528,6 +541,7 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
                 const auto& run = cached->styles[i];
                 if (run.end <= cached->clipFirst || run.first >= cached->clipEnd) continue;
                 auto text = i ? cached->runs[i - 1]->text : cached->body;
+                if (!text->text()) continue;
                 cached->group->add(text);
                 auto color = markdownColor(run.format.color);
                 auto stroke = [&](float position) {
@@ -590,7 +604,7 @@ void TextEditor::Impl::prepareViewport(size_t first, size_t end)
             auto& line = prepareLine(row);
             auto y = float(view.line(row).y() - renderOrigin);
             if (configuration.lineNumbers) transform(line.number, {1, 0, gutter - configuration.padding - line.numberWidth, 0, 1, y, 0, 0, 1});
-            if (configuration.markdown) {
+            if (configuration.markdown || (line.group && !line.group->paints().empty())) {
                 transform(line.group, {1, 0, 0, 0, 1, y, 0, 0, 1});
                 if (line.background) transform(line.background, {1, 0, 0, 0, 1, y, 0, 0, 1});
             } else transform(line.body, {1, 0, line.bodyLeft, 0, 1, y + documentTop, 0, 0, 1});
@@ -601,10 +615,11 @@ void TextEditor::Impl::prepareViewport(size_t first, size_t end)
     numberContent.begin(themeTokens, {0, 0, gutter, float(height * 3)}, seconds);
     for (size_t row = first; row < end; ++row) {
         auto& line = prepareLine(row);
-        if (!configuration.markdown) transform(line.body, {1, 0, line.bodyLeft, 0, 1, float(view.line(row).y() - renderOrigin) + documentTop, 0, 0, 1});
+        bool grouped = configuration.markdown || (line.group && !line.group->paints().empty());
+        if (!grouped) transform(line.body, {1, 0, line.bodyLeft, 0, 1, float(view.line(row).y() - renderOrigin) + documentTop, 0, 0, 1});
         if (configuration.lineNumbers) numberContent.add(line.number);
         if (configuration.markdown && line.background && !line.background->paints().empty()) codeContent.add(line.background);
-        textContent.add(configuration.markdown ? static_cast<tvg::Paint*>(line.group) : line.body);
+        textContent.add(grouped ? static_cast<tvg::Paint*>(line.group) : line.body);
     }
     textContent.end();
     codeContent.end();

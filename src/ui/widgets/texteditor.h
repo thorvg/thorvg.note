@@ -20,6 +20,7 @@ struct TextEditor::Impl
         float left = 0, firstWidth = 0, width = 0, top = 0, scale = 1;
         FontId font = 0;
         Format format;
+        bool missing = false;
     };
     struct RenderRun
     {
@@ -90,6 +91,7 @@ struct TextEditor::Impl
     FontId documentFont = 0, lineNumberFont = 0, preferredFont = 0, preferredNumberFont = 0;
     float documentTop = 0;
     uint64_t textStyleRevision = 1;
+    uint64_t measuredFontReset = 0;
     uint64_t measuredRevision = uint64_t(-1), measuredFontGeneration = 0, paintedRevision = uint64_t(-1);
     double vertical = 0;
     float width = 1, height = 1, horizontal = 0, gutter = 0, lineHeight = 24, boldAdvance = 0, widest = 0, digitWidth = 0;

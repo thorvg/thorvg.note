@@ -2526,7 +2526,9 @@ public:
      * editor.theme(ui::Theme::light());
      * @endcode
      *
-     * @param[in] font Document face; zero resolves Theme::font by name.
+     * Missing glyphs use compatible loaded faces while surrounding text keeps its preferred face.
+     *
+     * @param[in] font Preferred document face; zero resolves Theme::font by name.
      * @param[in] numberFont Line-number face; zero uses the document face.
      */
     void font(FontId font = 0, FontId numberFont = 0);

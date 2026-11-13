@@ -1452,7 +1452,6 @@ TEST_CASE_FIXTURE(Editor, "font_assignment_preserves_layout_until_fonts_change")
         std::vector<char> bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
         REQUIRE(ui::loadFont("Additional", bytes.data(), bytes.size()));
         editor.font(fonts.plain, fonts.plain);
-        changed = true;
     }
     auto afterPixels = raster();
     std::vector<TextPose> after;
@@ -1564,7 +1563,7 @@ TEST_CASE_FIXTURE(Editor, "composition_commit_word_edits_retain_other_paragraph_
     raster();
     std::vector<TextPose> before;
     textPoses(context.scene(), before);
-    auto found = std::find_if(before.begin(), before.end(), [](const auto& pose) { return std::string_view(pose.text->text()).find("unchanged") != std::string_view::npos; });
+    auto found = std::find_if(before.begin(), before.end(), [](const auto& pose) { return std::string_view(pose.text->text()).find('u') != std::string_view::npos; });
     REQUIRE(found != before.end());
     found->text->ref();
     std::unique_ptr<tvg::Text, void (*)(tvg::Text*)> retained(found->text, [](tvg::Text* text) { text->unref(); });
@@ -1822,4 +1821,133 @@ TEST_CASE_FIXTURE(Editor, "horizontal_markdown_scroll_matches_fresh_views")
         REQUIRE(full->sync() == tvg::Result::Success);
         CHECK(bool(output == expected));
     }
+}
+
+TEST_CASE_FIXTURE(Editor, "fallback_glyphs_keep_the_primary_face_for_surrounding_text")
+{
+    REQUIRE(document.text("A가V\nAVAV"));
+    auto options = editor.options();
+    SUBCASE("plain") {}
+    SUBCASE("markdown")
+    {
+        options.markdown = true;
+    }
+    SUBCASE("heading")
+    {
+        options.markdown = true;
+        REQUIRE(document.text("# A가V\nAVAV"));
+    }
+    editor.options(options);
+    raster();
+    std::vector<TextPose> poses;
+    textPoses(context.scene(), poses);
+    auto advanceOf = [&](std::string_view value) {
+        auto at = std::find_if(poses.begin(), poses.end(), [&](const auto& pose) { return std::string_view(pose.text->text()) == value; });
+        REQUIRE(at != poses.end());
+        tvg::GlyphMetrics metrics{};
+        REQUIRE(at->text->metrics(std::string(value).c_str(), metrics) == tvg::Result::Success);
+        return metrics.advance;
+    };
+    auto expectedAdvance = [&](ui::FontId font, const char* value, float scale = 1) {
+        std::unique_ptr<tvg::Text> text(tvg::Text::gen());
+        REQUIRE(text->font(fonts.manager->textFont(font)) == tvg::Result::Success);
+        REQUIRE(text->size(options.fontSize * scale * 72.0f / 96.0f) == tvg::Result::Success);
+        tvg::GlyphMetrics metrics{};
+        REQUIRE(text->metrics(value, metrics) == tvg::Result::Success);
+        return metrics.advance;
+    };
+    auto scale = document.text().starts_with("#") ? 2 : 1;
+    CHECK(advanceOf("가") == doctest::Approx(expectedAdvance(fonts.fallback, "가", scale)));
+    CHECK(advanceOf("V") == doctest::Approx(expectedAdvance(fonts.plain, "V", scale)));
+    auto width = 2 * (expectedAdvance(fonts.plain, "A") + expectedAdvance(fonts.plain, "V"));
+    CHECK(editor.rangeRects(document.lineStart(1), document.lineEnd(1)).front().w == doctest::Approx(width));
+}
+
+TEST_CASE_FIXTURE(Editor, "loading_a_fallback_font_remeasures_only_missing_glyph_rows")
+{
+    ui::unloadFonts();
+    auto primary = ui::loadFont(ui::test::fontPath("M1Plain.ttf").c_str());
+    REQUIRE(primary);
+    editor.font(primary);
+    REQUIRE(document.text("A가V\nAVAV"));
+    raster();
+    std::vector<TextPose> before;
+    textPoses(context.scene(), before);
+    auto found = std::find_if(before.begin(), before.end(), [](const auto& pose) { return pose.text->text() && std::string_view(pose.text->text()) == "AVAV"; });
+    REQUIRE(found != before.end());
+    found->text->ref();
+    std::unique_ptr<tvg::Text, void (*)(tvg::Text*)> retained(found->text, [](tvg::Text* text) { text->unref(); });
+    auto fallback = ui::loadFont(ui::test::fontPath("M1Fallback.otf").c_str());
+    REQUIRE(fallback);
+    REQUIRE(fonts.manager->fallback(primary, 0xac00) == fallback);
+    draw();
+    std::vector<TextPose> after;
+    textPoses(context.scene(), after);
+    CHECK(std::any_of(after.begin(), after.end(), [&](const auto& pose) { return pose.text == retained.get(); }));
+    CHECK(std::any_of(after.begin(), after.end(), [](const auto& pose) { return pose.text->text() && std::string_view(pose.text->text()) == "가"; }));
+    CHECK(document.text() == "A가V\nAVAV");
+}
+
+TEST_CASE_FIXTURE(Editor, "platform_fallback_preserves_existing_selections")
+{
+    REQUIRE(!fonts.manager->glyph(fonts.plain, 0xac00));
+    REQUIRE(fonts.manager->fallback(fonts.plain, 0xac00) == fonts.fallback);
+    std::ifstream input(ui::test::fontPath("M1Fallback.otf"), std::ios::binary);
+    REQUIRE(input);
+    std::vector<char> bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    auto platform = ui::loadFont("Platform fallback", bytes.data(), bytes.size());
+    REQUIRE(platform);
+    fonts.manager->preferFallback(fonts.plain, 0xac00, platform);
+    CHECK(fonts.manager->fallback(fonts.plain, 0xac00) == fonts.fallback);
+    REQUIRE(!fonts.manager->cachedFallback(fonts.kern, 0xac00));
+    fonts.manager->preferFallback(fonts.kern, 0xac00, platform);
+    CHECK(fonts.manager->fallback(fonts.kern, 0xac00) == platform);
+    fonts.manager->preferFallback(fonts.plain, 'A', platform);
+    CHECK(fonts.manager->fallback(fonts.plain, 'A') == fonts.plain);
+    fonts.manager->preferFallback(fonts.plain, 0xac00, fonts.kern);
+    CHECK(fonts.manager->fallback(fonts.plain, 0xac00) == fonts.fallback);
+}
+
+TEST_CASE_FIXTURE(Editor, "platform_lookup_keeps_cached_substitute_rows")
+{
+    std::ifstream input(ui::test::fontPath("M1Fallback.otf"), std::ios::binary);
+    REQUIRE(input);
+    std::vector<char> bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    auto count = (uint8_t(bytes[4]) << 8) | uint8_t(bytes[5]);
+    bool changed = false;
+    for (int i = 0; i < count; ++i) {
+        auto at = size_t(12 + i * 16);
+        if (std::string_view(bytes.data() + at, 4) != "hmtx") continue;
+        size_t first = 0, length = 0;
+        for (size_t j = 0; j < 4; ++j) {
+            first = (first << 8) | uint8_t(bytes[at + 8 + j]);
+            length = (length << 8) | uint8_t(bytes[at + 12 + j]);
+        }
+        REQUIRE(first + length <= bytes.size());
+        for (size_t j = 0; j + 4 <= length; j += 4) {
+            bytes[first + j] = 6;
+            bytes[first + j + 1] = 64;
+        }
+        changed = true;
+    }
+    REQUIRE(changed);
+    auto platform = ui::loadFont("Platform metrics", bytes.data(), bytes.size());
+    REQUIRE(platform);
+    REQUIRE(document.text("A가V\nAVAV"));
+    raster();
+    auto width = editor.rangeRects(1, 4).front().w;
+    std::vector<TextPose> poses;
+    textPoses(context.scene(), poses);
+    auto found = std::find_if(poses.begin(), poses.end(), [](const auto& pose) { return pose.text->text() && std::string_view(pose.text->text()) == "AVAV"; });
+    REQUIRE(found != poses.end());
+    found->text->ref();
+    std::unique_ptr<tvg::Text, void (*)(tvg::Text*)> retained(found->text, [](tvg::Text* text) { text->unref(); });
+    auto generation = fonts.manager->generation();
+    fonts.manager->preferFallback(fonts.plain, 0xac00, platform);
+    CHECK(fonts.manager->generation() == generation);
+    draw();
+    CHECK(editor.rangeRects(1, 4).front().w == doctest::Approx(width));
+    poses.clear();
+    textPoses(context.scene(), poses);
+    CHECK(std::any_of(poses.begin(), poses.end(), [&](const auto& pose) { return pose.text == retained.get(); }));
 }

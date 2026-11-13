@@ -70,6 +70,7 @@ public:
         }
     }
 
+    void prepareFont(DocumentTab& tab, std::string_view added) { app->prepareFont(tab, added); }
     bool editorFocused() const { return app->editorFocus; }
     void focusEditor() { app->focusEditor(true); }
 };
@@ -548,4 +549,16 @@ TEST_CASE_FIXTURE(EditorTest, "editor_leaves_printable_native_keys_for_text_inte
     shortcut.key = SDLK_Z;
     CHECK(app->nativeKeyDown(shortcut));
     CHECK(tab.document.text() == "a한");
+}
+
+TEST_CASE_FIXTURE(EditorTest, "first_added_codepoints_survive_initial_font_preparation")
+{
+    auto& tab = document("ABC");
+    REQUIRE(tab.preparedFont == 0);
+    prepareFont(tab, "\xed\x95\x9c");
+    CHECK(std::find(tab.codepoints.begin(), tab.codepoints.end(), uint32_t(0xd55c)) != tab.codepoints.end());
+    auto points = tab.codepoints;
+    prepareFont(tab, "\xed\x95\x9c");
+    CHECK(tab.codepoints == points);
+    CHECK(tab.document.text() == "ABC");
 }

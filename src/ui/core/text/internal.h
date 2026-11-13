@@ -21,10 +21,14 @@ public:
     const std::vector<FontInfo>& fonts() const { return infos; }
     float unitsPerEm(FontId font) const;
     uint32_t glyph(FontId font, uint32_t codepoint) const;
+    FontId fallback(FontId font, uint32_t codepoint);
+    void preferFallback(FontId font, uint32_t codepoint, FontId substitute);
+    FontId cachedFallback(FontId font, uint32_t codepoint) const;
     const char* textFont(FontId font);
     float textWidth(std::string_view text, const char* font, float size);
     float textKerning(FontId font, uint32_t left, uint32_t right) const;
     uint64_t generation() const { return version; }
+    uint64_t resetGeneration() const { return resetVersion; }
     const std::string& error() const { return message; }
     void clear();
 
@@ -38,7 +42,8 @@ private:
         float size = 0, width = 0;
     };
     std::vector<TextWidth> textWidths;
-    uint64_t version = 1;
+    std::unordered_map<uint64_t, FontId> fallbackFaces;
+    uint64_t version = 1, resetVersion = 1;
     std::string message;
     Face* lookup(FontId id) const { return id && id <= faces.size() ? faces[id - 1].get() : nullptr; }
 };

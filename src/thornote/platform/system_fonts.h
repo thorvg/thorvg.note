@@ -17,8 +17,8 @@ public:
     ~SystemFonts();
     ui::FontId defaultFont(bool bold = false);  // 0 when a platform provider is unavailable.
     ui::FontId load(const FontChoice&, std::string& error);
-    // One face draws a whole label or document: preferred while it covers the codepoints,
-    // else the loaded substitute that misses the fewest. Zero stays zero.
+    // Resolve a face for a label, or preload substitutes for missing document glyphs.
+    // Preferred while it covers the codepoints, else the closest substitute. Zero stays zero.
     ui::FontId fontFor(ui::FontId preferred, const std::vector<uint32_t>& codepoints);
 
 private:
