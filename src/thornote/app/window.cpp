@@ -313,9 +313,20 @@ private:
         if (retarget) {
             SDL_DestroySurface(frame);
             pixels.assign(size_t(target->w) * target->h, 0);
-            if (canvas->target(pixels.data(), target->w, target->w, target->h, tvg::ColorSpace::ARGB8888) != tvg::Result::Success) return false;
-            frame = SDL_CreateSurfaceFrom(target->w, target->h, SDL_PIXELFORMAT_ARGB8888, pixels.data(), target->w * 4);
+#ifdef __EMSCRIPTEN__
+            constexpr auto colors = tvg::ColorSpace::ABGR8888;
+            constexpr auto format = SDL_PIXELFORMAT_RGBA32;
+#else
+            constexpr auto colors = tvg::ColorSpace::ARGB8888;
+            constexpr auto format = SDL_PIXELFORMAT_ARGB8888;
+#endif
+            if (canvas->target(pixels.data(), target->w, target->w, target->h, colors) != tvg::Result::Success) return false;
+            frame = SDL_CreateSurfaceFrom(target->w, target->h, format, pixels.data(), target->w * 4);
             if (!frame) return false;
+#ifdef __EMSCRIPTEN__
+            // The complete rendered frame already contains the window background.
+            if (!SDL_SetSurfaceBlendMode(frame, SDL_BLENDMODE_NONE)) return false;
+#endif
         }
         app->render(target->w / scale, target->h / scale);
         ui::transform(app->context.scene(), {scale, 0, 0, 0, scale, 0, 0, 0, 1});
