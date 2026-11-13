@@ -135,8 +135,10 @@ void TextEditor::Impl::clampScroll()
 
 double TextEditor::Impl::contentHeight() const
 {
-    const auto& layout = view.layout();
-    return layout.empty() ? 0 : layout.back().y() + layout.back().bounds.h;
+    auto count = view.lineCount();
+    if (!count) return 0;
+    const auto& last = view.line(count - 1);
+    return last.y() + last.bounds.h;
 }
 
 Rect TextEditor::Impl::logicalCaret() const
@@ -446,16 +448,13 @@ bool TextEditor::Impl::update(double now)
     context.rect({0, 0, width, height}, themeTokens.background);
     auto area = textArea();
     auto selection = editing.selection();
-    const auto& geometry = view.layout();
     if (pendingScroll) {
         horizontal = pendingScroll->first;
         vertical = pendingScroll->second;
         clampScroll();
     }
-    auto firstRow = std::lower_bound(geometry.begin(), geometry.end(), vertical, [](const auto& row, double y) { return row.y() + row.bounds.h <= y; });
-    auto endRow = std::lower_bound(firstRow, geometry.end(), vertical + area.h, [](const auto& row, double y) { return row.y() < y; });
-    size_t first = size_t(firstRow - geometry.begin());
-    size_t end = size_t(endRow - geometry.begin());
+    auto visible = view.visibleLines(vertical, vertical + area.h);
+    auto first = visible.first, end = visible.second;
     prepareViewport(first, end);
     if (pendingScroll) {
         horizontal = pendingScroll->first;
@@ -463,17 +462,17 @@ bool TextEditor::Impl::update(double now)
         pendingScroll.reset();
         clampScroll();
         area = textArea();
-        firstRow = std::lower_bound(geometry.begin(), geometry.end(), vertical, [](const auto& row, double y) { return row.y() + row.bounds.h <= y; });
-        endRow = std::lower_bound(firstRow, geometry.end(), vertical + area.h, [](const auto& row, double y) { return row.y() < y; });
-        first = size_t(firstRow - geometry.begin());
-        end = size_t(endRow - geometry.begin());
+        visible = view.visibleLines(vertical, vertical + area.h);
+        first = visible.first;
+        end = visible.second;
         prepareViewport(first, end);
     }
     auto measuredArea = textArea();
     if (area.h != measuredArea.h) {
         area = measuredArea;
-        endRow = std::lower_bound(firstRow, geometry.end(), vertical + area.h, [](const auto& row, double y) { return row.y() < y; });
-        end = size_t(endRow - geometry.begin());
+        visible = view.visibleLines(vertical, vertical + area.h);
+        first = visible.first;
+        end = visible.second;
         prepareViewport(first, end);
     }
     context.clip({0, area.y, width, area.h}, [&] {
@@ -500,7 +499,7 @@ bool TextEditor::Impl::update(double now)
             }
         } else if (!selection.empty())
             for (size_t row = first; row < end; ++row) {
-                auto rect = rangeRect(geometry[row], selection.start(), selection.end());
+                auto rect = rangeRect(view.line(row), selection.start(), selection.end());
                 if (rect.w > 0 && rect.h > 0) context.rect(rect, themeTokens.selection);
             }
         if (preedit.empty()) paintDecorations(first, end, true);

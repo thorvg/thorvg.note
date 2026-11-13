@@ -159,9 +159,8 @@ Rect TextEditor::Impl::paintCaret()
     auto& document = editing.document();
     auto offset = editing.selection().caret;
     auto row = document.lineAt(offset);
-    const auto& lines = view.layout();
     float advance = measure(" ");
-    if (row < lines.size() && offset < document.lineEnd(row)) advance = lines[row].position(document.next(offset)) - lines[row].position(offset);
+    if (row < view.lineCount() && offset < document.lineEnd(row)) advance = view.line(row).position(document.next(offset)) - view.line(row).position(offset);
     rect.w = std::max(1.5f, advance);
     if (input.caret == CaretStyle::Underline) {
         rect.y += rect.h - 2;

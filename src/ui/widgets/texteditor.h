@@ -17,7 +17,7 @@ struct TextEditor::Impl
     struct Run
     {
         size_t first = 0, end = 0;
-        float left = 0, leading = 0, width = 0, top = 0, scale = 1;
+        float left = 0, firstWidth = 0, width = 0, top = 0, scale = 1;
         FontId font = 0;
         Format format;
     };
@@ -34,7 +34,10 @@ struct TextEditor::Impl
         tvg::Scene* group = nullptr;
         tvg::Scene* background = nullptr;
         uint64_t style = 0;
-        std::string value, display;
+        std::string display;
+        std::vector<std::pair<size_t, size_t>> tabOffsets;
+        size_t clipFirst = 0, clipEnd = 0;
+        float clipX = 0;
         std::vector<Run> styles;
         bool assigned = false, measured = false;
         std::vector<std::unique_ptr<RenderRun>> runs;
@@ -69,6 +72,7 @@ struct TextEditor::Impl
     std::map<size_t, std::vector<Format>> markdownFormats;
     bool referenceMarkdown = false;
     double renderOrigin = 0, preeditOrigin = 0;
+    float drawnHorizontal = -1, drawnWidth = -1;
     uint64_t markdownRevision = uint64_t(-1);
     FontId boldDocumentFont = 0;
     struct Decoration
@@ -137,7 +141,9 @@ struct TextEditor::Impl
     double maxVerticalScroll() const;
     double contentHeight() const;
 
-    float measure(std::string_view text, FontId font = 0) const;
+    float measure(std::string_view text, FontId font = 0, float scale = 1) const;
+    void cacheTabs(RenderLine& line, std::string_view source);
+    float prepareText(tvg::Text* text, const RenderLine& line, const Run* run = nullptr);
     std::vector<TextLine> layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& runs);
     void parseMarkdown(size_t& start, size_t& end, bool incremental);
     size_t markdownBlock(size_t offset) const;

@@ -2316,9 +2316,29 @@ public:
     bool layout(size_t first, size_t count, std::vector<TextLine> value, ptrdiff_t offset, double y);
 
     /**
-     * @brief Returns current unscrolled document-space lines; mutations invalidate element references.
+     * @brief Returns a flat snapshot of current unscrolled document-space lines.
+     *
+     * @note The first call copies all geometry. Later mutations keep the returned vector current,
+     * invalidating element references. Prefer lineCount(), line(), and visibleLines() for large layouts.
      */
     const std::vector<TextLine>& layout() const;
+
+    /** @brief Returns the number of displayed rows without materializing a flat snapshot. */
+    size_t lineCount() const;
+
+    /**
+     * @brief Returns one row's document-space metadata without requesting character measurement.
+     *
+     * @note The index must be smaller than lineCount(). Geometry mutations invalidate the reference.
+     */
+    const TextLine& line(size_t index) const;
+
+    /**
+     * @brief Returns the row range intersecting an unscrolled document-space y interval.
+     *
+     * @note The end index is exclusive. Unordered layouts return all rows for a nonempty interval.
+     */
+    std::pair<size_t, size_t> visibleLines(double top, double bottom) const;
 
     /** @brief Supplies character geometry on demand for lines whose offset/x arrays are empty. */
     void measure(std::function<void(size_t)> line);

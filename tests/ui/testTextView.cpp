@@ -1,5 +1,7 @@
 #include <common/doctest/doctest.h>
 #include <ui/ui.h>
+#include <random>
+#include <algorithm>
 
 namespace
 {
@@ -25,6 +27,20 @@ struct View
         for (size_t i = 0; i <= length; ++i) {
             result.offsets.push_back(offset + i);
             result.x.push_back(i * 10.0f);
+        }
+        return result;
+    }
+
+    static ui::TextLine row(size_t index, double origin = 0, bool measured = false)
+    {
+        ui::TextLine result;
+        result.base = index * 4;
+        result.length = 3;
+        result.top = origin + index * 20;
+        result.bounds = {0, float(result.top), measured ? 30.0f : 0.0f, 20};
+        if (measured) {
+            result.offsets = {0, 1, 2, 3};
+            result.x = {0, 10, 20, 30};
         }
         return result;
     }
@@ -248,10 +264,13 @@ TEST_CASE_FIXTURE(View, "row_replacement_preserves_moved_geometry_and_hit_testin
         lines.push_back(std::move(value));
     }
     REQUIRE(view.layout(std::move(lines)));
-    auto before = view.layout();
+    std::vector<ui::TextLine> before;
     std::vector<const size_t*> boundaries;
-    for (const auto& value : view.layout())
+    for (size_t row = 0; row < view.lineCount(); ++row) {
+        const auto& value = view.line(row);
+        before.push_back(value);
         boundaries.push_back(value.offsets.empty() ? nullptr : value.offsets.data());
+    }
 
     size_t first = 3, count = 1, inserted = 3;
     SUBCASE("grow") {}
@@ -292,25 +311,25 @@ TEST_CASE_FIXTURE(View, "row_replacement_preserves_moved_geometry_and_hit_testin
     auto offset = (ptrdiff_t(inserted) - ptrdiff_t(count)) * 4;
     auto y = (double(inserted) - double(count)) * 20;
     REQUIRE(view.layout(first, count, std::move(replacement), offset, y));
-    const auto& result = view.layout();
-    REQUIRE(result.size() == before.size() - count + inserted);
-    for (size_t row = 0; row < result.size(); ++row) {
+    REQUIRE(view.lineCount() == before.size() - count + inserted);
+    for (size_t row = 0; row < view.lineCount(); ++row) {
+        const auto& value = view.line(row);
         CAPTURE(row);
-        CHECK(result[row].start() == row * 4);
-        CHECK(result[row].end() == row * 4 + 3);
-        CHECK(result[row].y() == origin + row * 20);
-        CHECK(result[row].bounds.y == float(result[row].y()));
+        CHECK(value.start() == row * 4);
+        CHECK(value.end() == row * 4 + 3);
+        CHECK(value.y() == origin + row * 20);
+        CHECK(value.bounds.y == float(value.y()));
         if (row >= first && row < first + inserted) {
-            CHECK(result[row].offsets.data() == newBoundaries[row - first]);
+            CHECK(value.offsets.data() == newBoundaries[row - first]);
         } else {
             auto previous = row < first ? row : row + count - inserted;
-            CHECK(result[row].offsets == before[previous].offsets);
-            CHECK(result[row].x == before[previous].x);
-            CHECK(result[row].offsets.empty() == (boundaries[previous] == nullptr));
-            if (!result[row].offsets.empty()) CHECK(result[row].offsets.data() == boundaries[previous]);
+            CHECK(value.offsets == before[previous].offsets);
+            CHECK(value.x == before[previous].x);
+            CHECK(value.offsets.empty() == (boundaries[previous] == nullptr));
+            if (!value.offsets.empty()) CHECK(value.offsets.data() == boundaries[previous]);
         }
-        if (!result[row].offsets.empty()) {
-            view.origin(result[row].y());
+        if (!value.offsets.empty()) {
+            view.origin(value.y());
             CHECK(view.hit(20, 5) == row * 4 + 2);
             session.select(row * 4 + 1, row * 4 + 1);
             CHECK(view.caretRect().y == 0);
@@ -319,34 +338,230 @@ TEST_CASE_FIXTURE(View, "row_replacement_preserves_moved_geometry_and_hit_testin
     }
 }
 
-TEST_CASE_FIXTURE(View, "large_layout_growth_keeps_bounded_spare_capacity")
+TEST_CASE_FIXTURE(View, "large_layout_replacements_preserve_distant_glyph_storage")
 {
     constexpr size_t count = 65536;
+    REQUIRE(document.text(std::string((count + 32) * 4, 'x')));
     std::vector<ui::TextLine> lines;
     lines.reserve(count);
-    for (size_t row = 0; row < count; ++row) {
-        ui::TextLine value;
-        value.base = row * 2;
-        value.length = 1;
-        value.top = double(row) * 20;
-        value.bounds = {0, float(value.top), 0, 20};
-        lines.push_back(std::move(value));
+    for (size_t index = 0; index < count; ++index)
+        lines.push_back(row(index));
+    const size_t anchors[] = {0, 1023, 2048, count - 1};
+    std::vector<const size_t*> boundaries;
+    for (auto index : anchors) {
+        lines[index] = row(index, 0, true);
+        boundaries.push_back(lines[index].offsets.data());
     }
     REQUIRE(view.layout(std::move(lines)));
-    ui::TextLine value;
-    value.base = 2;
-    value.length = 1;
-    value.top = 20;
-    value.bounds = {0, 20, 0, 20};
-    REQUIRE(view.layout(1, 0, {value}, 2, 20));
-    CHECK(view.layout().capacity() <= count + count / 4);
-    auto allocated = view.layout().data();
-    for (size_t i = 0; i < 8; ++i) {
-        REQUIRE(view.layout(1, 0, {value}, 2, 20));
-        CHECK(view.layout().data() == allocated);
+    for (size_t inserted = 0; inserted < 9; ++inserted) {
+        REQUIRE(view.layout(1, 0, {row(1)}, 4, 20));
+        REQUIRE(view.lineCount() == count + inserted + 1);
+        CHECK(view.line(0).offsets.data() == boundaries[0]);
+        for (size_t index = 1; index < std::size(anchors); ++index) {
+            const auto& value = view.line(anchors[index] + inserted + 1);
+            CHECK(value.offsets.data() == boundaries[index]);
+            CHECK(value.start() == (anchors[index] + inserted + 1) * 4);
+        }
     }
-    CHECK(view.layout().size() == count + 9);
-    CHECK(view.layout().back().start() == (count + 8) * 2);
-    CHECK(view.layout().back().y() == double(count + 8) * 20);
-    CHECK(view.layout().back().offsets.empty());
+    REQUIRE(view.layout(view.lineCount(), 0, {row(view.lineCount())}, 0, 0));
+    REQUIRE(view.layout(1, 9, {}, -36, -180));
+    REQUIRE(view.lineCount() == count + 1);
+    for (size_t index = 0; index < std::size(anchors); ++index) {
+        const auto& value = view.line(anchors[index]);
+        CHECK(value.offsets.data() == boundaries[index]);
+        CHECK(value.start() == anchors[index] * 4);
+        CHECK(value.y() == anchors[index] * 20);
+    }
+    CHECK((view.visibleLines(20480, 20500) == std::pair<size_t, size_t>{1024, 1025}));
+    CHECK(view.line(count).start() == count * 4);
+    CHECK(view.line(count).offsets.empty());
+    REQUIRE(view.layout(count, 1, {}, 0, 0));
+    CHECK(view.lineCount() == count);
+}
+
+TEST_CASE_FIXTURE(View, "legacy_layout_reference_observes_replacement_and_discard")
+{
+    const auto& snapshot = view.layout();
+    REQUIRE(snapshot.size() == 2);
+    auto address = &snapshot;
+    REQUIRE(view.layout(0, 1, {line(0, 5, 0), line(6, 5, 20)}, 0, 20));
+    REQUIRE(snapshot.size() == 3);
+    CHECK(snapshot[2].start() == 12);
+    CHECK(snapshot[2].y() == 40);
+    CHECK(&view.layout() == address);
+    view.discard(2);
+    CHECK(snapshot[2].offsets.empty());
+    CHECK(snapshot[2].start() == 12);
+    CHECK(snapshot[2].end() == 23);
+    auto invalid = line(0, 3, 0);
+    invalid.x.clear();
+    CHECK_FALSE(view.layout(0, 1, {invalid}, 0, 0));
+    CHECK(snapshot.size() == 3);
+    CHECK(snapshot[2].start() == 12);
+    REQUIRE(view.layout({}));
+    CHECK(snapshot.empty());
+    CHECK(view.lineCount() == 0);
+    CHECK((view.visibleLines(0, 20) == std::pair<size_t, size_t>{0, 0}));
+}
+
+TEST_CASE_FIXTURE(View, "visible_line_intervals_cover_gaps_zero_height_and_unordered_rows")
+{
+    auto first = row(0), second = row(1), empty = row(2), last = row(3);
+    first.top = 0;
+    first.bounds.h = 10;
+    second.top = 30;
+    empty.top = 70;
+    empty.bounds.h = 0;
+    last.top = 100;
+    last.bounds.h = 10;
+    REQUIRE(view.layout({first, second, empty, last}));
+    CHECK((view.visibleLines(-10, 0) == std::pair<size_t, size_t>{0, 0}));
+    CHECK((view.visibleLines(0, 10) == std::pair<size_t, size_t>{0, 1}));
+    CHECK((view.visibleLines(10, 30) == std::pair<size_t, size_t>{1, 1}));
+    CHECK((view.visibleLines(30, 50) == std::pair<size_t, size_t>{1, 2}));
+    CHECK((view.visibleLines(50, 100) == std::pair<size_t, size_t>{2, 3}));
+    CHECK((view.visibleLines(70, 90) == std::pair<size_t, size_t>{3, 3}));
+    CHECK((view.visibleLines(100, 110) == std::pair<size_t, size_t>{3, 4}));
+    CHECK((view.visibleLines(110, 120) == std::pair<size_t, size_t>{4, 4}));
+    auto infinity = std::numeric_limits<double>::infinity();
+    CHECK((view.visibleLines(-infinity, infinity) == std::pair<size_t, size_t>{0, 4}));
+    CHECK((view.visibleLines(20, 20) == std::pair<size_t, size_t>{0, 0}));
+    CHECK((view.visibleLines(30, 20) == std::pair<size_t, size_t>{0, 0}));
+    CHECK((view.visibleLines(std::numeric_limits<double>::quiet_NaN(), 20) == std::pair<size_t, size_t>{0, 0}));
+    CHECK((view.visibleLines(0, std::numeric_limits<double>::quiet_NaN()) == std::pair<size_t, size_t>{0, 0}));
+    // Overlapping or unordered rows need a conservative range for caller-side culling.
+    REQUIRE(view.layout({last, first, second}));
+    CHECK((view.visibleLines(5, 6) == std::pair<size_t, size_t>{0, 3}));
+    CHECK((view.visibleLines(200, 220) == std::pair<size_t, size_t>{0, 3}));
+    second.top = 5;
+    REQUIRE(view.layout({first, second}));
+    CHECK((view.visibleLines(0, 20) == std::pair<size_t, size_t>{0, 2}));
+}
+
+TEST_CASE_FIXTURE(View, "metadata_access_does_not_measure_and_reentrant_measurement_reacquires_rows")
+{
+    constexpr size_t count = 4097;
+    constexpr double origin = 1000000000.25;
+    REQUIRE(document.text(std::string(count * 4, 'x')));
+    std::vector<ui::TextLine> lines;
+    for (size_t index = 0; index < count; ++index)
+        lines.push_back(row(index, origin));
+    REQUIRE(view.layout(std::move(lines)));
+    size_t measured = 0;
+    view.measure([&](size_t index) {
+        ++measured;
+        auto value = view.line(index);
+        CHECK(value.offsets.empty());
+        value.offsets = {0, 1, 2, 3};
+        value.x = {0, 10, 20, 30};
+        value.bounds.w = 30;
+        REQUIRE(view.layout(index, 1, {std::move(value)}, 0, 0));
+    });
+    CHECK(view.line(1024).offsets.empty());
+    CHECK(view.line(1024).y() == origin + 1024 * 20);
+    CHECK((view.visibleLines(origin + 1023 * 20, origin + 1026 * 20) == std::pair<size_t, size_t>{1023, 1026}));
+    CHECK(measured == 0);
+    view.origin(origin + 1023 * 20);
+    session.select(1024 * 4 + 1, 1024 * 4 + 1);
+    auto caret = view.caretRect();
+    CHECK(caret.x == 10);
+    CHECK(caret.y == 20);
+    CHECK(measured == 1);
+    auto ranges = view.rangeRects(1023 * 4, 1025 * 4 + 3, ui::Rect{0, 0, 100, 60});
+    REQUIRE(ranges.size() == 3);
+    CHECK(ranges[0].y == 0);
+    CHECK(ranges[1].y == 20);
+    CHECK(ranges[2].y == 40);
+    CHECK(measured == 3);
+    view.discard(1024);
+    CHECK(view.line(1024).offsets.empty());
+    CHECK(view.line(1024).start() == 1024 * 4);
+    CHECK(view.line(1024).y() == origin + 1024 * 20);
+    CHECK(measured == 3);
+    CHECK(view.hit(20, 25) == 1024 * 4 + 2);
+    CHECK(measured == 4);
+}
+
+TEST_CASE_FIXTURE(View, "chunk_boundaries_keep_precise_geometry_and_signed_source_displacements")
+{
+    constexpr size_t count = 4097;
+    constexpr double origin = 1000000000.25;
+    std::vector<ui::TextLine> lines;
+    for (size_t index = 0; index < count; ++index)
+        lines.push_back(row(index, origin, true));
+    auto retained = lines[3000].offsets.data();
+    REQUIRE(view.layout(std::move(lines)));
+    std::vector<ui::TextLine> replacement;
+    for (size_t index = 0; index < 3; ++index)
+        replacement.push_back(row(1023 + index, origin, true));
+    REQUIRE(view.layout(1023, 2, std::move(replacement), 4, 20));
+    REQUIRE(view.lineCount() == count + 1);
+    CHECK(view.line(3001).offsets.data() == retained);
+    CHECK(view.line(3001).y() == origin + 3001 * 20);
+    REQUIRE(view.layout(1024, 1025, {row(1024, origin, true)}, -4096, -20480));
+    CHECK(view.line(1977).offsets.data() == retained);
+    CHECK(view.line(1977).start() == 1977 * 4);
+    CHECK(view.line(1977).y() == origin + 1977 * 20);
+    auto first = line(0, 3, 0), second = line(4, 4, 20);
+    REQUIRE(view.layout({first, second}));
+    REQUIRE(view.layout(0, 1, {line(0, 2, 0)}, -1, .25));
+    CHECK(view.line(1).base == -1);
+    CHECK(view.line(1).start() == 3);
+    CHECK(view.line(1).y() == 20.25);
+    CHECK(view.line(1).bounds.y == 20.25f);
+    CHECK(std::isnan(view.line(1).top));
+    auto before = view.line(1).start();
+    auto invalid = line(0, 2, 0);
+    invalid.offsets = {2, 1, 0};
+    CHECK_FALSE(view.layout(0, 1, {invalid}, 100, 100));
+    CHECK(view.line(1).start() == before);
+    CHECK(view.line(1).y() == 20.25);
+}
+
+TEST_CASE_FIXTURE(View, "partial_layout_changes_match_a_flat_reference")
+{
+    constexpr double origin = 1000000000.25;
+    std::vector<ui::TextLine> reference;
+    for (size_t index = 0; index < 4097; ++index)
+        reference.push_back(row(index, origin, index % 17 == 0));
+    REQUIRE(view.layout(reference));
+    std::mt19937 random(43);
+    for (size_t step = 0; step < 120; ++step) {
+        CAPTURE(step);
+        auto first = size_t(random()) % (reference.size() + 1);
+        auto removed = std::min(reference.size() - first, size_t(random() % (step % 17 == 0 ? 1100 : 6)));
+        auto inserted = size_t(random() % (step % 17 == 0 ? 1300 : 6));
+        if (step == 40) first = 0, removed = reference.size(), inserted = 1300;
+        if (step == 80) first = 0, removed = reference.size(), inserted = 0;
+        std::vector<ui::TextLine> replacement;
+        for (size_t index = 0; index < inserted; ++index)
+            replacement.push_back(row(first + index, origin, index % 13 == 0));
+        auto offset = (ptrdiff_t(inserted) - ptrdiff_t(removed)) * 4;
+        auto y = (double(inserted) - double(removed)) * 20;
+        REQUIRE(view.layout(first, removed, replacement, offset, y));
+        for (size_t index = first + removed; index < reference.size(); ++index) {
+            reference[index].base += offset;
+            reference[index].top += y;
+            reference[index].bounds.y = float(reference[index].top);
+        }
+        auto at = reference.erase(reference.begin() + first, reference.begin() + first + removed);
+        reference.insert(at, replacement.begin(), replacement.end());
+        REQUIRE(view.lineCount() == reference.size());
+        for (size_t index = 0; index < reference.size(); ++index) {
+            const auto& expected = reference[index];
+            const auto& actual = view.line(index);
+            REQUIRE(actual.base == expected.base);
+            REQUIRE(actual.start() == expected.start());
+            REQUIRE(actual.end() == expected.end());
+            REQUIRE(actual.y() == expected.y());
+            REQUIRE(actual.bounds.y == expected.bounds.y);
+            REQUIRE(actual.offsets == expected.offsets);
+            REQUIRE(actual.x == expected.x);
+        }
+        auto top = origin + double(random() % (reference.size() * 20 + 100)) - 50.25;
+        auto bottom = top + double(1 + random() % 100);
+        auto begin = std::lower_bound(reference.begin(), reference.end(), top, [](const auto& value, double y) { return value.y() + value.bounds.h <= y; });
+        auto end = std::lower_bound(begin, reference.end(), bottom, [](const auto& value, double y) { return value.y() < y; });
+        CHECK((view.visibleLines(top, bottom) == std::pair<size_t, size_t>{size_t(begin - reference.begin()), size_t(end - reference.begin())}));
+    }
 }

@@ -19,6 +19,49 @@ constexpr Color Theme::*operatorColors[] = {
 static_assert(std::size(operandColors) == size_t(tn::MarkdownKind::NumberedList) + 1);
 static_assert(std::size(operatorColors) == std::size(operandColors));
 
+std::pair<uint32_t, size_t> wordCharacter(std::string_view text)
+{
+    if (text.empty()) return {};
+    auto first = static_cast<unsigned char>(text[0]);
+    if (first < 0x80) return {first, 1};
+    if (text.size() < 3 || first < 0xe0 || first > 0xef) return {};
+    auto second = static_cast<unsigned char>(text[1]), third = static_cast<unsigned char>(text[2]);
+    if ((second & 0xc0) != 0x80 || (third & 0xc0) != 0x80 || (first == 0xe0 && second < 0xa0) || (first == 0xed && second >= 0xa0)) return {};
+    return {uint32_t(first & 15) << 12 | uint32_t(second & 63) << 6 | uint32_t(third & 63), 3};
+}
+
+bool wordLetter(uint32_t cp)
+{
+    // These Hangul ranges are neither whitespace nor punctuation in the vendored MD4C tables.
+    return (cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z') || (cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0x3131 && cp <= 0x318e) || (cp >= 0xac00 && cp <= 0xd7a3);
+}
+
+bool wordLetters(std::string_view text)
+{
+    while (!text.empty()) {
+        auto [cp, length] = wordCharacter(text);
+        if (!length || !wordLetter(cp)) return false;
+        text.remove_prefix(length);
+    }
+    return true;
+}
+
+bool wordBefore(std::string_view text, size_t end)
+{
+    auto first = end - 1;
+    while (first && end - first < 4 && (static_cast<unsigned char>(text[first]) & 0xc0) == 0x80)
+        --first;
+    auto [cp, length] = wordCharacter(text.substr(first, end - first));
+    return length == end - first && wordLetter(cp);
+}
+
+bool wordAfter(std::string_view text, size_t first)
+{
+    if (first == text.size()) return true;  // A row end has the newline's whitespace class.
+    auto [cp, length] = wordCharacter(text.substr(first));
+    return length && (wordLetter(cp) || (cp >= '0' && cp <= '9') || cp == ' ');
+}
+
 bool markdownSyntax(std::string_view text)
 {
     unsigned indent = 0;
@@ -82,39 +125,31 @@ void TextEditor::Impl::parseMarkdown(size_t& start, size_t& end, bool incrementa
     auto lastRow = document.lineEnd(document.lineAt(end));
     auto changed = source.substr(firstRow, lastRow - firstRow);
     auto wordEdit = [&] {
-        if (!incremental || plainMarkdown || referenceMarkdown || markdownBlocks.empty() || composedRows || source.size() > std::numeric_limits<uint32_t>::max() || document.lineCount() != view.layout().size() || firstRow != document.lineStart(document.lineAt(end))) return false;
+        if (!incremental || plainMarkdown || referenceMarkdown || markdownBlocks.empty() || composedRows || source.size() > std::numeric_limits<uint32_t>::max() || document.lineCount() != view.lineCount() || firstRow != document.lineStart(document.lineAt(end))) return false;
         auto row = document.lineAt(start);
-        auto found = linePaints.find(row);
-        if (found == linePaints.end() || !found->second->measured) return false;
-        const auto& previous = view.layout()[row];
-        const auto& text = found->second->display;
-        if (previous.start() != firstRow || text.size() != previous.length) return false;
-        auto shift = ptrdiff_t(source.size()) - ptrdiff_t(view.layout().back().end());
+        const auto& previous = view.line(row);
+        if (previous.start() != firstRow) return false;
+        auto shift = ptrdiff_t(source.size()) - ptrdiff_t(view.line(view.lineCount() - 1).end());
         auto oldEnd = ptrdiff_t(end) - shift;
         if (oldEnd < ptrdiff_t(start) || start <= firstRow || oldEnd > ptrdiff_t(previous.end()) || end > lastRow) return false;
-        auto letter = [](unsigned char ch) {
-            return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
-        };
-        auto alphanumeric = [&](unsigned char ch) {
-            return letter(ch) || (ch >= '0' && ch <= '9');
-        };
-        auto wordEnd = [&](unsigned char ch) {
-            return alphanumeric(ch) || ch == ' ' || ch == '\n';
-        };
         auto first = start - firstRow, stop = size_t(oldEnd) - firstRow;
-        auto oldRight = stop == text.size() ? '\n' : text[stop];
-        auto newRight = end == lastRow ? '\n' : source[end];
-        if (!alphanumeric(text[first - 1]) || !wordEnd(oldRight) || !alphanumeric(source[start - 1]) || !wordEnd(newRight)) return false;
-        if (!std::all_of(text.begin() + first, text.begin() + stop, letter) || !std::all_of(source.begin() + start, source.begin() + end, letter)) return false;
+        if (stop > previous.length || previous.length - (stop - first) + (end - start) != changed.size()) return false;
+        if (!wordBefore(changed, first) || !wordAfter(changed, end - firstRow) || !wordLetters(source.substr(start, end - start))) return false;
         // Keep escaping, references, entities, HTML and permissive autolinks on the parser path.
         constexpr auto sensitive = "\\[]<&@:./\t";
-        if (text.find_first_of(sensitive) != text.npos || changed.find_first_of(sensitive) != changed.npos) return false;
+        if (changed.find_first_of(sensitive) != changed.npos) return false;
+        // Pure insertions keep old neighbors intact when clearing preedit discarded its row paint.
+        auto found = linePaints.find(row);
+        if (found != linePaints.end() && found->second->measured && found->second->display.size() == previous.length) {
+            const auto& text = found->second->display;
+            if (!wordBefore(text, first) || !wordAfter(text, stop) || !wordLetters(std::string_view(text).substr(first, stop - first)) || text.find_first_of(sensitive) != text.npos) return false;
+        } else if (oldEnd != ptrdiff_t(start)) return false;
         auto index = markdownBlock(start);
         auto& block = markdownBlocks[index];
         auto begin = start - block.start, finish = size_t(oldEnd) - block.start;
         if (size_t(oldEnd) > block.end) return false;
         for (const auto& span : block.spans)
-            if ((span.start >= begin && span.start <= finish) || (span.end >= begin && span.end <= finish)) return false;
+            if ((span.start >= begin && span.start <= finish) || (span.end >= begin && span.end <= finish) || (span.kind == tn::MarkdownKind::Marker && span.start < begin && span.end > finish)) return false;
         auto relocate = [&](auto& offset) {
             if (offset > finish) offset = size_t(ptrdiff_t(offset) + shift);
         };
@@ -154,7 +189,7 @@ void TextEditor::Impl::parseMarkdown(size_t& start, size_t& end, bool incrementa
         start = 0;
         end = source.size();
     } else {
-        auto shift = ptrdiff_t(source.size()) - ptrdiff_t(view.layout().back().end());
+        auto shift = ptrdiff_t(source.size()) - ptrdiff_t(view.line(view.lineCount() - 1).end());
         auto oldEnd = size_t(ptrdiff_t(end) - shift);
         size_t first = markdownBlock(start), last = markdownBlock(oldEnd);
         if (first) --first;
@@ -305,6 +340,11 @@ void TextEditor::Impl::prepareRuns(RenderLine& line)
     auto& fonts = detail::fontManager();
     for (size_t i = 0; i < runs.size(); ++i) {
         const auto& run = runs[i];
+        if (run.end <= line.clipFirst || run.first >= line.clipEnd) {
+            if (i == 0) line.body->text("");
+            else if (line.runs[i - 1]) line.runs[i - 1]->text->text("");
+            continue;
+        }
         if (i && !line.runs[i - 1]) line.runs[i - 1] = std::make_unique<RenderRun>();
         auto text = i ? line.runs[i - 1]->text : line.body;
         auto color = markdownColor(run.format.color);
@@ -323,10 +363,8 @@ void TextEditor::Impl::prepareRuns(RenderLine& line)
         if (run.format.heading && !nativeBold) outline = configuration.fontSize * run.scale * 0.035f;
         else if (!run.format.heading && run.format.bold && run.font == documentFont) outline = configuration.fontSize * run.scale * 0.025f;
         text->outline(outline, color.r, color.g, color.b);
-        auto value = line.display.substr(run.first, run.end - run.first);
-        auto first = value.find_first_not_of(' ');
-        if (first == std::string::npos) first = value.size();
-        text->text(value.c_str() + first);
+        auto left = prepareText(text, line, &run);
+        transform(text, {1, 0, left, 0, 1, run.top, 0, 0, 1});
     }
 }
 }  // namespace ui

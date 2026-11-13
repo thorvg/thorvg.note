@@ -38,8 +38,20 @@ struct SelectionCycle
 
 struct TextView::Impl
 {
+    struct Chunk
+    {
+        size_t first = 0;
+        std::vector<TextLine> lines;
+        ptrdiff_t offset = 0;
+        double y = 0;
+        size_t floatRows = 0;
+    };
+    static constexpr size_t chunkRows = 1024;
     tn::EditSession& selecting;
-    std::vector<TextLine> lines;
+    mutable std::vector<Chunk> chunks;
+    size_t count = 0;
+    mutable std::vector<TextLine> snapshot;
+    mutable bool observed = false;
     std::optional<float> preferredX;
     std::optional<tn::Selection> dragSelection;
     SelectionUnit dragUnit = SelectionUnit::Word;
@@ -48,14 +60,105 @@ struct TextView::Impl
     bool orderedOffsets = false, orderedRows = false;
     double origin = 0;
     std::function<void(size_t)> measure;
-    const TextLine& line(size_t index) const
-    {
-        if (measure && lines[index].offsets.empty()) measure(index);
-        return lines[index];
-    }
 
     explicit Impl(tn::EditSession& session) :
         selecting(session) {}
+
+    size_t chunkAt(size_t row) const
+    {
+        return size_t(std::upper_bound(chunks.begin(), chunks.end(), row, [](size_t value, const auto& chunk) { return value < chunk.first; }) - chunks.begin() - 1);
+    }
+    static void shift(TextLine& line, ptrdiff_t offset, double y)
+    {
+        line.base += offset;
+        if (y) {
+            if (!std::isnan(line.top)) {
+                line.top += y;
+                line.bounds.y = float(line.top);
+            } else line.bounds.y += y;
+        }
+    }
+    static void materialize(Chunk& chunk)
+    {
+        if (!chunk.offset && !chunk.y) return;
+        for (auto& line : chunk.lines)
+            shift(line, chunk.offset, chunk.y);
+        chunk.offset = 0;
+        chunk.y = 0;
+    }
+    static void shift(Chunk& chunk, ptrdiff_t offset, double y)
+    {
+        chunk.offset += offset;
+        if (y && chunk.floatRows) {
+            // Legacy float-only rows retain the rounding of each individual displacement.
+            materialize(chunk);
+            for (auto& line : chunk.lines)
+                shift(line, 0, y);
+        } else chunk.y += y;
+    }
+    TextLine& metadata(size_t index) const
+    {
+        auto& chunk = chunks[chunkAt(index)];
+        materialize(chunk);
+        return chunk.lines[index - chunk.first];
+    }
+    const TextLine& line(size_t index) const
+    {
+        if (measure && metadata(index).offsets.empty()) measure(index);
+        // Measurement can replace or rebalance the chunk that held this row.
+        return metadata(index);
+    }
+    size_t start(size_t index) const
+    {
+        const auto& chunk = chunks[chunkAt(index)];
+        return chunk.lines[index - chunk.first].start() + chunk.offset;
+    }
+    double top(size_t index) const
+    {
+        const auto& chunk = chunks[chunkAt(index)];
+        return chunk.lines[index - chunk.first].y() + chunk.y;
+    }
+    double bottom(size_t index) const
+    {
+        const auto& chunk = chunks[chunkAt(index)];
+        const auto& line = chunk.lines[index - chunk.first];
+        return line.y() + chunk.y + line.bounds.h;
+    }
+    void refreshSnapshot() const
+    {
+        if (!observed) return;
+        snapshot.clear();
+        if (count > snapshot.capacity()) snapshot.reserve(count + std::min(count / 8, snapshot.max_size() - count));
+        for (auto& chunk : chunks) {
+            materialize(chunk);
+            snapshot.insert(snapshot.end(), chunk.lines.begin(), chunk.lines.end());
+        }
+    }
+    void checkOrder(size_t first, size_t last, bool& offsets, bool& rows) const
+    {
+        if (first == last || (!offsets && !rows)) return;
+        bool previous = false, hasOffsets = false;
+        size_t end = 0;
+        double y = 0, bottom = 0;
+        for (size_t i = chunkAt(first); i < chunks.size() && chunks[i].first < last; ++i) {
+            const auto& chunk = chunks[i];
+            auto begin = std::max(first, chunk.first) - chunk.first;
+            auto stop = std::min(last - chunk.first, chunk.lines.size());
+            for (size_t j = begin; j < stop; ++j) {
+                const auto& line = chunk.lines[j];
+                auto top = line.y() + chunk.y;
+                if (previous) {
+                    if (offsets && ((!measure && (!hasOffsets || line.offsets.empty())) || end > line.start() + chunk.offset)) offsets = false;
+                    if (rows && (y >= top || bottom > top)) rows = false;
+                }
+                hasOffsets = !line.offsets.empty();
+                end = line.end() + chunk.offset;
+                y = top;
+                bottom = top + line.bounds.h;
+                previous = true;
+            }
+        }
+    }
 
     size_t lineAt(size_t offset) const;
     size_t hitLine(float x, float y) const;
@@ -74,12 +177,46 @@ TextView::~TextView() = default;
 
 bool TextView::layout(std::vector<TextLine> value)
 {
-    return layout(0, impl->lines.size(), std::move(value), 0, 0);
+    return layout(0, impl->count, std::move(value), 0, 0);
 }
 
 const std::vector<TextLine>& TextView::layout() const
 {
-    return impl->lines;
+    if (!impl->observed) {
+        impl->observed = true;
+        impl->refreshSnapshot();
+    }
+    return impl->snapshot;
+}
+
+size_t TextView::lineCount() const
+{
+    return impl->count;
+}
+
+const TextLine& TextView::line(size_t index) const
+{
+    return impl->metadata(index);
+}
+
+std::pair<size_t, size_t> TextView::visibleLines(double top, double bottom) const
+{
+    if (!impl->count || std::isnan(top) || std::isnan(bottom) || bottom <= top) return {0, 0};
+    if (!impl->orderedRows) return {0, impl->count};
+    size_t first = 0, last = impl->count;
+    while (first < last) {
+        auto middle = first + (last - first) / 2;
+        if (impl->bottom(middle) <= top) first = middle + 1;
+        else last = middle;
+    }
+    auto begin = first;
+    last = impl->count;
+    while (first < last) {
+        auto middle = first + (last - first) / 2;
+        if (impl->top(middle) < bottom) first = middle + 1;
+        else last = middle;
+    }
+    return {begin, first};
 }
 
 size_t TextView::hit(float x, float y) const
@@ -94,13 +231,14 @@ void TextView::measure(std::function<void(size_t)> line)
 
 void TextView::discard(size_t index)
 {
-    if (index >= impl->lines.size()) return;
-    auto& line = impl->lines[index];
+    if (index >= impl->count) return;
+    auto& line = impl->metadata(index);
     auto start = line.start();
     line.length = line.end() - start;
     line.base = start;
     std::vector<size_t>{}.swap(line.offsets);
     std::vector<float>{}.swap(line.x);
+    impl->refreshSnapshot();
 }
 
 void TextView::origin(double y)
@@ -127,97 +265,162 @@ void TextView::resetPreferredX()
 
 bool TextView::layout(size_t first, size_t count, std::vector<TextLine> value, ptrdiff_t offset, double y)
 {
-    if (first > impl->lines.size() || count > impl->lines.size() - first || !std::isfinite(y)) return false;
+    if (first > impl->count || count > impl->count - first || !std::isfinite(y)) return false;
     for (const auto& line : value) {
         const auto& r = line.bounds;
         if ((!std::isnan(line.top) && !std::isfinite(line.top)) || line.offsets.size() != line.x.size() || !std::is_sorted(line.offsets.begin(), line.offsets.end()) || !std::is_sorted(line.x.begin(), line.x.end()) || !std::all_of(line.x.begin(), line.x.end(), [](float x) { return std::isfinite(x); }) || !std::isfinite(r.x) || !std::isfinite(r.y) || !std::isfinite(r.w) || !std::isfinite(r.h) || r.w < 0 || r.h < 0 || !std::isfinite(line.breakWidth) || line.breakWidth < 0) return false;
     }
-    bool ordered = impl->orderedOffsets || (first == 0 && count == impl->lines.size());
-    bool orderedRows = impl->orderedRows || (first == 0 && count == impl->lines.size());
     auto inserted = value.size();
-    auto shift = [&](TextLine& line) {
-        if (offset) line.base += offset;
-        if (y) {
-            if (!std::isnan(line.top)) {
-                line.top += y;
-                line.bounds.y = float(line.top);
-            } else line.bounds.y += y;
+    auto full = first == 0 && count == impl->count;
+    bool ordered = impl->orderedOffsets || full;
+    bool orderedRows = impl->orderedRows || full;
+    if (full) std::vector<TextLine>{}.swap(impl->snapshot);
+    if (full && inserted != impl->count) {
+        impl->chunks.clear();
+        auto chunks = (inserted + Impl::chunkRows - 1) / Impl::chunkRows;
+        if (impl->chunks.capacity() > chunks + chunks / 8) std::vector<Impl::Chunk>{}.swap(impl->chunks);
+        impl->chunks.reserve(chunks);
+        for (size_t row = 0; row < inserted;) {
+            auto& chunk = impl->chunks.emplace_back();
+            chunk.first = row;
+            auto stop = std::min(inserted, row + Impl::chunkRows);
+            chunk.lines.reserve(stop - row);
+            for (; row < stop; ++row) {
+                chunk.floatRows += std::isnan(value[row].top);
+                chunk.lines.push_back(std::move(value[row]));
+            }
         }
-    };
-    if (count == inserted) {
-        if (offset || y)
-            for (auto it = impl->lines.begin() + first + count; it != impl->lines.end(); ++it)
-                shift(*it);
-        std::move(value.begin(), value.end(), impl->lines.begin() + first);
-    } else if (first == 0 && count == impl->lines.size()) {
-        impl->lines = std::move(value);
+    } else if (inserted == count) {
+        for (size_t row = first, copied = 0; copied < inserted;) {
+            auto& chunk = impl->chunks[impl->chunkAt(row)];
+            auto at = row - chunk.first;
+            auto length = std::min(inserted - copied, chunk.lines.size() - at);
+            if (!at && length == chunk.lines.size()) {
+                chunk.offset = 0;
+                chunk.y = 0;
+            } else Impl::materialize(chunk);
+            auto floating = [](const auto& line) {
+                return std::isnan(line.top);
+            };
+            chunk.floatRows -= size_t(std::count_if(chunk.lines.begin() + at, chunk.lines.begin() + at + length, floating));
+            chunk.floatRows += size_t(std::count_if(value.begin() + copied, value.begin() + copied + length, floating));
+            std::move(value.begin() + copied, value.begin() + copied + length, chunk.lines.begin() + at);
+            row += length;
+            copied += length;
+        }
+        if ((offset || y) && first + count < impl->count) {
+            auto next = impl->chunkAt(first + count);
+            auto& chunk = impl->chunks[next];
+            auto at = first + count - chunk.first;
+            if (at) {
+                Impl::materialize(chunk);
+                for (; at < chunk.lines.size(); ++at)
+                    Impl::shift(chunk.lines[at], offset, y);
+                ++next;
+            }
+            for (; next < impl->chunks.size(); ++next)
+                Impl::shift(impl->chunks[next], offset, y);
+        }
     } else {
-        auto oldSize = impl->lines.size();
-        auto size = oldSize - count + inserted;
-        if (inserted > count) {
-            if (size > impl->lines.capacity() && size > 65536)
-                impl->lines.reserve(size + std::min(size / 8, impl->lines.max_size() - size));
-            impl->lines.resize(size);
-            for (size_t row = oldSize; row > first + count; --row) {
-                auto& line = impl->lines[row - 1 + inserted - count];
-                line = std::move(impl->lines[row - 1]);
-                shift(line);
+        auto begin = first == impl->count ? impl->chunks.size() - 1 : impl->chunkAt(first);
+        auto last = count ? impl->chunkAt(first + count - 1) : begin;
+        auto end = std::min(last + 2, impl->chunks.size());
+        Impl::materialize(impl->chunks[begin]);
+        Impl::materialize(impl->chunks[last]);
+        if (last + 1 < end) Impl::materialize(impl->chunks[last + 1]);
+        auto prefix = first - impl->chunks[begin].first;
+        auto suffix = first + count - impl->chunks[last].first;
+        auto rows = prefix + inserted + impl->chunks[last].lines.size() - suffix + (last + 1 < end ? impl->chunks[last + 1].lines.size() : 0);
+        auto chunks = (rows + Impl::chunkRows - 1) / Impl::chunkRows;
+        std::vector<Impl::Chunk> replacement;
+        replacement.reserve(chunks);
+        size_t copied = 0, length = 0;
+        auto append = [&](TextLine&& line) {
+            if (replacement.empty() || replacement.back().lines.size() == length) {
+                length = (rows - copied) / (chunks - replacement.size());
+                auto& chunk = replacement.emplace_back();
+                chunk.first = impl->chunks[begin].first + copied;
+                chunk.lines.reserve(length);
             }
-        } else {
-            for (size_t row = first + count; row < oldSize; ++row) {
-                auto& line = impl->lines[row - count + inserted];
-                line = std::move(impl->lines[row]);
-                shift(line);
+            auto& chunk = replacement.back();
+            chunk.floatRows += std::isnan(line.top);
+            chunk.lines.push_back(std::move(line));
+            ++copied;
+        };
+        for (size_t row = 0; row < prefix; ++row)
+            append(std::move(impl->chunks[begin].lines[row]));
+        for (auto& line : value)
+            append(std::move(line));
+        for (size_t i = last; i < end; ++i) {
+            auto& chunk = impl->chunks[i];
+            for (size_t row = i == last ? suffix : 0; row < chunk.lines.size(); ++row) {
+                Impl::shift(chunk.lines[row], offset, y);
+                append(std::move(chunk.lines[row]));
             }
-            impl->lines.resize(size);
         }
-        std::move(value.begin(), value.end(), impl->lines.begin() + first);
+        for (size_t i = end; i < impl->chunks.size(); ++i) {
+            auto& chunk = impl->chunks[i];
+            chunk.first = chunk.first - count + inserted;
+            Impl::shift(chunk, offset, y);
+        }
+        if (replacement.size() == end - begin) std::move(replacement.begin(), replacement.end(), impl->chunks.begin() + begin);
+        else {
+            auto at = impl->chunks.erase(impl->chunks.begin() + begin, impl->chunks.begin() + end);
+            impl->chunks.insert(at, std::make_move_iterator(replacement.begin()), std::make_move_iterator(replacement.end()));
+        }
     }
-    if (ordered) {
-        auto begin = impl->lines.begin() + (first ? first - 1 : 0);
-        auto end = impl->lines.begin() + std::min(impl->lines.size(), first + inserted + 1);
-        ordered = std::adjacent_find(begin, end, [this](const auto& left, const auto& right) { return (!impl->measure && (left.offsets.empty() || right.offsets.empty())) || left.end() > right.start(); }) == end;
-    }
-    if (orderedRows) {
-        auto begin = impl->lines.begin() + (first ? first - 1 : 0);
-        auto end = impl->lines.begin() + std::min(impl->lines.size(), first + inserted + 1);
-        orderedRows = std::adjacent_find(begin, end, [](const auto& left, const auto& right) { return left.y() >= right.y() || left.y() + left.bounds.h > right.y(); }) == end;
-    }
+    impl->count = impl->count - count + inserted;
+    impl->checkOrder(first ? first - 1 : 0, std::min(impl->count, first + inserted + 1), ordered, orderedRows);
     impl->orderedRows = orderedRows;
     impl->orderedOffsets = ordered;
+    // Release incoming metadata before a legacy observer requests its flat copy.
+    std::vector<TextLine>{}.swap(value);
+    impl->refreshSnapshot();
     return true;
 }
 
 size_t TextView::Impl::lineAt(size_t offset) const
 {
     if (orderedOffsets) {
-        auto line = std::upper_bound(lines.begin(), lines.end(), offset, [](size_t value, const auto& line) { return value < line.start(); });
-        return line == lines.begin() ? 0 : static_cast<size_t>(line - lines.begin() - 1);
+        size_t first = 0, last = count;
+        while (first < last) {
+            auto middle = first + (last - first) / 2;
+            if (start(middle) <= offset) first = middle + 1;
+            else last = middle;
+        }
+        return first ? first - 1 : 0;
     }
     size_t best = 0;
-    for (size_t i = 0; i < lines.size(); ++i) {
-        if (lines[i].offsets.empty() && !measure) continue;
-        if (lines[i].start() > offset) break;
+    for (size_t i = 0; i < count; ++i) {
+        const auto& value = metadata(i);
+        if (value.offsets.empty() && !measure) continue;
+        if (value.start() > offset) break;
         best = i;
-        if (offset < lines[i].end()) break;
+        if (offset < value.end()) break;
     }
     return best;
 }
 
 size_t TextView::Impl::hitLine(float x, float y) const
 {
-    size_t best = 0, begin = 0, end = lines.size();
+    size_t best = 0, begin = 0, end = count;
     auto documentY = double(y) + origin;
     if (orderedRows) {
-        auto at = std::upper_bound(lines.begin(), lines.end(), documentY, [](double value, const auto& line) { return value < line.y(); });
-        begin = at == lines.begin() ? 0 : size_t(at - lines.begin() - 1);
-        end = std::min(lines.size(), begin + 2);
+        size_t first = 0, last = count;
+        while (first < last) {
+            auto middle = first + (last - first) / 2;
+            if (top(middle) <= documentY) first = middle + 1;
+            else last = middle;
+        }
+        begin = first ? first - 1 : 0;
+        end = std::min(count, begin + 2);
     }
     double vertical = std::numeric_limits<double>::infinity();
     float horizontal = std::numeric_limits<float>::infinity();
     for (size_t i = begin; i < end; ++i) {
-        const auto& r = lines[i].bounds;
-        auto top = lines[i].y();
+        const auto& line = metadata(i);
+        const auto& r = line.bounds;
+        auto top = line.y();
         double dy = std::max({top - documentY, documentY - top - r.h, 0.0});
         if (documentY >= top + r.h && dy == 0) dy = 0.0001;
         float dx = std::max({r.x - x, x - r.x - r.w, 0.0f});
@@ -232,12 +435,12 @@ size_t TextView::Impl::hitLine(float x, float y) const
 
 size_t TextView::Impl::hit(float x, float y) const
 {
-    return lines.empty() ? 0 : line(hitLine(x, y)).hit(x);
+    return !count ? 0 : line(hitLine(x, y)).hit(x);
 }
 
 std::optional<size_t> TextView::Impl::characterAt(float x, float y) const
 {
-    if (lines.empty()) return {};
+    if (!count) return {};
     const auto& line = this->line(hitLine(x, y));
     if (line.offsets.size() < 2 || line.x.size() != line.offsets.size() || x < line.x.front() || x >= line.x.back()) return {};
     // Use the glyph under the pointer, even when its nearest caret is after it.
@@ -324,7 +527,7 @@ bool TextView::Impl::continuesSelectionCycle(float x, float y) const
 
 Rect TextView::caretRect() const
 {
-    if (impl->lines.empty()) return {};
+    if (!impl->count) return {};
     auto offset = impl->selecting.selection().caret;
     const auto& line = impl->line(impl->lineAt(offset));
     return {line.position(offset), float(line.y() - impl->origin), 1.5f, line.bounds.h};
@@ -340,17 +543,19 @@ std::vector<Rect> TextView::selectionRects(std::optional<Rect> viewport) const
 std::vector<Rect> TextView::rangeRects(size_t start, size_t end, std::optional<Rect> viewport) const
 {
     std::vector<Rect> result;
-    auto first = impl->lines.begin(), last = impl->lines.end();
+    size_t first = 0, last = impl->count;
     if (viewport && impl->orderedRows) {
         auto top = double(viewport->y) + impl->origin;
-        first = std::lower_bound(first, last, top, [](const auto& line, double y) { return line.y() + line.bounds.h <= y; });
-        last = std::lower_bound(first, last, top + viewport->h, [](const auto& line, double y) { return line.y() < y; });
+        auto visible = visibleLines(top, top + viewport->h);
+        first = visible.first;
+        last = visible.second;
     }
-    for (auto it = first; it != last; ++it) {
-        if (it->start() > end || it->end() < start) continue;
-        auto y = float(it->y() - impl->origin);
-        if (viewport && (y + it->bounds.h <= viewport->y || y >= viewport->y + viewport->h)) continue;
-        const auto& line = impl->line(size_t(it - impl->lines.begin()));
+    for (size_t index = first; index < last; ++index) {
+        const auto& value = impl->metadata(index);
+        if (value.start() > end || value.end() < start) continue;
+        auto y = float(value.y() - impl->origin);
+        if (viewport && (y + value.bounds.h <= viewport->y || y >= viewport->y + viewport->h)) continue;
+        const auto& line = impl->line(index);
         auto rect = line.rangeRect(start, end);
         rect.y = y;
         if (viewport) rect = rect.intersect(*viewport);
@@ -366,7 +571,7 @@ void TextView::pointerDown(float x, float y, bool extend, int clicks)
     impl->dragSelection.reset();
     if (clicks >= 2 && clicks % 2 == 0) {
         bool wholeLine = false;
-        if (!impl->lines.empty()) {
+        if (impl->count != 0) {
             const auto& line = impl->line(impl->hitLine(x, y));
             wholeLine = line.x.size() > 1 && x >= line.x.back() && double(y) + impl->origin >= line.y() && double(y) + impl->origin < line.y() + line.bounds.h;
         }
@@ -421,9 +626,9 @@ bool TextView::key(Key key, Modifiers mods, float pageHeight)
         return true;
     }
     if (key == Key::Left || key == Key::Right || key == Key::Home || key == Key::End) {
-        if ((key == Key::Home || key == Key::End) && !mods.primary && !impl->lines.empty() && !impl->lines[impl->lineAt(impl->selecting.selection().caret)].offsets.empty()) {
+        if ((key == Key::Home || key == Key::End) && !mods.primary && impl->count != 0 && !impl->metadata(impl->lineAt(impl->selecting.selection().caret)).offsets.empty()) {
             auto selection = impl->selecting.selection();
-            const auto& line = impl->lines[impl->lineAt(selection.caret)];
+            const auto& line = impl->metadata(impl->lineAt(selection.caret));
             auto offset = key == Key::Home ? line.start() : line.end();
             impl->selecting.select(mods.shift ? selection.anchor : offset, offset);
         } else {
@@ -436,7 +641,7 @@ bool TextView::key(Key key, Modifiers mods, float pageHeight)
         return true;
     }
     if (key == Key::Up || key == Key::Down || key == Key::PageUp || key == Key::PageDown) {
-        if (impl->lines.empty()) return true;
+        if (!impl->count) return true;
         auto selection = impl->selecting.selection();
         size_t current = impl->lineAt(selection.caret), target = current;
         const auto& line = impl->line(current);
@@ -446,12 +651,12 @@ bool TextView::key(Key key, Modifiers mods, float pageHeight)
         float distance = key == Key::PageUp || key == Key::PageDown ? std::max(1.0f, std::floor(pageHeight / height)) * height : height;
         double y = line.y() + (up ? -distance : distance);
         if (key == Key::Up) target = current ? current - 1 : 0;
-        else if (key == Key::Down) target = std::min(current + 1, impl->lines.size() - 1);
+        else if (key == Key::Down) target = std::min(current + 1, impl->count - 1);
         else if (up)
-            while (target && impl->lines[target].y() > y)
+            while (target && impl->top(target) > y)
                 --target;
         else
-            while (target + 1 < impl->lines.size() && impl->lines[target].y() < y)
+            while (target + 1 < impl->count && impl->top(target) < y)
                 ++target;
         auto offset = impl->line(target).hit(*impl->preferredX);
         impl->selecting.select(mods.shift ? selection.anchor : offset, offset);

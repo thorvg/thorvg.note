@@ -39,12 +39,13 @@ void clearScene(tvg::Scene* scene)
 }
 }  // namespace
 
-float TextEditor::Impl::measure(std::string_view text, FontId font) const
+float TextEditor::Impl::measure(std::string_view text, FontId font, float scale) const
 {
     auto* fonts = documentFont ? &detail::fontManager() : nullptr;
     if (!font) font = documentFont;
     bool alternate = fonts && font != documentFont;
     if (alternate) measurer->font(fonts->textFont(font));
+    if (scale != 1) measurer->size(configuration.fontSize * scale * fontPointsPerLogicalPixel);
     float width = 0;
     uint32_t previous = 0;
     for (size_t offset = 0; offset < text.size();) {
@@ -53,13 +54,14 @@ float TextEditor::Impl::measure(std::string_view text, FontId font) const
         if (!glyphMetrics(measurer.get(), text.substr(offset), metrics, &consumed) || !consumed) break;
         if (fonts) {
             auto glyph = fonts->glyph(font, codepoint(text.substr(offset, consumed)));
-            width += fonts->textKerning(font, previous, glyph) * configuration.fontSize / fonts->unitsPerEm(font);
+            width += fonts->textKerning(font, previous, glyph) * configuration.fontSize * scale / fonts->unitsPerEm(font);
             previous = glyph;
         }
         width += metrics.advance;
         offset += consumed;
     }
     if (alternate) measurer->font(fonts->textFont(documentFont));
+    if (scale != 1) measurer->size(configuration.fontSize * fontPointsPerLogicalPixel);
     return width;
 }
 
@@ -97,7 +99,8 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         FontId font = documentFont;
         bool leading = true;
         uint32_t previous = 0;
-        float x = 0;
+        // Accumulate precisely because these positions also anchor visible text slices.
+        double x = 0;
         size_t column = 0;
         line.base = base + begin;
         line.length = stop - begin;
@@ -121,7 +124,7 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
             }
             if (caret) line.x.back() = x;
             if (!runs.empty() && leading && cp != ' ') {
-                runs.back().leading = x - runs.back().left;
+                runs.back().firstWidth = metrics.max.x - metrics.min.x;
                 leading = false;
             }
             x += metrics.advance;
@@ -148,7 +151,7 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 tvg::TextMetrics metrics{};
                 measurer->metrics(metrics);
                 rowHeight = std::max(rowHeight, metrics.advance);
-                runs.push_back({.first = shown.size(), .left = x, .top = metrics.ascent - metrics.descent, .scale = sizeScale, .font = font, .format = format});
+                runs.push_back({.first = shown.size(), .left = float(x), .top = metrics.ascent - metrics.descent, .scale = sizeScale, .font = font, .format = format});
                 leading = true;
                 previous = 0;
             }
@@ -167,7 +170,7 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         }
         for (auto& run : runs)
             run.top = (rowHeight - run.top) / 2;
-        line.bounds = {0, 0, x, rowHeight};
+        line.bounds = {0, 0, float(x), rowHeight};
         lines.push_back(std::move(line));
         display.push_back(std::move(shown));
         styles.push_back(std::move(runs));
@@ -244,7 +247,7 @@ void TextEditor::Impl::updateWidth(float before, float after)
 
 void TextEditor::Impl::measureLine(size_t row)
 {
-    const auto& old = view.layout()[row];
+    const auto& old = view.line(row);
     auto& cached = linePaints[row];
     if (!cached) cached = std::make_unique<RenderLine>();
     if (!old.offsets.empty() && cached->measured) return;
@@ -262,6 +265,8 @@ void TextEditor::Impl::measureLine(size_t row)
     lines[0].bounds.y = old.bounds.y;
     lines[0].bounds.h = old.bounds.h;
     updateWidth(old.bounds.w, lines[0].bounds.w);
+    cached->assigned = false;
+    cacheTabs(*cached, source);
     cached->display = std::move(display[0]);
     cached->styles = std::move(styles[0]);
     cached->measured = true;
@@ -273,13 +278,13 @@ size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_vie
     std::vector<std::string> display;
     std::vector<std::vector<Run>> runs;
     auto lines = composed ? layoutRows(text, base, display, runs) : rowMetadata(text, base);
-    const auto& old = view.layout();
+    auto oldSize = view.lineCount();
     if (!lineWidths.empty()) {
         for (size_t row = first; row < first + count; ++row)
-            updateWidth(old[row].bounds.w, 0);
+            updateWidth(view.line(row).bounds.w, 0);
     }
-    double top = first < old.size() ? old[first].y() : contentHeight();
-    double bottom = first + count < old.size() ? old[first + count].y() : contentHeight();
+    double top = first < oldSize ? view.line(first).y() : contentHeight();
+    double bottom = first + count < oldSize ? view.line(first + count).y() : contentHeight();
     double y = top;
     for (auto& line : lines) {
         line.top = y;
@@ -287,7 +292,7 @@ size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_vie
         y += line.bounds.h;
         if (line.bounds.w > 0) updateWidth(0, line.bounds.w);
     }
-    auto shift = first + count < old.size() ? ptrdiff_t(base + text.size() + 1) - ptrdiff_t(old[first + count].start()) : 0;
+    auto shift = first + count < oldSize ? ptrdiff_t(base + text.size() + 1) - ptrdiff_t(view.line(first + count).start()) : 0;
     auto rows = lines.size();
     auto eraseFirst = linePaints.lower_bound(first);
     auto eraseEnd = rows == count ? linePaints.lower_bound(first + count) : linePaints.end();
@@ -299,6 +304,8 @@ size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_vie
         for (size_t i = 0; i < rows; ++i) {
             auto& cached = linePaints[first + i];
             cached = std::make_unique<RenderLine>();
+            const auto& row = view.line(first + i);
+            cacheTabs(*cached, text.substr(row.start() - base, row.length));
             cached->display = std::move(display[i]);
             cached->styles = std::move(runs[i]);
             cached->measured = true;
@@ -364,7 +371,7 @@ void TextEditor::Impl::relayout()
         linePaints.clear();
         lineWidths.clear();
         widest = 0;
-        replaceRows(0, view.layout().size(), source, 0);
+        replaceRows(0, view.lineCount(), source, 0);
         composedRows = 0;
     } else {
         if (composedRows && recompose && !replaceComposition) {
@@ -374,7 +381,7 @@ void TextEditor::Impl::relayout()
         }
         if (change == tn::ChangeStatus::Changed) {
             auto first = document.lineAt(start), last = document.lineAt(end);
-            auto count = last + 1 - first + view.layout().size() - document.lineCount();
+            auto count = last + 1 - first + view.lineCount() - document.lineCount();
             replaceRows(first, count, source.substr(document.lineStart(first), document.lineEnd(last) - document.lineStart(first)), document.lineStart(first));
         }
     }
@@ -391,7 +398,7 @@ void TextEditor::Impl::relayout()
         }
         preeditRects.clear();
         for (size_t row = first; row < first + composedRows; ++row) {
-            const auto& line = view.layout()[row];
+            const auto& line = view.line(row);
             if (cursor >= line.start() && cursor <= line.end()) preeditCaret = {line.position(cursor), float(line.y() - vertical), 1.5f, line.bounds.h};
             if (finish > line.start() && begin <= line.end()) {
                 float left = line.position(std::max(begin, line.start()));
@@ -415,12 +422,82 @@ void TextEditor::Impl::relayout()
     clampScroll();
 }
 
+void TextEditor::Impl::cacheTabs(RenderLine& line, std::string_view source)
+{
+    line.tabOffsets.clear();
+    if (source.find('\t') == std::string_view::npos) return;
+    size_t column = 0, extra = 0;
+    for (size_t i = 0; i < source.size(); ++i) {
+        if ((static_cast<unsigned char>(source[i]) & 0xc0) == 0x80) continue;
+        if (source[i] == '\t') {
+            auto spaces = 4 - column % 4;
+            extra += spaces - 1;
+            column += spaces;
+            line.tabOffsets.emplace_back(i + 1, extra);
+        } else ++column;
+    }
+}
+
+float TextEditor::Impl::prepareText(tvg::Text* text, const RenderLine& line, const Run* run)
+{
+    auto first = run ? run->first : 0;
+    auto end = run ? run->end : line.display.size();
+    auto left = run ? run->left : 0.0f;
+    auto font = run ? run->font : documentFont;
+    auto scale = run ? run->scale : 1.0f;
+    if (first < line.clipFirst) {
+        first = line.clipFirst;
+        left = line.clipX;
+    }
+    end = std::min(end, line.clipEnd);
+    if (first >= end) {
+        text->text("");
+        return left;
+    }
+    auto value = line.display.substr(first, end - first);
+    auto leading = value.find_first_not_of(' ');
+    if (leading == std::string::npos) leading = value.size();
+    if (leading && leading < value.size()) {
+        // Preserve the advance and kerning of spaces omitted before the first outline.
+        tvg::GlyphMetrics metrics{};
+        size_t consumed = 0;
+        if (glyphMetrics(text, std::string_view(value).substr(leading), metrics, &consumed) && consumed)
+            left += measure(std::string_view(value).substr(0, leading + consumed), font, scale) - metrics.advance;
+        else left += measure(std::string_view(value).substr(0, leading), font, scale);
+    }
+    if (run && run->format.italic && leading < value.size()) {
+        // ThorVG's italic origin depends on the first glyph's outline width.
+        tvg::GlyphMetrics metrics{};
+        if (glyphMetrics(text, std::string_view(value).substr(leading), metrics))
+            left += 0.18f * (run->firstWidth - (metrics.max.x - metrics.min.x));
+    }
+    text->text(value.c_str() + leading);
+    return left;
+}
+
 TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
 {
     auto* fonts = documentFont ? &detail::fontManager() : nullptr;
     measureLine(row);
     auto& cached = linePaints[row];
     if (!cached->assigned) cached->number->text(std::to_string(row + 1).c_str());
+    const auto& geometry = view.line(row);
+    // Keep boundary kerning and glyph overhang outside the visible clip.
+    auto padding = geometry.bounds.h * 2;
+    auto begin = std::lower_bound(geometry.x.begin(), geometry.x.end(), horizontal - padding);
+    if (begin != geometry.x.begin()) --begin;
+    auto end = std::upper_bound(begin, geometry.x.end(), horizontal + textArea().w + padding);
+    auto offset = [&](size_t index) {
+        auto value = geometry.offsets[std::min(index, geometry.offsets.size() - 1)];
+        auto tab = std::upper_bound(cached->tabOffsets.begin(), cached->tabOffsets.end(), value, [](size_t value, const auto& tab) { return value < tab.first; });
+        return value + (tab == cached->tabOffsets.begin() ? 0 : std::prev(tab)->second);
+    };
+    auto firstByte = offset(size_t(begin - geometry.x.begin()));
+    auto endByte = offset(size_t(end - geometry.x.begin()));
+    bool clipped = firstByte != cached->clipFirst || endByte != cached->clipEnd;
+    cached->clipFirst = firstByte;
+    cached->clipEnd = endByte;
+    cached->clipX = begin != geometry.x.end() ? *begin : geometry.bounds.w;
     bool restyled = cached->style != textStyleRevision;
     if (restyled) {
         auto style = [&](tvg::Text* text, FontId font, Color color) {
@@ -438,7 +515,7 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
         cached->style = textStyleRevision;
     }
     if (configuration.markdown) {
-        if (restyled || !cached->assigned || cached->value != cached->display) {
+        if (restyled || !cached->assigned || clipped) {
             prepareRuns(*cached);
             if (!cached->group) {
                 cached->group = tvg::Scene::gen();
@@ -446,11 +523,11 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
             }
             clearScene(cached->group);
             if (cached->background) clearScene(cached->background);
-            auto height = view.layout()[row].bounds.h;
+            auto height = view.line(row).bounds.h;
             for (size_t i = 0; i < cached->styles.size(); ++i) {
                 const auto& run = cached->styles[i];
+                if (run.end <= cached->clipFirst || run.first >= cached->clipEnd) continue;
                 auto text = i ? cached->runs[i - 1]->text : cached->body;
-                transform(text, {1, 0, run.left + run.leading, 0, 1, run.top, 0, 0, 1});
                 cached->group->add(text);
                 auto color = markdownColor(run.format.color);
                 auto stroke = [&](float position) {
@@ -478,28 +555,14 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
                 }
             }
         }
-        cached->value = cached->display;
         cached->assigned = true;
         return *cached;
     }
     if (cached->group) clearScene(cached->group);
     if (cached->background) clearScene(cached->background);
     cached->runs.clear();
-    if (restyled || !cached->assigned || cached->value != cached->display) {
-        cached->value = cached->display;
-        auto first = cached->value.find_first_not_of(' ');
-        if (first == std::string::npos) first = cached->value.size();
-        cached->bodyLeft = 0;
-        if (first) {
-            // Empty leading glyph outlines can give ThorVG an invalid anchor.
-            // Keep their advances, including kerning with the first visible glyph.
-            cached->bodyLeft = measure(std::string_view(cached->value).substr(0, first));
-            tvg::GlyphMetrics metrics{};
-            size_t consumed = 0;
-            if (first < cached->value.size() && glyphMetrics(measurer.get(), std::string_view(cached->value).substr(first), metrics, &consumed) && consumed)
-                cached->bodyLeft = measure(std::string_view(cached->value).substr(0, first + consumed)) - metrics.advance;
-        }
-        cached->body->text(cached->value.c_str() + first);
+    if (restyled || !cached->assigned || clipped) {
+        cached->bodyLeft = prepareText(cached->body, *cached);
         cached->assigned = true;
     }
     return *cached;
@@ -508,14 +571,12 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
 void TextEditor::Impl::prepareViewport(size_t first, size_t end)
 {
     bool rebuild = textContentDirty || first < cachedFirst || end > cachedEnd;
-    if (!rebuild && first == drawnFirst && end == drawnEnd) return;
-    const auto& geometry = view.layout();
+    auto area = textArea();
+    if (!rebuild && first == drawnFirst && end == drawnEnd && horizontal == drawnHorizontal && area.w == drawnWidth) return;
     if (rebuild) {
-        auto area = textArea();
-        auto begin = std::lower_bound(geometry.begin(), geometry.end(), vertical - area.h, [](const auto& row, double y) { return row.y() + row.bounds.h <= y; });
-        auto finish = std::lower_bound(begin, geometry.end(), vertical + area.h * 2, [](const auto& row, double y) { return row.y() < y; });
-        cachedFirst = size_t(begin - geometry.begin());
-        cachedEnd = size_t(finish - geometry.begin());
+        auto cached = view.visibleLines(vertical - area.h, vertical + area.h * 2);
+        cachedFirst = cached.first;
+        cachedEnd = cached.second;
         auto caretRow = editing.document().lineAt(editing.selection().caret);
         for (auto it = linePaints.begin(); it != linePaints.end();) {
             bool composed = it->first >= composedFirst && it->first < composedFirst + composedRows;
@@ -524,10 +585,10 @@ void TextEditor::Impl::prepareViewport(size_t first, size_t end)
                 it = linePaints.erase(it);
             } else ++it;
         }
-        renderOrigin = cachedFirst < geometry.size() ? geometry[cachedFirst].y() : 0;
+        renderOrigin = cachedFirst < view.lineCount() ? view.line(cachedFirst).y() : 0;
         for (size_t row = cachedFirst; row < cachedEnd; ++row) {
             auto& line = prepareLine(row);
-            auto y = float(geometry[row].y() - renderOrigin);
+            auto y = float(view.line(row).y() - renderOrigin);
             if (configuration.lineNumbers) transform(line.number, {1, 0, gutter - configuration.padding - line.numberWidth, 0, 1, y, 0, 0, 1});
             if (configuration.markdown) {
                 transform(line.group, {1, 0, 0, 0, 1, y, 0, 0, 1});
@@ -539,7 +600,8 @@ void TextEditor::Impl::prepareViewport(size_t first, size_t end)
     codeContent.begin(themeTokens, {0, 0, widest, float(height * 3)}, seconds);
     numberContent.begin(themeTokens, {0, 0, gutter, float(height * 3)}, seconds);
     for (size_t row = first; row < end; ++row) {
-        auto& line = *linePaints.at(row);
+        auto& line = prepareLine(row);
+        if (!configuration.markdown) transform(line.body, {1, 0, line.bodyLeft, 0, 1, float(view.line(row).y() - renderOrigin) + documentTop, 0, 0, 1});
         if (configuration.lineNumbers) numberContent.add(line.number);
         if (configuration.markdown && line.background && !line.background->paints().empty()) codeContent.add(line.background);
         textContent.add(configuration.markdown ? static_cast<tvg::Paint*>(line.group) : line.body);
@@ -549,6 +611,8 @@ void TextEditor::Impl::prepareViewport(size_t first, size_t end)
     numberContent.end();
     drawnFirst = first;
     drawnEnd = end;
+    drawnHorizontal = horizontal;
+    drawnWidth = area.w;
     textContentDirty = false;
 }
 

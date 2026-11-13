@@ -68,18 +68,17 @@ Rect TextEditor::Impl::rangeRect(const TextLine& line, size_t start, size_t end)
 void TextEditor::Impl::paintDecorations(size_t first, size_t end, bool borders)
 {
     if (first == end) return;
-    const auto& lines = view.layout();
     auto revision = editing.document().revision();
     for (const auto& layer : decorations) {
         if (layer.revision != revision) continue;
         // Prefix maxima also find overlapping ranges that begin above the viewport.
-        auto it = std::lower_bound(layer.ranges.begin(), layer.ranges.end(), lines[first].start(), [](const auto& range, size_t offset) { return range.maxEnd < offset; });
-        for (; it != layer.ranges.end() && it->range.start <= lines[end - 1].end(); ++it) {
+        auto it = std::lower_bound(layer.ranges.begin(), layer.ranges.end(), view.line(first).start(), [](const auto& range, size_t offset) { return range.maxEnd < offset; });
+        for (; it != layer.ranges.end() && it->range.start <= view.line(end - 1).end(); ++it) {
             const auto& range = it->range;
             auto color = (borders ? range.border : range.background).resolve(themeTokens);
             if (!color.a) continue;
             for (size_t row = first; row < end; ++row) {
-                auto rect = rangeRect(lines[row], range.start, range.end);
+                auto rect = rangeRect(view.line(row), range.start, range.end);
                 if (rect.w <= 0 || rect.h <= 0) continue;
                 if (borders) {
                     // Filled edges share selection rasterization and stay inside the range.

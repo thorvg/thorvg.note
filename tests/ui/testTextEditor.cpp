@@ -697,7 +697,66 @@ TEST_CASE_FIXTURE(Editor, "markdown_incremental_edits_match_fresh_layouts")
 {
     std::string source, inserted;
     size_t start = 0, removed = 0, secondWordEdit = 0;
-    bool compositionCommit = false;
+    bool compositionCommit = false, fallbackFont = false;
+    SUBCASE("hangul_word_edits")
+    {
+        fallbackFont = true;
+        source = "**bold** 가나다라마 tailword\nunchanged **content**\nlast 가나다라마";
+        start = source.find("가나다라마") + 6;
+        inserted = "한";
+        SUBCASE("insertion") {}
+        SUBCASE("deletion")
+        {
+            removed = 3;
+            inserted.clear();
+        }
+        SUBCASE("replacement")
+        {
+            removed = 3;
+            inserted = "글";
+        }
+        SUBCASE("space_boundary")
+        {
+            start = source.find(" tailword");
+        }
+        SUBCASE("eof")
+        {
+            start = source.size();
+        }
+        SUBCASE("compatibility_jamo")
+        {
+            inserted = "ㅎㄱ";
+        }
+        SUBCASE("canonical_jamo")
+        {
+            inserted = "\xe1\x84\x92\xe1\x85\xa1\xe1\x86\xab";
+        }
+        SUBCASE("mixed_latin_and_jamo")
+        {
+            start = source.find("tailword") + 3;
+            inserted = "한\xe1\x84\x80";
+        }
+        SUBCASE("composition_commit")
+        {
+            compositionCommit = true;
+        }
+        SUBCASE("unsupported_cjk")
+        {
+            inserted = "中";
+        }
+        SUBCASE("unsupported_two_byte_letter")
+        {
+            inserted = "\xc3\xa9";
+        }
+        SUBCASE("unsupported_symbol")
+        {
+            inserted = "\xf0\x9f\x98\x80";
+        }
+        SUBCASE("unicode_punctuation")
+        {
+            inserted = "！";
+        }
+    }
     SUBCASE("composition_commit_in_a_styled_paragraph")
     {
         source = "first **bold**\n\n# Heading\n\nLast line";
@@ -723,6 +782,44 @@ TEST_CASE_FIXTURE(Editor, "markdown_incremental_edits_match_fresh_layouts")
         source = "**bold plainword\nsecond plainword**\nfollowing *emphasis*";
         start = source.find("plainword") + 4;
         inserted = "More";
+    }
+    SUBCASE("word_edit_inside_parenthesized_number_marker_reparses")
+    {
+        source = "11) plainword\n\nnext";
+        start = 1;
+        inserted = "x";
+    }
+    SUBCASE("word_deletion_creates_parenthesized_number_marker")
+    {
+        source = "**bold**\n\n1x1) plainword\n\nnext";
+        start = source.find('x');
+        removed = 1;
+    }
+    SUBCASE("hangul_edit_inside_parenthesized_number_marker_reparses")
+    {
+        fallbackFont = true;
+        source = "11) plainword\n\nnext";
+        start = 1;
+        inserted = "한";
+    }
+    SUBCASE("hangul_deletion_creates_parenthesized_number_marker")
+    {
+        fallbackFont = true;
+        source = "**bold**\n\n1한1) plainword\n\nnext";
+        start = source.find("한");
+        removed = 3;
+    }
+    SUBCASE("word_edit_inside_nested_quote_number_marker_reparses")
+    {
+        source = "> 11) plainword\n> next";
+        start = source.find("11)") + 1;
+        inserted = "x";
+    }
+    SUBCASE("word_deletion_creates_nested_number_marker")
+    {
+        source = "- 1x1) plainword\n\nnext **bold**";
+        start = source.find('x');
+        removed = 1;
     }
     SUBCASE("two_word_edits_inside_multiline_emphasis")
     {
@@ -945,6 +1042,8 @@ TEST_CASE_FIXTURE(Editor, "markdown_incremental_edits_match_fresh_layouts")
         inserted = " ";
     }
     REQUIRE(document.text(source));
+    auto font = fallbackFont ? fonts.fallback : fonts.plain;
+    editor.font(font);
     auto options = editor.options();
     options.markdown = true;
     editor.options(options);
@@ -953,7 +1052,7 @@ TEST_CASE_FIXTURE(Editor, "markdown_incremental_edits_match_fresh_layouts")
     std::string error;
     auto verify = [&] {
         ui::TextEditor reference(document);
-        reference.font(fonts.plain);
+        reference.font(font);
         reference.options(options);
         reference.theme(theme);
         ui::Context referenceContext;
@@ -1305,6 +1404,78 @@ TEST_CASE_FIXTURE(Editor, "word_edits_preserve_other_rows_in_the_same_markdown_b
     CHECK(std::any_of(after.begin(), after.end(), [&](const auto& pose) { return pose.text == retained.get(); }));
 }
 
+TEST_CASE_FIXTURE(Editor, "composition_commit_word_edits_retain_other_paragraph_rows")
+{
+    std::string source = "**bold** 가가가가가\nunchanged **content**\nlast 가가가가가";
+    std::string inserted = "가";
+    auto start = source.find("가가가가가") + 6;
+    size_t removed = 0;
+    bool retainedExpected = true;
+    SUBCASE("hangul_word") {}
+    SUBCASE("hangul_word_end")
+    {
+        start = source.find('\n');
+    }
+    SUBCASE("hangul_eof")
+    {
+        start = source.size();
+    }
+    SUBCASE("canonical_jamo")
+    {
+        inserted = "\xe1\x84\x92\xe1\x85\xa1";
+    }
+    SUBCASE("compatibility_jamo")
+    {
+        inserted = "ㅎ";
+    }
+    SUBCASE("latin_word")
+    {
+        source = "**bold** plainword\nunchanged **content**\nlast plainword";
+        start = source.find("plainword") + 3;
+        inserted = "More";
+    }
+    SUBCASE("unsupported_unicode_reparses")
+    {
+        inserted = "中";
+        retainedExpected = false;
+    }
+    SUBCASE("replacement_without_original_row_cache_reparses")
+    {
+        removed = 3;
+        inserted = "가가";
+        retainedExpected = false;
+    }
+    REQUIRE(document.text(source));
+    editor.font(fonts.fallback);
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    context.focus("editor");
+    raster();
+    std::vector<TextPose> before;
+    textPoses(context.scene(), before);
+    auto found = std::find_if(before.begin(), before.end(), [](const auto& pose) { return std::string_view(pose.text->text()).find("unchanged") != std::string_view::npos; });
+    REQUIRE(found != before.end());
+    found->text->ref();
+    std::unique_ptr<tvg::Text, void (*)(tvg::Text*)> retained(found->text, [](tvg::Text* text) { text->unref(); });
+    editor.select(start, start + removed);
+    editor.composition(inserted, inserted.size());
+    draw();
+    editor.composition("", 0);
+    auto revision = document.revision();
+    context.textInput(inserted);
+    draw();
+    auto expected = source;
+    expected.replace(start, removed, inserted);
+    CHECK(document.text() == expected);
+    CHECK(document.revision() > revision);
+    CHECK(!editor.composing());
+    CHECK(editor.session().selection().caret == start + inserted.size());
+    std::vector<TextPose> after;
+    textPoses(context.scene(), after);
+    CHECK(std::any_of(after.begin(), after.end(), [&](const auto& pose) { return pose.text == retained.get(); }) == retainedExpected);
+}
+
 TEST_CASE_FIXTURE(Editor, "composition_updates_match_fresh_layouts")
 {
     const std::string source = "# Heading\n\n**bold** plainword\nnext content\n\n## Tail\nlast";
@@ -1453,5 +1624,92 @@ TEST_CASE_FIXTURE(Editor, "repeated_word_edits_match_fresh_markdown_layouts")
         CHECK(caret.x == doctest::Approx(fresh.x));
         CHECK(caret.y == doctest::Approx(fresh.y));
         CHECK(caret.h == doctest::Approx(fresh.h));
+    }
+}
+
+TEST_CASE_FIXTURE(Editor, "horizontal_viewport_limits_text_without_changing_document_geometry")
+{
+    std::string source;
+    for (size_t i = 0; i < 500; ++i)
+        source += "AV\t가나 To 0123 ";
+    auto options = editor.options();
+    SUBCASE("plain")
+    {
+        options.markdown = false;
+    }
+    SUBCASE("markdown")
+    {
+        options.markdown = true;
+        source = "# **" + source + "** `" + source + "`";
+    }
+    editor.options(options);
+    editor.font(fonts.fallback);
+    REQUIRE(document.text(source));
+    draw();
+    for (auto x : {0.0f, 1000.25f, 5000.5f, 0.0f}) {
+        editor.scroll(x, 0);
+        draw();
+        std::vector<TextPose> poses;
+        textPoses(context.scene(), poses);
+        size_t bytes = 0;
+        for (auto pose : poses) {
+            auto value = std::string_view(pose.text->text());
+            CHECK(value.size() < 512);
+            if (!value.empty()) CHECK((static_cast<unsigned char>(value.front()) & 0xc0) != 0x80);
+            bytes += value.size();
+        }
+        CHECK(bytes > 0);
+        CHECK(bytes < 1024);
+        CHECK(document.text() == source);
+    }
+    editor.select(source.size(), source.size());
+    draw();
+    CHECK(editor.scrollX() > 5000);
+    auto end = editor.caretRect();
+    std::string error;
+    REQUIRE(editor.insert("!", error));
+    draw();
+    REQUIRE(editor.undo());
+    draw();
+    CHECK(document.text() == source);
+    CHECK(editor.caretRect().x == doctest::Approx(end.x));
+}
+
+TEST_CASE_FIXTURE(Editor, "horizontal_markdown_scroll_matches_fresh_views")
+{
+    std::string body;
+    for (size_t i = 0; i < 150; ++i)
+        body += "AV\tWj To ";
+    REQUIRE(document.text("*" + body + "* **" + body + "** `" + body + "` ~~" + body + "~~ [" + body + "](target)"));
+    auto options = editor.options();
+    options.markdown = true;
+    options.lineNumbers = true;
+    editor.options(options);
+    editor.theme(theme);
+    editor.font(fonts.kern);
+    raster();
+    for (auto x : {0.0f, 100.25f, 1000.5f, 5000.75f, 10000.0f, 20000.0f, 0.0f}) {
+        editor.scroll(x, 0);
+        draw();
+        ui::TextEditor reference(document);
+        reference.font(fonts.kern);
+        reference.options(options);
+        reference.theme(theme);
+        ui::Context referenceContext;
+        auto refresh = [&] {
+            referenceContext.begin(theme, viewport);
+            reference.render(referenceContext, "editor", bounds);
+            referenceContext.end();
+        };
+        refresh();
+        reference.scroll(editor.scrollX(), editor.scrollY());
+        refresh();
+        std::vector<uint32_t> expected(output.size());
+        std::unique_ptr<tvg::SwCanvas> full(tvg::SwCanvas::gen());
+        REQUIRE(full->target(expected.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+        REQUIRE(full->add(referenceContext.scene()) == tvg::Result::Success);
+        REQUIRE(full->draw(true) == tvg::Result::Success);
+        REQUIRE(full->sync() == tvg::Result::Success);
+        CHECK(bool(output == expected));
     }
 }
