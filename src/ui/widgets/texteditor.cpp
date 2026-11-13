@@ -434,19 +434,22 @@ bool TextEditor::Impl::update(double now)
     auto endRow = std::lower_bound(firstRow, geometry.end(), vertical + area.h, [](const auto& row, float y) { return row.bounds.y < y; });
     size_t first = size_t(firstRow - geometry.begin());
     size_t end = size_t(endRow - geometry.begin());
-    for (auto it = linePaints.begin(); it != linePaints.end();) {
-        if (it->first < first || it->first >= end) it = linePaints.erase(it);
-        else ++it;
+    prepareViewport(first, end);
+    for (auto& [row, line] : linePaints) {
+        bool visible = row >= first && row < end;
+        if (line->visible == visible) continue;
+        line->visible = visible;
+        line->body->visible(visible);
+        line->number->visible(visible);
+        for (auto& run : line->runs)
+            run->text->visible(visible);
     }
-    for (size_t row = first; row < end; ++row)
-        prepareLine(row);
     context.clip({0, area.y, width, area.h}, [&] {
-        if (configuration.lineNumbers)
-            for (size_t row = first; row < end; ++row) {
-                auto& line = *linePaints.at(row);
-                transform(line.number, {1, 0, gutter - configuration.padding - line.numberWidth, 0, 1, area.y + geometry[row].bounds.y - vertical, 0, 0, 1});
-                context.add(line.number);
-            }
+        if (configuration.lineNumbers) {
+            auto scene = numberContent.scene();
+            context.add(scene);
+            transform(scene, {1, 0, 0, 0, 1, area.y - vertical, 0, 0, 1});
+        }
     });
     context.clip(area, [&] {
         auto caret = owner.caretRect();
@@ -468,25 +471,9 @@ bool TextEditor::Impl::update(double now)
                 if (rect.w > 0 && rect.h > 0) context.rect(rect, themeTokens.selection);
             }
         if (preedit.empty()) paintDecorations(first, end, true);
-        for (size_t row = first; row < end; ++row) {
-            auto& line = *linePaints.at(row);
-            if (configuration.markdown) {
-                for (size_t i = 0; i < rowRuns[row].size(); ++i) {
-                    const auto& run = rowRuns[row][i];
-                    auto text = i ? line.runs[i - 1]->text : line.body;
-                    float x = area.x + run.left - horizontal, y = area.y + geometry[row].bounds.y - vertical;
-                    transform(text, {1, 0, x + run.leading, 0, 1, y + run.top, 0, 0, 1});
-                    context.add(text);
-                    auto color = markdownColor(run.format.color);
-                    if (run.format.strike) context.line(x, y + geometry[row].bounds.h * 0.55f, x + run.width, y + geometry[row].bounds.h * 0.55f, color);
-                    if (run.format.link) context.line(x, y + geometry[row].bounds.h * 0.85f, x + run.width, y + geometry[row].bounds.h * 0.85f, color);
-                }
-            } else {
-                auto text = line.body;
-                transform(text, {1, 0, area.x + line.bodyLeft - horizontal, 0, 1, area.y + geometry[row].bounds.y + documentTop - vertical, 0, 0, 1});
-                context.add(text);
-            }
-        }
+        auto scene = textContent.scene();
+        context.add(scene);
+        transform(scene, {1, 0, area.x - horizontal, 0, 1, area.y - vertical, 0, 0, 1});
         if (!preedit.empty()) {
             for (auto rect : preeditRects) {
                 float x = area.x + rect.x - horizontal, y = area.y + rect.y + rect.h - 2 - vertical;

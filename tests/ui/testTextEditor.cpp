@@ -5,6 +5,22 @@ namespace
 {
 using ui::Key;
 
+struct TextPose
+{
+    tvg::Text* text;
+    tvg::Matrix transform;
+    tvg::Scene* parent;
+    tvg::Matrix parentTransform;
+};
+
+void textPoses(tvg::Scene* scene, std::vector<TextPose>& result)
+{
+    for (auto paint : scene->paints()) {
+        if (paint->type() == tvg::Type::Scene) textPoses(static_cast<tvg::Scene*>(paint), result);
+        else if (paint->type() == tvg::Type::Text) result.push_back({static_cast<tvg::Text*>(paint), paint->transform(), scene, scene->transform()});
+    }
+}
+
 struct Editor : ui::test::Frame
 {
     tn::Document document;
@@ -18,12 +34,12 @@ struct Editor : ui::test::Frame
         editor.font(fonts.plain);
     }
 
-    void draw()
+    void draw(bool clear = true)
     {
         render([&] { editor.render(context, "editor", bounds); });
         if (canvas) {
             REQUIRE(canvas->update() == tvg::Result::Success);
-            REQUIRE(canvas->draw(true) == tvg::Result::Success);
+            REQUIRE(canvas->draw(clear) == tvg::Result::Success);
             REQUIRE(canvas->sync() == tvg::Result::Success);
         }
     }
@@ -163,6 +179,106 @@ TEST_CASE_FIXTURE(Editor, "markdown_wheel_preserves_fractional_input_across_head
     CHECK(!context.wheel(-1));
     CHECK(context.wheel(0.25f));
     CHECK(editor.scrollY() == doctest::Approx(limit - step * 0.25f));
+}
+
+TEST_CASE_FIXTURE(Editor, "scrolling_moves_parent_scenes_and_retains_text_in_the_viewport_cache")
+{
+    std::string text;
+    for (size_t i = 0; i < 10000; ++i)
+        text += "line " + std::to_string(i) + " with enough text to scroll horizontally **bold** and [link](target)\n";
+    REQUIRE(document.text(text));
+    auto options = editor.options();
+    options.lineNumbers = true;
+    SUBCASE("plain")
+    {
+        options.markdown = false;
+    }
+    SUBCASE("markdown")
+    {
+        options.markdown = true;
+    }
+    editor.options(options);
+    draw();
+    std::vector<TextPose> before;
+    textPoses(context.scene(), before);
+    REQUIRE_FALSE(before.empty());
+    CHECK(before.size() < 300);
+    CHECK(std::any_of(before.begin(), before.end(), [](const auto& pose) { return !pose.text->visible(); }));
+    auto distance = editor.caretRect().h / 2;
+    editor.scroll(40, distance);
+    draw();
+    std::vector<TextPose> after;
+    textPoses(context.scene(), after);
+    REQUIRE(after.size() == before.size());
+    for (size_t i = 0; i < before.size(); ++i) {
+        CHECK(after[i].text == before[i].text);
+        CHECK(after[i].transform.e13 == before[i].transform.e13);
+        CHECK(after[i].transform.e23 == before[i].transform.e23);
+        CHECK(after[i].parent == before[i].parent);
+        CHECK(after[i].parentTransform.e23 == doctest::Approx(before[i].parentTransform.e23 - distance));
+    }
+    editor.scroll(0, 0);
+    draw();
+    after.clear();
+    textPoses(context.scene(), after);
+    REQUIRE(after.size() == before.size());
+    for (size_t i = 0; i < before.size(); ++i)
+        CHECK(after[i].text == before[i].text);
+    editor.scroll(0, 1000000);
+    draw();
+    after.clear();
+    textPoses(context.scene(), after);
+    CHECK_FALSE(after.empty());
+    CHECK(after.size() < 300);
+}
+
+TEST_CASE_FIXTURE(Editor, "viewport_scenes_match_full_redraws_and_fresh_layouts_after_scrolling")
+{
+    std::string text;
+    for (size_t i = 0; i < 500; ++i)
+        text += (i % 3 == 0 ? "# Heading " : "Body ") + std::to_string(i) + " `code` ~~strike~~ [link](target) with long trailing text\n";
+    REQUIRE(document.text(text));
+    auto options = editor.options();
+    options.lineNumbers = true;
+    SUBCASE("plain")
+    {
+        options.markdown = false;
+    }
+    SUBCASE("markdown")
+    {
+        options.markdown = true;
+    }
+    editor.options(options);
+    editor.theme(theme);
+    output.resize(400 * 300);
+    canvas.reset(tvg::SwCanvas::gen(tvg::EngineOption::SmartRender));
+    REQUIRE(canvas->target(output.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+    REQUIRE(canvas->add(context.scene()) == tvg::Result::Success);
+    draw();
+    for (auto position : {ui::Rect{0, 13}, ui::Rect{43, 87}, ui::Rect{0, 370}, ui::Rect{23, 100000}, ui::Rect{0, 0}}) {
+        editor.scroll(position.x, position.y);
+        draw(false);
+        auto incremental = output;
+        draw();
+        CHECK(incremental == output);
+
+        ui::TextEditor reference(document);
+        reference.font(fonts.plain);
+        reference.options(options);
+        reference.theme(theme);
+        reference.scroll(editor.scrollX(), editor.scrollY());
+        ui::Context referenceContext;
+        referenceContext.begin(theme, viewport);
+        reference.render(referenceContext, "editor", bounds);
+        referenceContext.end();
+        std::vector<uint32_t> expected(output.size());
+        std::unique_ptr<tvg::SwCanvas> full(tvg::SwCanvas::gen());
+        REQUIRE(full->target(expected.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+        REQUIRE(full->add(referenceContext.scene()) == tvg::Result::Success);
+        REQUIRE(full->draw(true) == tvg::Result::Success);
+        REQUIRE(full->sync() == tvg::Result::Success);
+        CHECK(output == expected);
+    }
 }
 
 TEST_CASE_FIXTURE(Editor, "composition_and_read_only_leave_the_document_unchanged")

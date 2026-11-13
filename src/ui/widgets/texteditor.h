@@ -33,7 +33,7 @@ struct TextEditor::Impl
         tvg::Text* number = tvg::Text::gen();
         uint64_t style = 0;
         std::string value;
-        bool assigned = false;
+        bool assigned = false, visible = true;
         std::vector<std::unique_ptr<RenderRun>> runs;
         float bodyLeft = 0, numberWidth = 0;
         RenderLine()
@@ -52,11 +52,13 @@ struct TextEditor::Impl
     tn::EditSession editing;
     TextView view;
     Context context;  // Draws the retained editor scene in local coordinates.
+    Context textContent, numberContent;
     Theme themeTokens = Theme::dark();
     TextEditorOptions configuration;
     EditorInputState input;
     std::unique_ptr<tvg::Text> measurer;
     std::map<size_t, std::unique_ptr<RenderLine>> linePaints;
+    size_t cachedFirst = 0, cachedEnd = 0;
     std::vector<std::string> displayLines;
     std::vector<std::vector<Run>> rowRuns;
     std::vector<Format> markdownFormats;
@@ -81,7 +83,7 @@ struct TextEditor::Impl
     float width = 1, height = 1, horizontal = 0, vertical = 0, gutter = 0, lineHeight = 24, widest = 0, digitWidth = 0;
     // Wheel lines not yet scrolled; fractional ticks wait until they add up to a whole line.
     float wheelCarry = 0;
-    bool dirty = true, layoutDirty = true, hasFocus = false, dragging = false, previousCaretVisible = false;
+    bool dirty = true, layoutDirty = true, textContentDirty = true, hasFocus = false, dragging = false, previousCaretVisible = false;
     bool restartCaret = true;
     double seconds = 0, caretEpoch = 0;
     std::optional<double> nextBlink;  // Set while a visible caret waits for its next phase.
@@ -133,6 +135,7 @@ struct TextEditor::Impl
     void prepareRuns(RenderLine& line, size_t row);
     size_t replaceRows(size_t first, size_t count, std::string_view text, size_t base);
     RenderLine& prepareLine(size_t row);
+    void prepareViewport(size_t first, size_t end);
     void paintDecorations(size_t first, size_t end, bool borders);
     Rect rangeRect(const TextLine& line, size_t start, size_t end) const;
 };

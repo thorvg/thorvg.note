@@ -257,6 +257,7 @@ void TextEditor::Impl::relayout()
     measuredCursor = preeditCursor;
     measuredFontGeneration = generation;
     layoutDirty = false;
+    textContentDirty = true;
     dirty = true;
     clampScroll();
 }
@@ -311,4 +312,46 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
     }
     return *cached;
 }
+void TextEditor::Impl::prepareViewport(size_t first, size_t end)
+{
+    if (!textContentDirty && first >= cachedFirst && end <= cachedEnd) return;
+    const auto& geometry = view.layout();
+    auto area = textArea();
+    auto begin = std::lower_bound(geometry.begin(), geometry.end(), vertical - area.h, [](const auto& row, float y) { return row.bounds.y + row.bounds.h <= y; });
+    auto finish = std::lower_bound(begin, geometry.end(), vertical + area.h * 2, [](const auto& row, float y) { return row.bounds.y < y; });
+    cachedFirst = size_t(begin - geometry.begin());
+    cachedEnd = size_t(finish - geometry.begin());
+    for (auto it = linePaints.begin(); it != linePaints.end();) {
+        if (it->first < cachedFirst || it->first >= cachedEnd) it = linePaints.erase(it);
+        else ++it;
+    }
+    textContent.begin(themeTokens, {0, 0, widest, contentHeight()}, seconds);
+    numberContent.begin(themeTokens, {0, 0, gutter, contentHeight()}, seconds);
+    for (size_t row = cachedFirst; row < cachedEnd; ++row) {
+        auto& line = prepareLine(row);
+        auto y = geometry[row].bounds.y;
+        if (configuration.lineNumbers) {
+            transform(line.number, {1, 0, gutter - configuration.padding - line.numberWidth, 0, 1, y, 0, 0, 1});
+            numberContent.add(line.number);
+        }
+        if (configuration.markdown) {
+            for (size_t i = 0; i < rowRuns[row].size(); ++i) {
+                const auto& run = rowRuns[row][i];
+                auto text = i ? line.runs[i - 1]->text : line.body;
+                transform(text, {1, 0, run.left + run.leading, 0, 1, y + run.top, 0, 0, 1});
+                textContent.add(text);
+                auto color = markdownColor(run.format.color);
+                if (run.format.strike) textContent.line(run.left, y + geometry[row].bounds.h * 0.55f, run.left + run.width, y + geometry[row].bounds.h * 0.55f, color);
+                if (run.format.link) textContent.line(run.left, y + geometry[row].bounds.h * 0.85f, run.left + run.width, y + geometry[row].bounds.h * 0.85f, color);
+            }
+        } else {
+            transform(line.body, {1, 0, line.bodyLeft, 0, 1, y + documentTop, 0, 0, 1});
+            textContent.add(line.body);
+        }
+    }
+    textContent.end();
+    numberContent.end();
+    textContentDirty = false;
+}
+
 }  // namespace ui
