@@ -377,8 +377,32 @@ void TextEditor::Impl::relayout()
         digitWidth = 0;
         if (configuration.lineNumbers) {
             lineNumberFont = fonts ? preferredNumberFont ? preferredNumberFont : documentFont : 0;
+            auto digitFont = fonts ? fonts->fallback(documentFont, '0') : documentFont;
+            auto digits = [&](FontId face, float& ascent) {
+                measurer->font(fonts ? fonts->textFont(face) : themeTokens.font.c_str());
+                tvg::TextMetrics metrics{};
+                measurer->metrics(metrics);
+                ascent = metrics.ascent;
+                float low = std::numeric_limits<float>::max(), high = std::numeric_limits<float>::lowest();
+                for (char ch = '0'; ch <= '9'; ++ch) {
+                    tvg::GlyphMetrics glyph{};
+                    if (!glyphMetrics(measurer.get(), std::string_view(&ch, 1), glyph) || glyph.max.y <= glyph.min.y) continue;
+                    low = std::min(low, glyph.min.y);
+                    high = std::max(high, glyph.max.y);
+                }
+                return high > low ? std::pair{high, high - low} : std::pair{0.0f, 0.0f};
+            };
+            float bodyAscent = 0, numberAscent = 0;
+            auto body = digits(digitFont, bodyAscent);
+            tvg::TextMetrics bodyMetrics{};
+            measurer->metrics(bodyMetrics);
+            auto number = digits(lineNumberFont, numberAscent);
+            numberScale = (body.second > 0 && number.second > 0 ? body.second / number.second : 1) * configuration.lineNumberScale;
+            auto top = (std::max(lineHeight, bodyMetrics.advance) - (bodyMetrics.ascent - bodyMetrics.descent)) / 2;
+            numberTop = top + bodyAscent - body.first - (numberAscent - number.first) * numberScale + configuration.lineNumberOffset;
+            measurer->font(fonts ? fonts->textFont(documentFont) : themeTokens.font.c_str());
             for (char ch = '0'; ch <= '9'; ++ch)
-                digitWidth = std::max(digitWidth, measure(std::string_view(&ch, 1), lineNumberFont));
+                digitWidth = std::max(digitWidth, measure(std::string_view(&ch, 1), lineNumberFont, numberScale));
         }
         linePaints.clear();
         lineWidths.clear();
@@ -524,7 +548,8 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
         };
         style(cached->body, documentFont, themeTokens.text);
         style(cached->number, lineNumberFont, themeTokens.muted);
-        cached->numberWidth = measure(std::to_string(row + 1), lineNumberFont);
+        cached->number->size(configuration.fontSize * numberScale * fontPointsPerLogicalPixel);
+        cached->numberWidth = measure(std::to_string(row + 1), lineNumberFont, numberScale);
         cached->style = textStyleRevision;
     }
     if (configuration.markdown || cached->styles.size() > 1 || (!cached->styles.empty() && cached->styles.front().font != documentFont)) {
@@ -603,7 +628,7 @@ void TextEditor::Impl::prepareViewport(size_t first, size_t end)
         for (size_t row = cachedFirst; row < cachedEnd; ++row) {
             auto& line = prepareLine(row);
             auto y = float(view.line(row).y() - renderOrigin);
-            if (configuration.lineNumbers) transform(line.number, {1, 0, gutter - configuration.padding - line.numberWidth, 0, 1, y, 0, 0, 1});
+            if (configuration.lineNumbers) transform(line.number, {1, 0, gutter - configuration.padding - line.numberWidth, 0, 1, y + numberTop, 0, 0, 1});
             if (configuration.markdown || (line.group && !line.group->paints().empty())) {
                 transform(line.group, {1, 0, 0, 0, 1, y, 0, 0, 1});
                 if (line.background) transform(line.background, {1, 0, 0, 0, 1, y, 0, 0, 1});

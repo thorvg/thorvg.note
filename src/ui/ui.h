@@ -2444,7 +2444,9 @@ struct TextEditorOptions
     float fontSize = 16;
     float padding = 12;  // Horizontal inset; font metrics and line spacing provide vertical space.
     bool lineNumbers = true, readOnly = false;
-    bool markdown = false;  ///< Style parsed Markdown while preserving all source characters and byte offsets.
+    bool markdown = false;       ///< Style parsed Markdown while preserving all source characters and byte offsets.
+    float lineNumberScale = 1;   ///< Multiplier after matching the document's digit height; range [0.5, 2].
+    float lineNumberOffset = 0;  ///< Vertical correction in logical pixels; range [-16, 16].
 };
 
 /**

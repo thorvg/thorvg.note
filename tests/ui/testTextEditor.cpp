@@ -664,6 +664,95 @@ TEST_CASE_FIXTURE(Editor, "markdown_uses_theme_colors_and_keeps_line_number_size
     CHECK(pixels(theme.markdownHeading) > 0);
 }
 
+TEST_CASE_FIXTURE(Editor, "line_numbers_match_body_digit_height_and_position_after_font_changes")
+{
+    auto digits = ui::loadFont(ui::test::fontPath("M1Digits.ttf").c_str());
+    REQUIRE(digits);
+    REQUIRE(document.text("1\n2\n3"));
+    auto options = editor.options();
+    auto ink = [&](ui::Color color, bool gutter) {
+        const auto& image = raster();
+        auto area = editor.textViewport();
+        int top = 300, bottom = -1;
+        uint32_t value = uint32_t(color.a) << 24 | uint32_t(color.r) << 16 | uint32_t(color.g) << 8 | color.b;
+        auto first = int(bounds.x + (gutter ? 0 : area.x));
+        auto end = int(bounds.x + (gutter ? area.x : bounds.w));
+        auto row = editor.caretRect();
+        for (int y = std::max(0, int(bounds.y + row.y)); y < std::min(300, int(bounds.y + row.y + row.h)); ++y)
+            for (int x = first; x < end; ++x)
+                if (image[size_t(y) * 400 + x] == value) {
+                    top = std::min(top, y);
+                    bottom = std::max(bottom, y);
+                }
+        REQUIRE(bottom >= top);
+        return std::pair{top, bottom};
+    };
+    for (auto font : {fonts.plain, digits, fonts.kern, digits}) {
+        for (auto markdown : {false, true}) {
+            for (auto size : {16.0f, 32.0f}) {
+                CAPTURE(font);
+                CAPTURE(markdown);
+                CAPTURE(size);
+                editor.font(font, digits);
+                options.markdown = markdown;
+                options.fontSize = size;
+                editor.options(options);
+                editor.select(0, 0);
+                auto number = ink(theme.muted, true);
+                auto text = ink(theme.text, false);
+                CHECK(std::abs(number.first - text.first) <= 1);
+                CHECK(std::abs(number.second - text.second) <= 1);
+            }
+        }
+    }
+    REQUIRE(document.text("1\n# 2\n## 3\n### 4\n#### 5\n##### 6\n###### 7"));
+    options.fontSize = 16;
+    options.markdown = true;
+    editor.options(options);
+    editor.select(0, 0);
+    auto number = ink(theme.muted, true);
+    auto top = number.first - bounds.y - editor.caretRect().y;
+    auto height = number.second - number.first + 1;
+    auto bodyHeight = editor.caretRect().h;
+    for (size_t row = 1; row < document.lineCount(); ++row) {
+        editor.select(document.lineStart(row), document.lineStart(row));
+        auto headingNumber = ink(theme.muted, true);
+        CHECK(std::abs(headingNumber.first - bounds.y - editor.caretRect().y - top) <= 1);
+        CHECK(std::abs(headingNumber.second - headingNumber.first + 1 - height) <= 1);
+        CHECK(editor.caretRect().h > bodyHeight);
+    }
+    editor.select(0, 0);
+    options.lineNumberOffset = 3;
+    editor.options(options);
+    auto shifted = ink(theme.muted, true);
+    CHECK(shifted.first == number.first + 3);
+    CHECK(shifted.second == number.second + 3);
+    options.lineNumberScale = 0.75f;
+    editor.options(options);
+    auto smaller = ink(theme.muted, true);
+    CHECK(std::abs(smaller.second - smaller.first + 1 - height * 0.75f) <= 2);
+    CHECK(editor.caretRect().h == doctest::Approx(bodyHeight));
+    options.lineNumberScale = 1;
+    options.lineNumberOffset = 0;
+    editor.options(options);
+    CHECK(ink(theme.muted, true) == number);
+}
+
+TEST_CASE_FIXTURE(Editor, "line_number_corrections_validate_nonfinite_and_out_of_range_values")
+{
+    auto options = editor.options();
+    options.lineNumberScale = 3;
+    options.lineNumberOffset = -50;
+    editor.options(options);
+    CHECK(editor.options().lineNumberScale == 2);
+    CHECK(editor.options().lineNumberOffset == -16);
+    options.lineNumberScale = std::numeric_limits<float>::quiet_NaN();
+    options.lineNumberOffset = std::numeric_limits<float>::infinity();
+    editor.options(options);
+    CHECK(editor.options().lineNumberScale == 2);
+    CHECK(editor.options().lineNumberOffset == -16);
+}
+
 TEST_CASE_FIXTURE(Editor, "markdown_reparses_edits_and_preserves_composition_and_decorations")
 {
     REQUIRE(document.text("# title\nplain\nlast"));
