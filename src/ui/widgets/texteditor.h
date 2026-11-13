@@ -31,9 +31,12 @@ struct TextEditor::Impl
     {
         tvg::Text* body = tvg::Text::gen();
         tvg::Text* number = tvg::Text::gen();
+        tvg::Scene* group = nullptr;
+        tvg::Scene* background = nullptr;
         uint64_t style = 0;
-        std::string value;
-        bool assigned = false, visible = true;
+        std::string value, display;
+        std::vector<Run> styles;
+        bool assigned = false, measured = false;
         std::vector<std::unique_ptr<RenderRun>> runs;
         float bodyLeft = 0, numberWidth = 0;
         RenderLine()
@@ -45,6 +48,8 @@ struct TextEditor::Impl
         {
             body->unref();
             number->unref();
+            if (group) group->unref();
+            if (background) background->unref();
         }
     };
 
@@ -52,16 +57,18 @@ struct TextEditor::Impl
     tn::EditSession editing;
     TextView view;
     Context context;  // Draws the retained editor scene in local coordinates.
-    Context textContent, numberContent;
+    Context textContent, numberContent, codeContent;
     Theme themeTokens = Theme::dark();
     TextEditorOptions configuration;
     EditorInputState input;
     std::unique_ptr<tvg::Text> measurer;
     std::map<size_t, std::unique_ptr<RenderLine>> linePaints;
-    size_t cachedFirst = 0, cachedEnd = 0;
-    std::vector<std::string> displayLines;
-    std::vector<std::vector<Run>> rowRuns;
-    std::vector<Format> markdownFormats;
+    std::map<float, size_t> lineWidths;
+    size_t cachedFirst = 0, cachedEnd = 0, drawnFirst = 0, drawnEnd = 0;
+    std::vector<tn::MarkdownBlock> markdownBlocks;
+    std::map<size_t, std::vector<Format>> markdownFormats;
+    bool referenceMarkdown = false;
+    double renderOrigin = 0, preeditOrigin = 0;
     uint64_t markdownRevision = uint64_t(-1);
     FontId boldDocumentFont = 0;
     struct Decoration
@@ -80,11 +87,14 @@ struct TextEditor::Impl
     float documentTop = 0;
     uint64_t textStyleRevision = 1;
     uint64_t measuredRevision = uint64_t(-1), measuredFontGeneration = 0, paintedRevision = uint64_t(-1);
-    float width = 1, height = 1, horizontal = 0, vertical = 0, gutter = 0, lineHeight = 24, widest = 0, digitWidth = 0;
+    double vertical = 0;
+    float width = 1, height = 1, horizontal = 0, gutter = 0, lineHeight = 24, boldAdvance = 0, widest = 0, digitWidth = 0;
     // Wheel lines not yet scrolled; fractional ticks wait until they add up to a whole line.
     float wheelCarry = 0;
+    bool viewportReady = false;
+    std::optional<std::pair<float, double>> pendingScroll;
     bool dirty = true, layoutDirty = true, textContentDirty = true, hasFocus = false, dragging = false, previousCaretVisible = false;
-    bool restartCaret = true;
+    bool restartCaret = true, plainMarkdown = false;
     double seconds = 0, caretEpoch = 0;
     std::optional<double> nextBlink;  // Set while a visible caret waits for its next phase.
     std::optional<float> horizontalGrab;
@@ -124,16 +134,20 @@ struct TextEditor::Impl
     Rect horizontalTrack() const;
     Rect horizontalThumb() const;
     float maxHorizontalScroll() const;
-    float maxVerticalScroll() const;
-    float contentHeight() const;
+    double maxVerticalScroll() const;
+    double contentHeight() const;
 
     float measure(std::string_view text, FontId font = 0) const;
     std::vector<TextLine> layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& runs);
-    void parseMarkdown();
-    Format formatAt(size_t offset) const;
+    void parseMarkdown(size_t& start, size_t& end, bool incremental);
+    size_t markdownBlock(size_t offset) const;
+    const std::vector<Format>& blockFormats(size_t block);
+    void measureLine(size_t row);
+    void updateWidth(float before, float after);
+    std::vector<TextLine> rowMetadata(std::string_view text, size_t base);
     Color markdownColor(Color Theme::*token) const;
-    void prepareRuns(RenderLine& line, size_t row);
-    size_t replaceRows(size_t first, size_t count, std::string_view text, size_t base);
+    void prepareRuns(RenderLine& line);
+    size_t replaceRows(size_t first, size_t count, std::string_view text, size_t base, bool composed = false);
     RenderLine& prepareLine(size_t row);
     void prepareViewport(size_t first, size_t end);
     void paintDecorations(size_t first, size_t end, bool borders);

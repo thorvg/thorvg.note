@@ -13,11 +13,14 @@ struct TextPose
     tvg::Matrix parentTransform;
 };
 
-void textPoses(tvg::Scene* scene, std::vector<TextPose>& result)
+void textPoses(tvg::Scene* scene, std::vector<TextPose>& result, float x = 0, float y = 0)
 {
+    auto parent = scene->transform();
+    parent.e13 += x;
+    parent.e23 += y;
     for (auto paint : scene->paints()) {
-        if (paint->type() == tvg::Type::Scene) textPoses(static_cast<tvg::Scene*>(paint), result);
-        else if (paint->type() == tvg::Type::Text) result.push_back({static_cast<tvg::Text*>(paint), paint->transform(), scene, scene->transform()});
+        if (paint->type() == tvg::Type::Scene) textPoses(static_cast<tvg::Scene*>(paint), result, parent.e13, parent.e23);
+        else if (paint->type() == tvg::Type::Text) result.push_back({static_cast<tvg::Text*>(paint), paint->transform(), scene, parent});
     }
 }
 
@@ -34,7 +37,7 @@ struct Editor : ui::test::Frame
         editor.font(fonts.plain);
     }
 
-    void draw(bool clear = true)
+    void draw(bool clear = false)
     {
         render([&] { editor.render(context, "editor", bounds); });
         if (canvas) {
@@ -48,7 +51,7 @@ struct Editor : ui::test::Frame
     {
         if (!canvas) {
             output.resize(400 * 300);
-            canvas.reset(tvg::SwCanvas::gen());
+            canvas.reset(tvg::SwCanvas::gen(tvg::EngineOption::SmartRender));
             REQUIRE(canvas->target(output.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
             REQUIRE(canvas->add(context.scene()) == tvg::Result::Success);
         }
@@ -203,19 +206,28 @@ TEST_CASE_FIXTURE(Editor, "scrolling_moves_parent_scenes_and_retains_text_in_the
     textPoses(context.scene(), before);
     REQUIRE_FALSE(before.empty());
     CHECK(before.size() < 300);
-    CHECK(std::any_of(before.begin(), before.end(), [](const auto& pose) { return !pose.text->visible(); }));
     auto distance = editor.caretRect().h / 2;
     editor.scroll(40, distance);
     draw();
     std::vector<TextPose> after;
     textPoses(context.scene(), after);
-    REQUIRE(after.size() == before.size());
-    for (size_t i = 0; i < before.size(); ++i) {
-        CHECK(after[i].text == before[i].text);
-        CHECK(after[i].transform.e13 == before[i].transform.e13);
-        CHECK(after[i].transform.e23 == before[i].transform.e23);
-        CHECK(after[i].parent == before[i].parent);
-        CHECK(after[i].parentTransform.e23 == doctest::Approx(before[i].parentTransform.e23 - distance));
+    size_t reused = 0;
+    for (const auto& pose : before) {
+        auto found = std::find_if(after.begin(), after.end(), [&](const auto& other) { return other.text == pose.text; });
+        if (found == after.end()) continue;
+        ++reused;
+        CHECK(found->transform.e13 == pose.transform.e13);
+        CHECK(found->transform.e23 == pose.transform.e23);
+        CHECK(found->parent == pose.parent);
+        CHECK(found->parentTransform.e23 == doctest::Approx(pose.parentTransform.e23 - distance));
+    }
+    CHECK(reused == before.size());
+    auto viewport = editor.textViewport();
+    for (const auto& pose : after) {
+        auto value = std::string_view(pose.text->text());
+        if (value.empty() || !std::all_of(value.begin(), value.end(), [](char ch) { return ch >= '0' && ch <= '9'; })) continue;
+        CHECK(pose.transform.e23 + distance * 2 > editor.scrollY());
+        CHECK(pose.transform.e23 < editor.scrollY() + viewport.h);
     }
     editor.scroll(0, 0);
     draw();
@@ -259,8 +271,8 @@ TEST_CASE_FIXTURE(Editor, "viewport_scenes_match_full_redraws_and_fresh_layouts_
         editor.scroll(position.x, position.y);
         draw(false);
         auto incremental = output;
-        draw();
-        CHECK(incremental == output);
+        draw(true);
+        CHECK(bool(incremental == output));
 
         ui::TextEditor reference(document);
         reference.font(fonts.plain);
@@ -277,8 +289,115 @@ TEST_CASE_FIXTURE(Editor, "viewport_scenes_match_full_redraws_and_fresh_layouts_
         REQUIRE(full->add(referenceContext.scene()) == tvg::Result::Success);
         REQUIRE(full->draw(true) == tvg::Result::Success);
         REQUIRE(full->sync() == tvg::Result::Success);
-        CHECK(output == expected);
+        // A fresh view has measured fewer rows, so its horizontal thumb can be wider.
+        // The viewport must still match exactly; the full redraw above also checks the thumb.
+        auto textArea = editor.textViewport();
+        auto bottom = size_t(bounds.y + textArea.y + textArea.h);
+        for (size_t y = 0; y < 300; ++y) {
+            if (y >= bottom && y < size_t(bounds.y + bounds.h)) continue;
+            CHECK(std::equal(output.begin() + y * 400, output.begin() + (y + 1) * 400, expected.begin() + y * 400));
+        }
     }
+}
+
+TEST_CASE_FIXTURE(Editor, "smart_render_draws_opaque_frames_without_clearing_after_retargeting")
+{
+    REQUIRE(document.text("# Heading\nBody `code` and [link](target)\nMore text"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    canvas.reset(tvg::SwCanvas::gen(tvg::EngineOption::SmartRender));
+    REQUIRE(canvas->add(context.scene()) == tvg::Result::Success);
+    for (auto size : {ui::Rect{0, 0, 400, 300}, ui::Rect{0, 0, 250, 160}, ui::Rect{0, 0, 500, 340}}) {
+        auto w = uint32_t(size.w), h = uint32_t(size.h);
+        output.assign(size_t(w) * h, 0x5a5a5a5a);
+        REQUIRE(canvas->target(output.data(), w, w, h, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+        viewport = size;
+        bounds = {20, 10, size.w - 40, size.h - 20};
+        render([&] {
+            context.rect(viewport, theme.background);
+            editor.render(context, "editor", bounds);
+        });
+        REQUIRE(canvas->update() == tvg::Result::Success);
+        REQUIRE(canvas->draw(false) == tvg::Result::Success);
+        REQUIRE(canvas->sync() == tvg::Result::Success);
+        auto incremental = output;
+        REQUIRE(canvas->update() == tvg::Result::Success);
+        REQUIRE(canvas->draw(true) == tvg::Result::Success);
+        REQUIRE(canvas->sync() == tvg::Result::Success);
+        CHECK(bool(incremental == output));
+    }
+}
+
+TEST_CASE_FIXTURE(Editor, "cached_markdown_rows_match_full_redraws_after_edits_and_style_changes")
+{
+    REQUIRE(document.text("# aaaa\n[bbbb](target)\n~~aaaa~~\n`bbbb`\nMore text\nLast line"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    raster();
+    auto verify = [&](const char* change) {
+        INFO(std::string(change));
+        draw(false);
+        auto incremental = output;
+        draw(true);
+        CHECK(bool(incremental == output));
+    };
+    REQUIRE(document.text("aaaa\n`bbbb`\n[aaaa](target)\n~~bbbb~~\nLast line"));
+    verify("document edit");
+    theme.markdownLink = {23, 171, 87};
+    theme.markdownCode = {196, 71, 102};
+    theme.markdownCodeBackground = {77, 108, 231, 90};
+    editor.theme(theme);
+    verify("theme change");
+    options.markdown = false;
+    editor.options(options);
+    verify("plain text");
+    options.markdown = true;
+    options.fontSize = 23;
+    editor.options(options);
+    verify("markdown and font size");
+    editor.select(1, 15);
+    verify("selection");
+    editor.scroll(0, 35);
+    verify("scroll");
+    editor.composition("aaaa", 2);
+    verify("composition");
+    editor.composition("", 0);
+    verify("composition cleared");
+}
+
+TEST_CASE_FIXTURE(Editor, "smart_render_limits_caret_blink_damage_to_a_small_region")
+{
+    REQUIRE(document.text("First line\nSecond line\nThird line"));
+    output.resize(400 * 300);
+    canvas.reset(tvg::SwCanvas::gen(tvg::EngineOption::SmartRender));
+    REQUIRE(canvas->target(output.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+    REQUIRE(canvas->add(context.scene()) == tvg::Result::Success);
+    context.focus("editor");
+    auto frame = [&](double time) {
+        context.begin(theme, viewport, time);
+        editor.render(context, "editor", bounds);
+        context.end();
+        REQUIRE(canvas->update() == tvg::Result::Success);
+        REQUIRE(canvas->draw(false) == tvg::Result::Success);
+    };
+    frame(1);
+    REQUIRE(canvas->sync() == tvg::Result::Success);
+    frame(1.6);
+    std::vector<tvg::Region> regions(canvas->dirtyRegions());
+    REQUIRE_FALSE(regions.empty());
+    REQUIRE(canvas->dirtyRegions(regions.data(), uint32_t(regions.size())) == tvg::Result::Success);
+    size_t damaged = 0;
+    for (const auto& region : regions)
+        damaged += size_t(region.xMax - region.xMin) * size_t(region.yMax - region.yMin);
+    CHECK(damaged < 400 * 300 / 4);
+    REQUIRE(canvas->sync() == tvg::Result::Success);
+    auto incremental = output;
+    REQUIRE(canvas->update() == tvg::Result::Success);
+    REQUIRE(canvas->draw(true) == tvg::Result::Success);
+    REQUIRE(canvas->sync() == tvg::Result::Success);
+    CHECK(bool(incremental == output));
 }
 
 TEST_CASE_FIXTURE(Editor, "composition_and_read_only_leave_the_document_unchanged")
@@ -574,6 +693,314 @@ TEST_CASE_FIXTURE(Editor, "markdown_reparses_edits_and_preserves_composition_and
     CHECK(document.text() == "# title\nplain\nlast");
 }
 
+TEST_CASE_FIXTURE(Editor, "markdown_incremental_edits_match_fresh_layouts")
+{
+    std::string source, inserted;
+    size_t start = 0, removed = 0, secondWordEdit = 0;
+    bool compositionCommit = false;
+    SUBCASE("composition_commit_in_a_styled_paragraph")
+    {
+        source = "first **bold**\n\n# Heading\n\nLast line";
+        start = 2;
+        inserted = "\xed\x95\x9c";
+        compositionCommit = true;
+    }
+    SUBCASE("composition_commit_inserts_a_newline")
+    {
+        source = "first **bold**\n\n# Heading\n\nLast line";
+        start = source.find("bold") + 2;
+        inserted = "composed\ntext";
+        compositionCommit = true;
+    }
+    SUBCASE("plain_edit_before_styled_rows")
+    {
+        source = "Plain text\n\n# Heading\n**bold** and `code`\nLast line";
+        start = 5;
+        inserted = "more\ntext ";
+    }
+    SUBCASE("word_edit_inside_multiline_emphasis")
+    {
+        source = "**bold plainword\nsecond plainword**\nfollowing *emphasis*";
+        start = source.find("plainword") + 4;
+        inserted = "More";
+    }
+    SUBCASE("two_word_edits_inside_multiline_emphasis")
+    {
+        source = "**bold plainwordlongword\nsecond plainword**\nfollowing *emphasis*";
+        auto word = source.find("plainwordlongword");
+        start = word + 2;
+        inserted = "More";
+        secondWordEdit = word + 10;
+    }
+    SUBCASE("word_end_insertion_before_a_newline")
+    {
+        source = "**bold** plainword\nsecond *emphasis*\nlast";
+        start = source.find('\n');
+        inserted = "More";
+    }
+    SUBCASE("word_end_deletion_before_a_newline")
+    {
+        source = "**bold** plainword\nsecond *emphasis*\nlast";
+        start = source.find('\n') - 3;
+        removed = 3;
+    }
+    SUBCASE("word_end_insertion_at_eof")
+    {
+        source = "**bold**\nplainword";
+        start = source.size();
+        inserted = "More";
+    }
+    SUBCASE("word_end_deletion_at_eof")
+    {
+        source = "**bold**\nplainword";
+        start = source.size() - 3;
+        removed = 3;
+    }
+    SUBCASE("word_end_insertion_before_a_space")
+    {
+        source = "**bold** plainword nextword\nlast *emphasis*";
+        start = source.find(" nextword");
+        inserted = "More";
+    }
+    SUBCASE("word_end_deletion_before_a_space")
+    {
+        source = "**bold** plainword nextword\nlast *emphasis*";
+        start = source.find(" nextword") - 3;
+        removed = 3;
+    }
+    SUBCASE("word_end_before_punctuation_keeps_the_parser_path")
+    {
+        source = "**bold** plainword!\nlast *emphasis*";
+        start = source.find('!');
+        inserted = "More";
+    }
+    SUBCASE("word_end_before_a_delimiter_keeps_the_parser_path")
+    {
+        source = "**bold** *plainword*\nlast *emphasis*";
+        start = source.find("word") + 4;
+        inserted = "More";
+    }
+    SUBCASE("word_deletion_inside_a_list")
+    {
+        source = "- first plainword\n- second **plainword**\n- third item";
+        start = source.find("plainword") + 3;
+        removed = 3;
+    }
+    SUBCASE("word_replacement_inside_code")
+    {
+        source = "```text\nfirst plainword\nsecond plainword\n```\n\n# Tail";
+        start = source.find("plainword") + 3;
+        removed = 3;
+        inserted = "More";
+    }
+    SUBCASE("word_edit_in_a_heading")
+    {
+        source = "# First plainword\n\n## Second heading\n\nLast plainword";
+        start = source.find("plainword") + 3;
+        inserted = "More";
+    }
+    SUBCASE("letter_deletion_reveals_an_entity")
+    {
+        source = "**prefix** &amXp; plainword\n\nLast line";
+        start = source.find('X');
+        removed = 1;
+    }
+    SUBCASE("letter_deletion_reveals_an_autolink")
+    {
+        source = "**prefix** httpXs://example.com\n\nLast line";
+        start = source.find('X');
+        removed = 1;
+    }
+    SUBCASE("letter_deletion_changes_a_reference_label")
+    {
+        source = "[laXbel]\n\n[label]: target\n\nLast line";
+        start = source.find('X');
+        removed = 1;
+    }
+    SUBCASE("letter_edit_in_a_html_tag")
+    {
+        source = "<diXv>\nplainword\n</div>\n\n**Tail**";
+        start = source.find('X');
+        removed = 1;
+    }
+    SUBCASE("word_edit_after_a_tab")
+    {
+        source = "**prefix**\tplainword\nsecond plainword";
+        start = source.find("plainword") + 3;
+        inserted = "More";
+    }
+    SUBCASE("edit_within_multiline_emphasis")
+    {
+        source = "**First line\nsecond line\nthird line**\n\nLast line";
+        start = source.find("second") + 3;
+        inserted = "more ";
+    }
+    SUBCASE("plain_edit_without_syntax")
+    {
+        source = "Plain text: one, two.\nSecond line\nLast line";
+        start = 6;
+        inserted = "more\ntext ";
+    }
+    SUBCASE("plain_text_becomes_a_heading")
+    {
+        source = "First line\nTitle\nLast line";
+        start = source.find("Title");
+        inserted = "# ";
+    }
+    SUBCASE("deletion_introduces_indented_code")
+    {
+        source = "prefix    code\nLast line";
+        removed = 6;
+    }
+    SUBCASE("deletion_introduces_a_numbered_list")
+    {
+        source = "prefix1. item\nLast line";
+        removed = 6;
+    }
+    SUBCASE("plain_text_becomes_a_url")
+    {
+        source = "http//example.com\nLast line";
+        start = 4;
+        inserted = ":";
+    }
+    SUBCASE("deletion_introduces_a_www_link")
+    {
+        source = "wwXw.example.com\nLast line";
+        start = 2;
+        removed = 1;
+    }
+    SUBCASE("plain_text_becomes_an_email_link")
+    {
+        source = "personexample.com\nLast line";
+        start = 6;
+        inserted = "@";
+    }
+    SUBCASE("opening_fence_propagates_beyond_neighboring_blocks")
+    {
+        source = "# First\n\nfirst\n\n# Second\n\n**second**\n\n# Third\n\nLast line";
+        start = source.find("first");
+        inserted = "```text\n";
+    }
+    SUBCASE("quote_and_nested_list_block_boundaries_change")
+    {
+        source = "> # Title\n> text\n\n- first\n  - **nested**\n\nLast line";
+        removed = 2;
+    }
+    SUBCASE("removing_a_heading_merges_inline_context")
+    {
+        source = "before **open\n\n# Boundary\n\nclose**\n\nLast line";
+        start = source.find("\n\n#");
+        removed = std::string("\n\n# Boundary\n\n").size();
+        inserted = "\n";
+    }
+    SUBCASE("same_size_edit_within_styled_text")
+    {
+        source = "# Title\n\n**bold** and `code`\nLast line";
+        start = source.find("bold");
+        removed = 4;
+        inserted = "body";
+    }
+    SUBCASE("multibyte_edit_before_styled_rows")
+    {
+        source = "A가中\n\n# Heading\nLast line";
+        start = 1;
+        removed = 3;
+        inserted = "한글\n";
+    }
+    SUBCASE("closing_fence_changes_following_rows")
+    {
+        source = "```\nfirst\n```\n# Heading\n**bold**\nLast line";
+        start = source.find("```", 3);
+        removed = 3;
+    }
+    SUBCASE("setext_marker_changes_the_previous_row")
+    {
+        source = "Title\nplain\n\nLast line";
+        start = source.find("plain");
+        removed = 5;
+        inserted = "=====";
+    }
+    SUBCASE("reference_definition_changes_an_earlier_link")
+    {
+        source = "[label][ref]\n\nPlain text\n\n[ref]: destination\nLast line";
+        start = source.find("[ref]:");
+        removed = 1;
+    }
+    SUBCASE("new_reference_definition_resolves_an_earlier_link")
+    {
+        source = "[label][ref]\n\nPlain text\nLast line";
+        start = source.size();
+        inserted = "\n\n[ref]: destination";
+    }
+    SUBCASE("delete_all_styled_text")
+    {
+        source = "**bold**\n\n# Heading\nLast line";
+        removed = source.size();
+    }
+    SUBCASE("multiple_edits_and_deleted_newlines")
+    {
+        source = "# Heading\n\n**bold**\n\nLast line";
+        start = source.find("\n\n");
+        removed = 2;
+        inserted = " ";
+    }
+    REQUIRE(document.text(source));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    editor.theme(theme);
+    raster();
+    std::string error;
+    auto verify = [&] {
+        ui::TextEditor reference(document);
+        reference.font(fonts.plain);
+        reference.options(options);
+        reference.theme(theme);
+        ui::Context referenceContext;
+        referenceContext.begin(theme, viewport);
+        reference.render(referenceContext, "editor", bounds);
+        referenceContext.end();
+        std::vector<uint32_t> expected(output.size());
+        std::unique_ptr<tvg::SwCanvas> full(tvg::SwCanvas::gen());
+        REQUIRE(full->target(expected.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+        REQUIRE(full->add(referenceContext.scene()) == tvg::Result::Success);
+        for (size_t row = 0; row < document.lineCount(); ++row) {
+            INFO(row);
+            auto offset = document.lineStart(row);
+            editor.select(offset, offset);
+            reference.select(offset, offset);
+            draw(true);
+            reference.scroll(editor.scrollX(), editor.scrollY());
+            referenceContext.begin(theme, viewport);
+            reference.render(referenceContext, "editor", bounds);
+            referenceContext.end();
+            auto caret = editor.caretRect(), fresh = reference.caretRect();
+            CHECK(caret.x == doctest::Approx(fresh.x));
+            CHECK(caret.y == doctest::Approx(fresh.y));
+            CHECK(caret.h == doctest::Approx(fresh.h));
+            REQUIRE(full->update() == tvg::Result::Success);
+            REQUIRE(full->draw(true) == tvg::Result::Success);
+            REQUIRE(full->sync() == tvg::Result::Success);
+            CHECK(bool(output == expected));
+        }
+    };
+    tn::EditBatch batch{.revision = document.revision(), .edits = {{start, start + removed, inserted}}};
+    if (secondWordEdit) batch.edits.push_back({secondWordEdit, secondWordEdit + 2, "x"});
+    if (source.starts_with("# Heading")) batch.edits.push_back({source.find("Last"), source.size(), "**Tail**"});
+    if (compositionCommit) {
+        editor.select(start, start + removed);
+        editor.composition(inserted, inserted.size());
+        draw();
+        editor.composition("", 0);
+        REQUIRE(editor.insert(inserted, error));
+    } else REQUIRE(editor.applyEdits(batch, error));
+    verify();
+    REQUIRE(editor.undo());
+    verify();
+    REQUIRE(editor.redo());
+    verify();
+}
+
 TEST_CASE_FIXTURE(Editor, "markdown_operators_and_operands_have_independent_colors")
 {
     bounds.h = 280;
@@ -663,3 +1090,368 @@ TEST_CASE_FIXTURE(Editor, "markdown_bold_falls_back_when_the_bold_face_lacks_han
 }
 
 TEST_SUITE_END();
+
+TEST_CASE_FIXTURE(Editor, "large_document_coordinates_preserve_fractional_scroll_and_height")
+{
+    std::string text;
+    for (size_t i = 0; i < 4000; ++i) {
+        if (i) text += '\n';
+        text += "# A";
+    }
+    REQUIRE(document.text(text));
+    auto options = editor.options();
+    options.markdown = true;
+    options.fontSize = ui::TextEditorOptions::maxFontSize;
+    editor.options(options);
+    draw();
+    auto rowHeight = editor.caretRect().h;
+    editor.select(text.size(), text.size());
+    draw();
+    auto maximum = editor.scrollY();
+    auto end = editor.caretRect();
+    CHECK(maximum > 33554432.0);
+    CHECK(std::abs(maximum + end.y + end.h - double(rowHeight) * 4000) < 0.01);
+    auto origin = maximum - 1000;
+    editor.scroll(0, origin);
+    auto before = editor.caretRect().y;
+    for (size_t i = 1; i <= 8; ++i) {
+        editor.scroll(0, origin + i * 0.25);
+        CHECK(editor.scrollY() == origin + i * 0.25);
+        CHECK(editor.caretRect().y == doctest::Approx(before - i * 0.25));
+    }
+}
+
+TEST_CASE_FIXTURE(Editor, "horizontal_extent_expands_when_an_unseen_wide_line_is_measured")
+{
+    std::string text = "short";
+    for (size_t i = 0; i < 1000; ++i)
+        text += "\nshort";
+    text += "\n" + std::string(200, 'A');
+    REQUIRE(document.text(text));
+    draw();
+    editor.scroll(100000, 0);
+    auto initial = editor.scrollX();
+    editor.select(text.size(), text.size());
+    draw();
+    editor.scroll(100000, 0);
+    CHECK(editor.scrollX() > initial + 100);
+}
+
+TEST_CASE_FIXTURE(Editor, "horizontal_extent_tracks_duplicate_widths_and_discarded_geometry")
+{
+    auto wide = std::string(200, 'A');
+    std::string text = wide;
+    for (size_t i = 0; i < 1000; ++i)
+        text += "\nshort";
+    text += "\n" + wide;
+    REQUIRE(document.text(text));
+    draw();
+    editor.select(text.size(), text.size());
+    draw();
+    editor.scroll(100000, 0);
+    auto maximum = editor.scrollX();
+    CHECK(maximum > 100);
+    editor.select(0, 0);
+    draw();
+    auto last = document.lineCount() - 1;
+    editor.select(document.lineStart(last), document.lineEnd(last));
+    std::string error;
+    REQUIRE(editor.insert("short", error));
+    draw();
+    editor.scroll(100000, 0);
+    CHECK(editor.scrollX() == doctest::Approx(maximum));
+    editor.select(0, wide.size());
+    REQUIRE(editor.insert("short", error));
+    draw();
+    editor.scroll(100000, 0);
+    CHECK(editor.scrollX() == 0);
+    REQUIRE(editor.undo());
+    draw();
+    editor.scroll(100000, 0);
+    CHECK(editor.scrollX() == doctest::Approx(maximum));
+}
+
+TEST_CASE_FIXTURE(Editor, "composition_commit_retains_unaffected_markdown_paints")
+{
+    bounds.h = 280;
+    REQUIRE(document.text("first\n\n# Second\n\nthird\n\n# Fourth\n\nlast"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    context.focus("editor");
+    raster();
+    std::vector<TextPose> before;
+    textPoses(context.scene(), before);
+    auto found = std::find_if(before.begin(), before.end(), [](const auto& pose) { return std::string_view(pose.text->text()).find("Fourth") != std::string_view::npos; });
+    REQUIRE(found != before.end());
+    found->text->ref();
+    std::unique_ptr<tvg::Text, void (*)(tvg::Text*)> retained(found->text, [](tvg::Text* text) { text->unref(); });
+    editor.select(0, 0);
+    editor.composition("\xed\x95\x9c", 3);
+    draw();
+    SUBCASE("commit_after_clearing_preedit")
+    {
+        editor.composition("", 0);
+    }
+    SUBCASE("commit_active_preedit") {}
+    context.textInput("\xed\x95\x9c");
+    draw();
+    CHECK(!editor.composing());
+    CHECK(document.text().starts_with("\xed\x95\x9c"
+                                      "first"));
+    std::vector<TextPose> after;
+    textPoses(context.scene(), after);
+    CHECK(std::any_of(after.begin(), after.end(), [&](const auto& pose) { return pose.text == retained.get(); }));
+}
+
+TEST_CASE_FIXTURE(Editor, "font_assignment_preserves_layout_until_fonts_change")
+{
+    REQUIRE(document.text("AVAV\n\n# Heading"));
+    editor.font(fonts.plain, fonts.plain);
+    auto options = editor.options();
+    options.markdown = true;
+    options.lineNumbers = true;
+    editor.options(options);
+    auto beforePixels = raster();
+    auto width = editor.rangeRects(0, 4).front().w;
+    std::vector<TextPose> before;
+    textPoses(context.scene(), before);
+    auto found = std::find_if(before.begin(), before.end(), [](const auto& pose) { return std::string_view(pose.text->text()) == "AVAV"; });
+    REQUIRE(found != before.end());
+    found->text->ref();
+    std::unique_ptr<tvg::Text, void (*)(tvg::Text*)> retained(found->text, [](tvg::Text* text) { text->unref(); });
+    bool changed = false;
+    SUBCASE("same_fonts")
+    {
+        editor.font(fonts.plain, fonts.plain);
+    }
+    SUBCASE("document_font_changes")
+    {
+        editor.font(fonts.kern, fonts.plain);
+        CHECK(editor.rangeRects(0, 4).front().w < width);
+        changed = true;
+    }
+    SUBCASE("line_number_font_changes")
+    {
+        editor.font(fonts.plain, fonts.kern);
+        changed = true;
+    }
+    SUBCASE("font_registry_changes")
+    {
+        std::ifstream input(ui::test::fontPath("M1Plain.ttf"), std::ios::binary);
+        REQUIRE(input);
+        std::vector<char> bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+        REQUIRE(ui::loadFont("Additional", bytes.data(), bytes.size()));
+        editor.font(fonts.plain, fonts.plain);
+        changed = true;
+    }
+    auto afterPixels = raster();
+    std::vector<TextPose> after;
+    textPoses(context.scene(), after);
+    CHECK(std::any_of(after.begin(), after.end(), [&](const auto& pose) { return pose.text == retained.get(); }) == !changed);
+    if (!changed) {
+        CHECK(afterPixels == beforePixels);
+        CHECK(editor.rangeRects(0, 4).front().w == doctest::Approx(width));
+    }
+}
+
+TEST_CASE_FIXTURE(Editor, "word_edits_preserve_other_rows_in_the_same_markdown_block")
+{
+    REQUIRE(document.text("**bold** plainword tailword\nunchanged **content**\nlast plainword"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    raster();
+    std::vector<TextPose> before;
+    textPoses(context.scene(), before);
+    auto found = std::find_if(before.begin(), before.end(), [](const auto& pose) { return std::string_view(pose.text->text()).find("unchanged") != std::string_view::npos; });
+    REQUIRE(found != before.end());
+    found->text->ref();
+    std::unique_ptr<tvg::Text, void (*)(tvg::Text*)> retained(found->text, [](tvg::Text* text) { text->unref(); });
+    auto start = document.text().find("plainword") + 3;
+    auto end = start;
+    std::string inserted = "More";
+    SUBCASE("interior_word_insertion") {}
+    SUBCASE("line_end_insertion")
+    {
+        start = end = document.lineEnd(0);
+    }
+    SUBCASE("line_end_deletion")
+    {
+        end = document.lineEnd(0);
+        start = end - 3;
+        inserted.clear();
+    }
+    SUBCASE("eof_insertion")
+    {
+        start = end = document.text().size();
+    }
+    SUBCASE("eof_deletion")
+    {
+        end = document.text().size();
+        start = end - 3;
+        inserted.clear();
+    }
+    SUBCASE("space_boundary_insertion")
+    {
+        start = end = document.text().find(" tailword");
+    }
+    editor.select(start, end);
+    std::string error;
+    REQUIRE(editor.insert(inserted, error));
+    draw();
+    std::vector<TextPose> after;
+    textPoses(context.scene(), after);
+    CHECK(std::any_of(after.begin(), after.end(), [&](const auto& pose) { return pose.text == retained.get(); }));
+}
+
+TEST_CASE_FIXTURE(Editor, "composition_updates_match_fresh_layouts")
+{
+    const std::string source = "# Heading\n\n**bold** plainword\nnext content\n\n## Tail\nlast";
+    REQUIRE(document.text(source));
+    auto options = editor.options();
+    options.lineNumbers = true;
+    SUBCASE("plain")
+    {
+        options.markdown = false;
+    }
+    SUBCASE("markdown")
+    {
+        options.markdown = true;
+    }
+    editor.options(options);
+    context.focus("editor");
+    raster();
+    auto first = source.find("plainword") + 2;
+    editor.select(first, first + 3);
+    struct Step
+    {
+        const char* text;
+        size_t cursor;
+        bool move = false;
+    };
+    for (auto step : {Step{"ab", 1}, Step{"cd", 1}, Step{"expanded", 6}, Step{"x", 1}, Step{"first\nsecond", 7}, Step{"ab", 1}, Step{"ab", 0}, Step{"ab", 2, true}, Step{"", 0}}) {
+        INFO(step.text);
+        INFO(step.cursor);
+        if (step.move) {
+            auto next = source.find("content") + 2;
+            editor.select(next, next + 2);
+        }
+        editor.composition(step.text, step.cursor);
+        draw();
+        auto selection = editor.session().selection();
+        ui::TextEditor reference(document);
+        reference.font(fonts.plain);
+        reference.options(options);
+        reference.theme(theme);
+        reference.select(selection.anchor, selection.caret);
+        ui::Context referenceContext;
+        referenceContext.focus("editor");
+        auto renderReference = [&] {
+            referenceContext.begin(theme, viewport);
+            reference.render(referenceContext, "editor", bounds);
+            referenceContext.end();
+        };
+        renderReference();
+        reference.composition(step.text, step.cursor);
+        reference.scroll(editor.scrollX(), editor.scrollY());
+        renderReference();
+        std::vector<uint32_t> expected(output.size());
+        std::unique_ptr<tvg::SwCanvas> full(tvg::SwCanvas::gen());
+        REQUIRE(full->target(expected.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+        REQUIRE(full->add(referenceContext.scene()) == tvg::Result::Success);
+        REQUIRE(full->draw(true) == tvg::Result::Success);
+        REQUIRE(full->sync() == tvg::Result::Success);
+        CHECK(bool(output == expected));
+        auto caret = editor.caretRect(), fresh = reference.caretRect();
+        CHECK(caret.x == doctest::Approx(fresh.x));
+        CHECK(caret.y == doctest::Approx(fresh.y));
+        CHECK(caret.h == doctest::Approx(fresh.h));
+        CHECK(editor.session().selection().anchor == selection.anchor);
+        CHECK(editor.session().selection().caret == selection.caret);
+        CHECK(document.text() == source);
+    }
+}
+
+TEST_CASE_FIXTURE(Editor, "repeated_word_edits_match_fresh_markdown_layouts")
+{
+    std::string source;
+    SUBCASE("paragraph")
+    {
+        source = "**bold** plainword\nsecond *emphasis* plainword\nlast ~~strike~~ plainword";
+    }
+    SUBCASE("list")
+    {
+        source = "- first plainword\n- **second** plainword\n  - nested plainword";
+    }
+    SUBCASE("code")
+    {
+        source = "```text\nfirst plainword\nsecond plainword\nlast plainword\n```";
+    }
+    SUBCASE("quote")
+    {
+        source = "> first plainword\n> **second** plainword\n> last plainword";
+    }
+    REQUIRE(document.text(source));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    editor.theme(theme);
+    raster();
+    uint32_t random = 7;
+    auto next = [&] {
+        return random = random * 1664525u + 1013904223u;
+    };
+    for (size_t iteration = 0; iteration < 40; ++iteration) {
+        INFO(iteration);
+        std::vector<tn::Selection> words;
+        const auto& text = document.text();
+        auto letter = [](unsigned char ch) {
+            return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+        };
+        for (size_t first = 0; first < text.size();) {
+            if (!letter(text[first])) {
+                ++first;
+                continue;
+            }
+            auto end = first;
+            while (end < text.size() && letter(text[end]))
+                ++end;
+            if (end - first >= 4) words.push_back({first, end});
+            first = end;
+        }
+        REQUIRE_FALSE(words.empty());
+        auto word = words[next() % words.size()];
+        auto start = word.start() + 1 + next() % (word.end() - word.start() - 2);
+        auto removed = next() % std::min(size_t(3), word.end() - start);
+        auto inserted = next() % 3 == 0 ? std::string{} : next() % 2 ? std::string("More")
+                                                                     : std::string("q");
+        if (inserted.empty() && !removed) removed = 1;
+        editor.select(start, start + removed);
+        std::string error;
+        REQUIRE(editor.insert(inserted, error));
+        draw();
+        ui::TextEditor reference(document);
+        reference.font(fonts.plain);
+        reference.options(options);
+        reference.theme(theme);
+        auto selection = editor.session().selection();
+        reference.select(selection.anchor, selection.caret);
+        reference.scroll(editor.scrollX(), editor.scrollY());
+        ui::Context referenceContext;
+        referenceContext.begin(theme, viewport);
+        reference.render(referenceContext, "editor", bounds);
+        referenceContext.end();
+        std::vector<uint32_t> expected(output.size());
+        std::unique_ptr<tvg::SwCanvas> full(tvg::SwCanvas::gen());
+        REQUIRE(full->target(expected.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+        REQUIRE(full->add(referenceContext.scene()) == tvg::Result::Success);
+        REQUIRE(full->draw(true) == tvg::Result::Success);
+        REQUIRE(full->sync() == tvg::Result::Success);
+        CHECK(bool(output == expected));
+        auto caret = editor.caretRect(), fresh = reference.caretRect();
+        CHECK(caret.x == doctest::Approx(fresh.x));
+        CHECK(caret.y == doctest::Approx(fresh.y));
+        CHECK(caret.h == doctest::Approx(fresh.h));
+    }
+}

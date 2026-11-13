@@ -34,7 +34,8 @@ struct DocumentTab
     struct ViewRestore
     {
         size_t anchor, caret;
-        float x, y;
+        float x;
+        double y;
     };
     std::optional<ViewRestore> restoreView;
 };

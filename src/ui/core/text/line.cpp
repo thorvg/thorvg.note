@@ -4,28 +4,31 @@ namespace ui
 {
 size_t TextLine::hit(float value) const
 {
-    if (offsets.empty()) return 0;
-    if (x.empty()) return offsets.front();
+    if (offsets.empty()) return base;
+    if (x.empty()) return base + offsets.front();
     for (size_t i = 1; i < std::min(x.size(), offsets.size()); ++i)
-        if (value < (x[i - 1] + x[i]) / 2) return offsets[i - 1];
-    return offsets.back();
+        if (value < (x[i - 1] + x[i]) / 2) return base + offsets[i - 1];
+    return base + offsets.back();
 }
 
 float TextLine::position(size_t offset) const
 {
-    auto found = std::lower_bound(offsets.begin(), offsets.end(), offset);
-    return x.empty() ? bounds.x : x[std::min(size_t(found - offsets.begin()), x.size() - 1)];
+    if (x.empty()) return bounds.x;
+    if (offsets.empty() || offset <= start()) return x.front();
+    if (offset >= end()) return x[std::min(offsets.size(), x.size()) - 1];
+    auto found = std::lower_bound(offsets.begin(), offsets.end(), offset - base);
+    return x[std::min(size_t(found - offsets.begin()), x.size() - 1)];
 }
 
 Rect TextLine::rangeRect(size_t start, size_t end) const
 {
-    if (offsets.empty() || start > end || start > offsets.back() || end < offsets.front()) return {};
-    if (start == end) return {position(start), bounds.y, 1.5f, bounds.h};
-    if (end == offsets.front()) return {};
-    float left = position(std::max(start, offsets.front()));
-    float right = position(std::min(end, offsets.back()));
-    if (end > offsets.back()) right += breakWidth;
-    return {left, bounds.y, right - left, bounds.h};
+    if (offsets.empty() || start > end || start > this->end() || end < this->start()) return {};
+    if (start == end) return {position(start), float(y()), 1.5f, bounds.h};
+    if (end == this->start()) return {};
+    float left = position(std::max(start, this->start()));
+    float right = position(std::min(end, this->end()));
+    if (end > this->end()) right += breakWidth;
+    return {left, float(y()), right - left, bounds.h};
 }
 
 }  // namespace ui

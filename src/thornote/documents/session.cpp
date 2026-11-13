@@ -39,7 +39,7 @@ SessionDocument metadata(const SessionDocument& value)
 std::string encodeSession(const SessionState& value)
 {
     std::ostringstream out;
-    out << std::setprecision(std::numeric_limits<float>::max_digits10);
+    out << std::setprecision(std::numeric_limits<double>::max_digits10);
     out << "thornote-session 1\nactive " << value.active << "\nwindow " << value.width << ' ' << value.height
         << "\nsettings " << value.settingsOpen << ' ' << value.settingsActive << ' ' << value.settingsCategory
         << "\nnotes " << value.commands << ' ' << std::quoted(value.collection) << ' ' << std::quoted(value.noteQuery) << '\n';

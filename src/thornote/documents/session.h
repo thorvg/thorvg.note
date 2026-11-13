@@ -16,7 +16,8 @@ struct SessionDocument
     std::array<uint8_t, 32> diskDigest{};
     bool hadFile = false, dirty = false, uncertain = false, favorite = false;
     size_t anchor = 0, caret = 0;
-    float scrollX = 0, scrollY = 0;
+    float scrollX = 0;
+    double scrollY = 0;
 };
 
 struct SessionState

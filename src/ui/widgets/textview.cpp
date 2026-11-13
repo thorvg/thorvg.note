@@ -45,6 +45,14 @@ struct TextView::Impl
     SelectionUnit dragUnit = SelectionUnit::Word;
     std::optional<SelectionCycle> selectionCycle;
     bool dragging = false;
+    bool orderedOffsets = false, orderedRows = false;
+    double origin = 0;
+    std::function<void(size_t)> measure;
+    const TextLine& line(size_t index) const
+    {
+        if (measure && lines[index].offsets.empty()) measure(index);
+        return lines[index];
+    }
 
     explicit Impl(tn::EditSession& session) :
         selecting(session) {}
@@ -79,6 +87,27 @@ size_t TextView::hit(float x, float y) const
     return impl->hit(x, y);
 }
 
+void TextView::measure(std::function<void(size_t)> line)
+{
+    impl->measure = std::move(line);
+}
+
+void TextView::discard(size_t index)
+{
+    if (index >= impl->lines.size()) return;
+    auto& line = impl->lines[index];
+    auto start = line.start();
+    line.length = line.end() - start;
+    line.base = start;
+    std::vector<size_t>{}.swap(line.offsets);
+    std::vector<float>{}.swap(line.x);
+}
+
+void TextView::origin(double y)
+{
+    impl->origin = y;
+}
+
 void TextView::pointerUp()
 {
     impl->dragging = false;
@@ -96,43 +125,101 @@ void TextView::resetPreferredX()
     impl->preferredX.reset();
 }
 
-bool TextView::layout(size_t first, size_t count, std::vector<TextLine> value, ptrdiff_t offset, float y)
+bool TextView::layout(size_t first, size_t count, std::vector<TextLine> value, ptrdiff_t offset, double y)
 {
     if (first > impl->lines.size() || count > impl->lines.size() - first || !std::isfinite(y)) return false;
     for (const auto& line : value) {
         const auto& r = line.bounds;
-        if (line.offsets.size() != line.x.size() || !std::is_sorted(line.offsets.begin(), line.offsets.end()) || !std::is_sorted(line.x.begin(), line.x.end()) || !std::all_of(line.x.begin(), line.x.end(), [](float x) { return std::isfinite(x); }) || !std::isfinite(r.x) || !std::isfinite(r.y) || !std::isfinite(r.w) || !std::isfinite(r.h) || r.w < 0 || r.h < 0 || !std::isfinite(line.breakWidth) || line.breakWidth < 0) return false;
+        if ((!std::isnan(line.top) && !std::isfinite(line.top)) || line.offsets.size() != line.x.size() || !std::is_sorted(line.offsets.begin(), line.offsets.end()) || !std::is_sorted(line.x.begin(), line.x.end()) || !std::all_of(line.x.begin(), line.x.end(), [](float x) { return std::isfinite(x); }) || !std::isfinite(r.x) || !std::isfinite(r.y) || !std::isfinite(r.w) || !std::isfinite(r.h) || r.w < 0 || r.h < 0 || !std::isfinite(line.breakWidth) || line.breakWidth < 0) return false;
     }
-    for (auto it = impl->lines.begin() + first + count; it != impl->lines.end(); ++it) {
-        for (auto& o : it->offsets)
-            o = size_t(ptrdiff_t(o) + offset);
-        it->bounds.y += y;
+    bool ordered = impl->orderedOffsets || (first == 0 && count == impl->lines.size());
+    bool orderedRows = impl->orderedRows || (first == 0 && count == impl->lines.size());
+    auto inserted = value.size();
+    auto shift = [&](TextLine& line) {
+        if (offset) line.base += offset;
+        if (y) {
+            if (!std::isnan(line.top)) {
+                line.top += y;
+                line.bounds.y = float(line.top);
+            } else line.bounds.y += y;
+        }
+    };
+    if (count == inserted) {
+        if (offset || y)
+            for (auto it = impl->lines.begin() + first + count; it != impl->lines.end(); ++it)
+                shift(*it);
+        std::move(value.begin(), value.end(), impl->lines.begin() + first);
+    } else if (first == 0 && count == impl->lines.size()) {
+        impl->lines = std::move(value);
+    } else {
+        auto oldSize = impl->lines.size();
+        auto size = oldSize - count + inserted;
+        if (inserted > count) {
+            if (size > impl->lines.capacity() && size > 65536)
+                impl->lines.reserve(size + std::min(size / 8, impl->lines.max_size() - size));
+            impl->lines.resize(size);
+            for (size_t row = oldSize; row > first + count; --row) {
+                auto& line = impl->lines[row - 1 + inserted - count];
+                line = std::move(impl->lines[row - 1]);
+                shift(line);
+            }
+        } else {
+            for (size_t row = first + count; row < oldSize; ++row) {
+                auto& line = impl->lines[row - count + inserted];
+                line = std::move(impl->lines[row]);
+                shift(line);
+            }
+            impl->lines.resize(size);
+        }
+        std::move(value.begin(), value.end(), impl->lines.begin() + first);
     }
-    auto at = impl->lines.erase(impl->lines.begin() + first, impl->lines.begin() + first + count);
-    impl->lines.insert(at, std::make_move_iterator(value.begin()), std::make_move_iterator(value.end()));
+    if (ordered) {
+        auto begin = impl->lines.begin() + (first ? first - 1 : 0);
+        auto end = impl->lines.begin() + std::min(impl->lines.size(), first + inserted + 1);
+        ordered = std::adjacent_find(begin, end, [this](const auto& left, const auto& right) { return (!impl->measure && (left.offsets.empty() || right.offsets.empty())) || left.end() > right.start(); }) == end;
+    }
+    if (orderedRows) {
+        auto begin = impl->lines.begin() + (first ? first - 1 : 0);
+        auto end = impl->lines.begin() + std::min(impl->lines.size(), first + inserted + 1);
+        orderedRows = std::adjacent_find(begin, end, [](const auto& left, const auto& right) { return left.y() >= right.y() || left.y() + left.bounds.h > right.y(); }) == end;
+    }
+    impl->orderedRows = orderedRows;
+    impl->orderedOffsets = ordered;
     return true;
 }
 
 size_t TextView::Impl::lineAt(size_t offset) const
 {
+    if (orderedOffsets) {
+        auto line = std::upper_bound(lines.begin(), lines.end(), offset, [](size_t value, const auto& line) { return value < line.start(); });
+        return line == lines.begin() ? 0 : static_cast<size_t>(line - lines.begin() - 1);
+    }
     size_t best = 0;
     for (size_t i = 0; i < lines.size(); ++i) {
-        if (lines[i].offsets.empty()) continue;
-        if (lines[i].offsets.front() > offset) break;
+        if (lines[i].offsets.empty() && !measure) continue;
+        if (lines[i].start() > offset) break;
         best = i;
-        if (offset < lines[i].offsets.back()) break;
+        if (offset < lines[i].end()) break;
     }
     return best;
 }
 
 size_t TextView::Impl::hitLine(float x, float y) const
 {
-    size_t best = 0;
-    float vertical = std::numeric_limits<float>::infinity(), horizontal = vertical;
-    for (size_t i = 0; i < lines.size(); ++i) {
+    size_t best = 0, begin = 0, end = lines.size();
+    auto documentY = double(y) + origin;
+    if (orderedRows) {
+        auto at = std::upper_bound(lines.begin(), lines.end(), documentY, [](double value, const auto& line) { return value < line.y(); });
+        begin = at == lines.begin() ? 0 : size_t(at - lines.begin() - 1);
+        end = std::min(lines.size(), begin + 2);
+    }
+    double vertical = std::numeric_limits<double>::infinity();
+    float horizontal = std::numeric_limits<float>::infinity();
+    for (size_t i = begin; i < end; ++i) {
         const auto& r = lines[i].bounds;
-        float dy = std::max({r.y - y, y - r.y - r.h, 0.0f});
-        if (y >= r.y + r.h && dy == 0) dy = 0.0001f;
+        auto top = lines[i].y();
+        double dy = std::max({top - documentY, documentY - top - r.h, 0.0});
+        if (documentY >= top + r.h && dy == 0) dy = 0.0001;
         float dx = std::max({r.x - x, x - r.x - r.w, 0.0f});
         if (dy < vertical || (dy == vertical && dx < horizontal)) {
             best = i;
@@ -145,16 +232,16 @@ size_t TextView::Impl::hitLine(float x, float y) const
 
 size_t TextView::Impl::hit(float x, float y) const
 {
-    return lines.empty() ? 0 : lines[hitLine(x, y)].hit(x);
+    return lines.empty() ? 0 : line(hitLine(x, y)).hit(x);
 }
 
 std::optional<size_t> TextView::Impl::characterAt(float x, float y) const
 {
     if (lines.empty()) return {};
-    const auto& line = lines[hitLine(x, y)];
+    const auto& line = this->line(hitLine(x, y));
     if (line.offsets.size() < 2 || line.x.size() != line.offsets.size() || x < line.x.front() || x >= line.x.back()) return {};
     // Use the glyph under the pointer, even when its nearest caret is after it.
-    return line.offsets[size_t(std::upper_bound(line.x.begin(), line.x.end(), x) - line.x.begin() - 1)];
+    return line.base + line.offsets[size_t(std::upper_bound(line.x.begin(), line.x.end(), x) - line.x.begin() - 1)];
 }
 
 tn::Selection TextView::Impl::wordAt(float x, float y) const
@@ -239,8 +326,8 @@ Rect TextView::caretRect() const
 {
     if (impl->lines.empty()) return {};
     auto offset = impl->selecting.selection().caret;
-    const auto& line = impl->lines[impl->lineAt(offset)];
-    return {line.position(offset), line.bounds.y, 1.5f, line.bounds.h};
+    const auto& line = impl->line(impl->lineAt(offset));
+    return {line.position(offset), float(line.y() - impl->origin), 1.5f, line.bounds.h};
 }
 
 std::vector<Rect> TextView::selectionRects(std::optional<Rect> viewport) const
@@ -253,9 +340,19 @@ std::vector<Rect> TextView::selectionRects(std::optional<Rect> viewport) const
 std::vector<Rect> TextView::rangeRects(size_t start, size_t end, std::optional<Rect> viewport) const
 {
     std::vector<Rect> result;
-    for (const auto& line : impl->lines) {
-        if (viewport && (line.bounds.y + line.bounds.h <= viewport->y || line.bounds.y >= viewport->y + viewport->h)) continue;
+    auto first = impl->lines.begin(), last = impl->lines.end();
+    if (viewport && impl->orderedRows) {
+        auto top = double(viewport->y) + impl->origin;
+        first = std::lower_bound(first, last, top, [](const auto& line, double y) { return line.y() + line.bounds.h <= y; });
+        last = std::lower_bound(first, last, top + viewport->h, [](const auto& line, double y) { return line.y() < y; });
+    }
+    for (auto it = first; it != last; ++it) {
+        if (it->start() > end || it->end() < start) continue;
+        auto y = float(it->y() - impl->origin);
+        if (viewport && (y + it->bounds.h <= viewport->y || y >= viewport->y + viewport->h)) continue;
+        const auto& line = impl->line(size_t(it - impl->lines.begin()));
         auto rect = line.rangeRect(start, end);
+        rect.y = y;
         if (viewport) rect = rect.intersect(*viewport);
         if (rect.w > 0 && rect.h > 0) result.push_back(rect);
     }
@@ -270,8 +367,8 @@ void TextView::pointerDown(float x, float y, bool extend, int clicks)
     if (clicks >= 2 && clicks % 2 == 0) {
         bool wholeLine = false;
         if (!impl->lines.empty()) {
-            const auto& line = impl->lines[impl->hitLine(x, y)];
-            wholeLine = line.x.size() > 1 && x >= line.x.back() && y >= line.bounds.y && y < line.bounds.y + line.bounds.h;
+            const auto& line = impl->line(impl->hitLine(x, y));
+            wholeLine = line.x.size() > 1 && x >= line.x.back() && double(y) + impl->origin >= line.y() && double(y) + impl->origin < line.y() + line.bounds.h;
         }
         impl->dragUnit = wholeLine ? SelectionUnit::Line : SelectionUnit::Word;
         if (impl->selectionCycle) {
@@ -327,7 +424,7 @@ bool TextView::key(Key key, Modifiers mods, float pageHeight)
         if ((key == Key::Home || key == Key::End) && !mods.primary && !impl->lines.empty() && !impl->lines[impl->lineAt(impl->selecting.selection().caret)].offsets.empty()) {
             auto selection = impl->selecting.selection();
             const auto& line = impl->lines[impl->lineAt(selection.caret)];
-            auto offset = key == Key::Home ? line.offsets.front() : line.offsets.back();
+            auto offset = key == Key::Home ? line.start() : line.end();
             impl->selecting.select(mods.shift ? selection.anchor : offset, offset);
         } else {
             auto move = key == Key::Left ? (mods.word ? tn::Move::WordLeft : tn::Move::Left) : key == Key::Right ? (mods.word ? tn::Move::WordRight : tn::Move::Right)
@@ -342,21 +439,21 @@ bool TextView::key(Key key, Modifiers mods, float pageHeight)
         if (impl->lines.empty()) return true;
         auto selection = impl->selecting.selection();
         size_t current = impl->lineAt(selection.caret), target = current;
-        const auto& line = impl->lines[current];
+        const auto& line = impl->line(current);
         if (!impl->preferredX) impl->preferredX = line.position(selection.caret);
         bool up = key == Key::Up || key == Key::PageUp;
         auto height = std::max(1.0f, line.bounds.h);
         float distance = key == Key::PageUp || key == Key::PageDown ? std::max(1.0f, std::floor(pageHeight / height)) * height : height;
-        float y = line.bounds.y + (up ? -distance : distance);
+        double y = line.y() + (up ? -distance : distance);
         if (key == Key::Up) target = current ? current - 1 : 0;
         else if (key == Key::Down) target = std::min(current + 1, impl->lines.size() - 1);
         else if (up)
-            while (target && impl->lines[target].bounds.y > y)
+            while (target && impl->lines[target].y() > y)
                 --target;
         else
-            while (target + 1 < impl->lines.size() && impl->lines[target].bounds.y < y)
+            while (target + 1 < impl->lines.size() && impl->lines[target].y() < y)
                 ++target;
-        auto offset = impl->lines[target].hit(*impl->preferredX);
+        auto offset = impl->line(target).hit(*impl->preferredX);
         impl->selecting.select(mods.shift ? selection.anchor : offset, offset);
         return true;
     }

@@ -15,6 +15,7 @@ constexpr float lineEdge = .01f;
 TextEditor::Impl::Impl(TextEditor& owner, tn::Document& document) :
     owner(owner), editing(document), view(editing), measurer(tvg::Text::gen())
 {
+    view.measure([this](size_t row) { measureLine(row); });
     view.writeClipboard = [this](std::string_view text) {
         if (this->owner.writeClipboard) this->owner.writeClipboard(text);
     };
@@ -27,6 +28,7 @@ TextEditor::~TextEditor() = default;
 
 void TextEditor::font(FontId font, FontId numberFont)
 {
+    if (impl->preferredFont == font && impl->preferredNumberFont == numberFont) return;
     impl->preferredFont = font;
     impl->preferredNumberFont = numberFont;
     impl->restyle();
@@ -47,6 +49,7 @@ void TextEditor::Impl::restyle()
 
 void TextEditor::Impl::resize(float w, float h)
 {
+    viewportReady = true;
     w = std::max(1.0f, w);
     h = std::max(1.0f, h);
     if (width == w && height == h) return;
@@ -114,42 +117,46 @@ Rect TextEditor::Impl::horizontalThumb() const
     return scrollbarThumb(track, textArea().w, widest + configuration.fontSize, horizontal, Axis::Horizontal);
 }
 
-float TextEditor::Impl::maxVerticalScroll() const
+double TextEditor::Impl::maxVerticalScroll() const
 {
     // The last page starts on a line edge too, so it may end less than a line below the text;
     // a viewport shorter than a line still shows the last line.
     auto total = contentHeight(), overflow = total - textArea().h;
     if (overflow <= 0) return 0;
     if (configuration.markdown) return overflow;
-    return std::max(0.0f, std::min(std::ceil(overflow / lineHeight - lineEdge) * lineHeight, total - lineHeight));
+    return std::max(0.0, std::min(std::ceil(overflow / lineHeight - lineEdge) * lineHeight, total - lineHeight));
 }
 
 void TextEditor::Impl::clampScroll()
 {
     horizontal = std::clamp(horizontal, 0.0f, maxHorizontalScroll());
-    vertical = std::clamp(vertical, 0.0f, maxVerticalScroll());
+    vertical = std::clamp(vertical, 0.0, maxVerticalScroll());
 }
 
-float TextEditor::Impl::contentHeight() const
+double TextEditor::Impl::contentHeight() const
 {
     const auto& layout = view.layout();
-    return layout.empty() ? 0 : layout.back().bounds.y + layout.back().bounds.h;
+    return layout.empty() ? 0 : layout.back().y() + layout.back().bounds.h;
 }
 
 Rect TextEditor::Impl::logicalCaret() const
 {
-    return preedit.empty() ? view.caretRect() : preeditCaret;
+    if (preedit.empty()) return view.caretRect();
+    auto rect = preeditCaret;
+    rect.y += float(preeditOrigin - vertical);
+    return rect;
 }
 
 void TextEditor::Impl::ensureCaret()
 {
     relayout();
-    auto area = textArea();
+    view.origin(vertical);
     auto caret = logicalCaret();
+    auto area = textArea();
     if (caret.x < horizontal) horizontal = caret.x;
     if (caret.x + 3 > horizontal + area.w) horizontal = caret.x + 3 - area.w;
-    if (caret.y < vertical) vertical = caret.y;
-    if (caret.y + caret.h > vertical + area.h) vertical = caret.y + caret.h - area.h;
+    if (caret.y < 0) vertical += caret.y;
+    if (caret.y + caret.h > area.h) vertical += caret.y + caret.h - area.h;
     clampScroll();
 }
 
@@ -184,7 +191,8 @@ void TextEditor::Impl::pointerDown(float x, float y, bool extend, int clicks)
         relayout();
     }
     auto area = textArea();
-    view.pointerDown(x - area.x + horizontal, y - area.y + vertical, extend, clicks);
+    view.origin(vertical);
+    view.pointerDown(x - area.x + horizontal, y - area.y, extend, clicks);
     dragging = true;
     edited(false, false);
 }
@@ -204,7 +212,8 @@ void TextEditor::Impl::pointerMove(float x, float y)
     if (y < area.y) vertical -= lineHeight;
     if (y > area.y + area.h) vertical += lineHeight;
     clampScroll();
-    view.pointerMove(x - area.x + horizontal, y - area.y + vertical);
+    view.origin(vertical);
+    view.pointerMove(x - area.x + horizontal, y - area.y);
     edited(false, false);
 }
 
@@ -244,7 +253,7 @@ void TextEditor::Impl::wheel(float y, float x)
     float steps = std::trunc(wheelCarry);
     wheelCarry -= steps;
     if (steps != 0) {
-        float top = vertical / lineHeight, edge = std::round(top);
+        double top = vertical / lineHeight, edge = std::round(top);
         if (std::abs(top - edge) < lineEdge) top = edge;
         vertical = (steps > 0 ? std::floor(top + steps) : std::ceil(top + steps)) * lineHeight;
     }
@@ -253,12 +262,13 @@ void TextEditor::Impl::wheel(float y, float x)
     invalidate();
 }
 
-void TextEditor::scroll(float x, float y)
+void TextEditor::scroll(float x, double y)
 {
     if (!std::isfinite(x) || !std::isfinite(y)) return;
     impl->relayout();
     impl->horizontal = x;
     impl->vertical = y;
+    if (!impl->viewportReady) impl->pendingScroll = std::pair{x, y};
     impl->clampScroll();
     // Selection restoration must not scroll the saved viewport back to the caret on the next render().
     impl->paintedSelection = impl->editing.selection();
@@ -267,7 +277,10 @@ void TextEditor::scroll(float x, float y)
 
 void TextEditor::Impl::textInput(std::string_view text)
 {
-    if (owner.wantsTextInput()) edited(editing.insert(text));
+    if (owner.wantsTextInput()) {
+        if (composedRows) owner.composition("", 0);
+        edited(editing.insert(text));
+    }
 }
 
 void TextEditor::select(size_t anchor, size_t caret)
@@ -284,6 +297,8 @@ void TextEditor::composition(std::string_view text, size_t cursor)
     while (impl->preeditCursor && impl->preeditCursor < impl->preedit.size() && (static_cast<unsigned char>(impl->preedit[impl->preeditCursor]) & 0xc0) == 0x80)
         --impl->preeditCursor;
     impl->invalidate();
+    // Restore document geometry before the committed edit changes source offsets.
+    if (text.empty() && impl->composedRows) impl->relayout();
 }
 
 bool TextEditor::Impl::key(Key key, Modifiers mods)
@@ -307,6 +322,7 @@ bool TextEditor::Impl::key(Key key, Modifiers mods)
             return true;
         }
     }
+    view.origin(vertical);
     if (view.key(key, mods, textArea().h)) {
         if (mods.primary && key == Key::C) return true;
         bool verticalMove = key == Key::Up || key == Key::Down || key == Key::PageUp || key == Key::PageDown;
@@ -334,9 +350,10 @@ Rect TextEditor::caretRect()
 {
     impl->relayout();
     auto area = impl->textArea();
+    impl->view.origin(impl->vertical);
     auto caret = impl->logicalCaret();
     caret.x += area.x - impl->horizontal;
-    caret.y += area.y - impl->vertical;
+    caret.y += area.y;
     return caret;
 }
 
@@ -430,39 +447,55 @@ bool TextEditor::Impl::update(double now)
     auto area = textArea();
     auto selection = editing.selection();
     const auto& geometry = view.layout();
-    auto firstRow = std::lower_bound(geometry.begin(), geometry.end(), vertical, [](const auto& row, float y) { return row.bounds.y + row.bounds.h <= y; });
-    auto endRow = std::lower_bound(firstRow, geometry.end(), vertical + area.h, [](const auto& row, float y) { return row.bounds.y < y; });
+    if (pendingScroll) {
+        horizontal = pendingScroll->first;
+        vertical = pendingScroll->second;
+        clampScroll();
+    }
+    auto firstRow = std::lower_bound(geometry.begin(), geometry.end(), vertical, [](const auto& row, double y) { return row.y() + row.bounds.h <= y; });
+    auto endRow = std::lower_bound(firstRow, geometry.end(), vertical + area.h, [](const auto& row, double y) { return row.y() < y; });
     size_t first = size_t(firstRow - geometry.begin());
     size_t end = size_t(endRow - geometry.begin());
     prepareViewport(first, end);
-    for (auto& [row, line] : linePaints) {
-        bool visible = row >= first && row < end;
-        if (line->visible == visible) continue;
-        line->visible = visible;
-        line->body->visible(visible);
-        line->number->visible(visible);
-        for (auto& run : line->runs)
-            run->text->visible(visible);
+    if (pendingScroll) {
+        horizontal = pendingScroll->first;
+        vertical = pendingScroll->second;
+        pendingScroll.reset();
+        clampScroll();
+        area = textArea();
+        firstRow = std::lower_bound(geometry.begin(), geometry.end(), vertical, [](const auto& row, double y) { return row.y() + row.bounds.h <= y; });
+        endRow = std::lower_bound(firstRow, geometry.end(), vertical + area.h, [](const auto& row, double y) { return row.y() < y; });
+        first = size_t(firstRow - geometry.begin());
+        end = size_t(endRow - geometry.begin());
+        prepareViewport(first, end);
+    }
+    auto measuredArea = textArea();
+    if (area.h != measuredArea.h) {
+        area = measuredArea;
+        endRow = std::lower_bound(firstRow, geometry.end(), vertical + area.h, [](const auto& row, double y) { return row.y() < y; });
+        end = size_t(endRow - geometry.begin());
+        prepareViewport(first, end);
     }
     context.clip({0, area.y, width, area.h}, [&] {
         if (configuration.lineNumbers) {
             auto scene = numberContent.scene();
             context.add(scene);
-            transform(scene, {1, 0, 0, 0, 1, area.y - vertical, 0, 0, 1});
+            transform(scene, {1, 0, 0, 0, 1, area.y + float(renderOrigin - vertical), 0, 0, 1});
         }
     });
     context.clip(area, [&] {
         auto caret = owner.caretRect();
         if (hasFocus) context.rect({area.x, caret.y, area.w, caret.h}, themeTokens.surface);
-        if (configuration.markdown)
-            for (size_t row = first; row < end; ++row)
-                for (const auto& run : rowRuns[row])
-                    if (run.format.code) context.rect({area.x + run.left - horizontal, area.y + geometry[row].bounds.y - vertical, run.width, geometry[row].bounds.h}, markdownColor(&Theme::markdownCodeBackground), 2);
+        if (configuration.markdown) {
+            auto scene = codeContent.scene();
+            context.add(scene);
+            transform(scene, {1, 0, area.x - horizontal, 0, 1, area.y + float(renderOrigin - vertical), 0, 0, 1});
+        }
         if (preedit.empty()) paintDecorations(first, end, false);
         if (!preedit.empty()) {
             for (auto rect : preeditRects) {
                 rect.x += area.x - horizontal;
-                rect.y += area.y - vertical;
+                rect.y += area.y + float(preeditOrigin - vertical);
                 context.rect(rect, themeTokens.raised);
             }
         } else if (!selection.empty())
@@ -473,10 +506,10 @@ bool TextEditor::Impl::update(double now)
         if (preedit.empty()) paintDecorations(first, end, true);
         auto scene = textContent.scene();
         context.add(scene);
-        transform(scene, {1, 0, area.x - horizontal, 0, 1, area.y - vertical, 0, 0, 1});
+        transform(scene, {1, 0, area.x - horizontal, 0, 1, area.y + float(renderOrigin - vertical), 0, 0, 1});
         if (!preedit.empty()) {
             for (auto rect : preeditRects) {
-                float x = area.x + rect.x - horizontal, y = area.y + rect.y + rect.h - 2 - vertical;
+                float x = area.x + rect.x - horizontal, y = area.y + rect.y + rect.h - 2 + float(preeditOrigin - vertical);
                 context.line(x, y, x + rect.w, y, themeTokens.accent);
             }
         }
@@ -486,9 +519,9 @@ bool TextEditor::Impl::update(double now)
             context.rect(paintCaret(), color);
         }
     });
-    float total = contentHeight(), range = maxVerticalScroll();
+    double total = contentHeight(), range = maxVerticalScroll();
     if (range > 0) {
-        float thumb = std::max(18.0f, area.h * area.h / total);
+        float thumb = std::max(18.0, area.h * area.h / total);
         float y = area.y + (area.h - thumb) * vertical / range;
         context.rect({width - 6, y, 3, thumb}, themeTokens.border, 1.5f);
     }

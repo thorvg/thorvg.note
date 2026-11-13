@@ -39,7 +39,7 @@ float TextEditor::scrollX() const
     return impl->horizontal;
 }
 
-float TextEditor::scrollY() const
+double TextEditor::scrollY() const
 {
     return impl->vertical;
 }
@@ -127,6 +127,7 @@ bool TextEditor::navigate(std::string_view motion, size_t count, bool extend)
         modifiers.primary = motion == "end";
     } else return false;
     impl->relayout();
+    impl->view.origin(impl->vertical);
     for (size_t i = 0; i < count; ++i)
         impl->view.key(key, modifiers, impl->textArea().h);
     if (key != Key::Up && key != Key::Down && key != Key::PageUp && key != Key::PageDown) impl->view.resetPreferredX();

@@ -23,7 +23,27 @@ struct Parser
     std::string_view source;
     std::vector<MarkdownSpan> result;
     std::vector<Frame> blocks, spans;
+    std::vector<MarkdownBlock> sections;
+    bool split = false;
     size_t cursor = 0;
+
+    void flush(bool final)
+    {
+        auto first = sections.empty() ? 0 : sections.back().end;
+        auto end = cursor;
+        for (const auto& span : result)
+            end = std::max(end, size_t(span.end));
+        end = final ? source.size() : std::min(lineEnd(end ? end - 1 : end) + 1, source.size());
+        if (end <= first) return;
+        std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.start < b.start; });
+        for (auto& span : result) {
+            span.start -= first;
+            span.end -= first;
+        }
+        result.shrink_to_fit();
+        sections.push_back({first, end, std::move(result)});
+        result.clear();
+    }
 
     size_t lineStart(size_t offset) const
     {
@@ -33,11 +53,11 @@ struct Parser
     size_t lineEnd(size_t offset) const { return std::min(source.find('\n', offset), source.size()); }
     void add(size_t first, size_t end, MarkdownKind kind, unsigned level = 0)
     {
-        if (first < end && end <= source.size()) result.push_back({first, end, kind, level});
+        if (first < end && end <= source.size()) result.push_back({uint32_t(first), uint32_t(end), kind, uint8_t(level)});
     }
     void addMarker(size_t first, size_t end, MarkdownKind element)
     {
-        if (first < end && end <= source.size()) result.push_back({first, end, MarkdownKind::Marker, 0, element});
+        if (first < end && end <= source.size()) result.push_back({uint32_t(first), uint32_t(end), MarkdownKind::Marker, 0, element});
     }
     void text(const char* value, size_t size)
     {
@@ -229,11 +249,12 @@ struct Parser
 };
 }  // namespace
 
-std::vector<MarkdownSpan> parseMarkdown(std::string_view source)
+namespace
 {
-    if (source.empty()) return {};
-    Parser parser{};
-    parser.source = source;
+bool parse(Parser& parser)
+{
+    static_assert(sizeof(MD_SIZE) == sizeof(uint32_t));
+    auto source = parser.source;
     if (source.size() > std::numeric_limits<MD_SIZE>::max()) return {};
     MD_PARSER callbacks{};
     callbacks.flags = MD_FLAG_TABLES | MD_FLAG_STRIKETHROUGH | MD_FLAG_TASKLISTS | MD_FLAG_PERMISSIVEAUTOLINKS;
@@ -252,7 +273,9 @@ std::vector<MarkdownSpan> parseMarkdown(std::string_view source)
         return 0;
     };
     callbacks.leave_block = [](MD_BLOCKTYPE, void*, void* data) {
-        static_cast<Parser*>(data)->block();
+        auto& p = *static_cast<Parser*>(data);
+        p.block();
+        if (p.split && p.blocks.size() == 1) p.flush(false);
         return 0;
     };
     callbacks.enter_span = [](MD_SPANTYPE type, void*, void* data) {
@@ -270,8 +293,28 @@ std::vector<MarkdownSpan> parseMarkdown(std::string_view source)
         static_cast<Parser*>(data)->text(text, size);
         return 0;
     };
-    if (md_parse(source.data(), MD_SIZE(source.size()), &callbacks, &parser) != 0) return {};
+    return md_parse(source.data(), MD_SIZE(source.size()), &callbacks, &parser) == 0;
+}
+}  // namespace
+
+std::vector<MarkdownSpan> parseMarkdown(std::string_view source)
+{
+    if (source.empty()) return {};
+    Parser parser{};
+    parser.source = source;
+    if (!parse(parser)) return {};
     std::stable_sort(parser.result.begin(), parser.result.end(), [](const auto& a, const auto& b) { return a.start < b.start; });
     return std::move(parser.result);
+}
+
+std::vector<MarkdownBlock> parseMarkdownBlocks(std::string_view source)
+{
+    if (source.empty()) return {};
+    Parser parser{};
+    parser.source = source;
+    parser.split = true;
+    if (!parse(parser)) return {};
+    parser.flush(true);
+    return std::move(parser.sections);
 }
 }  // namespace tn

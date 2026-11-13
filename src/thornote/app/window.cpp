@@ -237,6 +237,17 @@ public:
         }
         if (SDL_WaitEventTimeout(&event, delay)) {
             do {
+#ifdef __EMSCRIPTEN__
+                if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+                    if (!dispatch(event, false)) return 1;
+                    dirty = true;
+                    continue;
+                }
+                if (dirty) {
+                    if (!draw()) return 1;
+                    dirty = false;
+                }
+#endif
                 if (!dispatch(event)) return 1;
             } while (SDL_PollEvent(&event));
         }
@@ -248,8 +259,8 @@ public:
     }
 
 private:
-    // Hands one event to the app; false once the frame it changed cannot be drawn.
-    bool dispatch(SDL_Event& event)
+    // Wheel input can share a frame; other input needs current controls between events.
+    bool dispatch(SDL_Event& event, bool redraw = true)
     {
         if ((event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT) || event.type == SDL_EVENT_WINDOW_FOCUS_LOST) SDL_CaptureMouse(false);
         if (event.type >= SDL_EVENT_WINDOW_FIRST && event.type <= SDL_EVENT_WINDOW_LAST) presentWhole = true;
@@ -260,7 +271,7 @@ private:
             app->event(event, inputX, inputY);
         }
         // Rebuild between events so callbacks and input bounds reflect the latest state.
-        return !liveResize.needsDraw(event) || draw();
+        return !redraw || !liveResize.needsDraw(event) || draw();
     }
 
     static SDL_HitTestResult SDLCALL hitTest(SDL_Window* window, const SDL_Point* point, void* data)
@@ -301,7 +312,7 @@ private:
         bool retarget = !frame || frame->w != target->w || frame->h != target->h;
         if (retarget) {
             SDL_DestroySurface(frame);
-            pixels.resize(size_t(target->w) * target->h);
+            pixels.assign(size_t(target->w) * target->h, 0);
             if (canvas->target(pixels.data(), target->w, target->w, target->h, tvg::ColorSpace::ARGB8888) != tvg::Result::Success) return false;
             frame = SDL_CreateSurfaceFrom(target->w, target->h, SDL_PIXELFORMAT_ARGB8888, pixels.data(), target->w * 4);
             if (!frame) return false;
@@ -313,7 +324,7 @@ private:
             attached = true;
         }
         // Unchanged paints are retained, so ThorVG repaints and reports only the regions that changed.
-        if (canvas->update() != tvg::Result::Success || canvas->draw(retarget) != tvg::Result::Success) return false;
+        if (canvas->update() != tvg::Result::Success || canvas->draw(false) != tvg::Result::Success) return false;
         regions.resize(canvas->dirtyRegions());
         if (!regions.empty() && canvas->dirtyRegions(regions.data(), uint32_t(regions.size())) != tvg::Result::Success) return false;
         if (canvas->sync() != tvg::Result::Success) return false;
@@ -385,7 +396,7 @@ private:
     NativeTitleBarInput titleBarInput;
     bool nativeInputReady = false;
     std::vector<uint32_t> pixels;
-    std::unique_ptr<tvg::SwCanvas> canvas{tvg::SwCanvas::gen(tvg::EngineOption::None)};
+    std::unique_ptr<tvg::SwCanvas> canvas{tvg::SwCanvas::gen(tvg::EngineOption::SmartRender)};
     std::shared_ptr<Mailbox> mailbox = std::make_shared<Mailbox>();
     std::unique_ptr<EditorApp> app;
     std::optional<EditorApp::WindowAction> pendingWindowAction;

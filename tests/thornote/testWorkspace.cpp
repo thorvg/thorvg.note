@@ -122,3 +122,18 @@ TEST_CASE_FIXTURE(PersistedWorkspace, "opened_notes_use_the_same_path_as_their_l
     CHECK(workspace.find(id)->path == std::filesystem::canonical(directory.file()));
     CHECK(workspace.open(directory.file(), false) == id);
 }
+
+TEST_CASE("session_round_trip_preserves_fractional_positions_in_large_documents")
+{
+    tn::SessionState state;
+    tn::SessionDocument document;
+    document.id = state.active = 1;
+    document.content.id = std::string(32, 'a');
+    document.content.title = "Large.md";
+    document.scrollY = 64427259.779846191;
+    state.documents.push_back(document);
+    tn::SessionState restored;
+    REQUIRE(tn::decodeSession(tn::encodeSession(state), restored));
+    REQUIRE(restored.documents.size() == 1);
+    CHECK(restored.documents[0].scrollY == document.scrollY);
+}

@@ -110,3 +110,33 @@ TEST_CASE("markdown_operators_retain_their_element_kind")
 }
 
 TEST_SUITE_END();
+
+TEST_CASE("markdown_blocks_preserve_full_document_semantics")
+{
+    for (const auto& text : std::vector<std::string>{"# Title\n\nbody **bold**\nnext [link](target)\n", "Title\n=====\n\n> # Heading\n> **bold**\n\n- one\n  - two\n\nend", "```\n```\n\n```text\n# literal\n```\n", "[ref][key]\n\n[key]: target\n", "---\n\ntext\n\n***\n", "a | b\n--- | ---\nc | d\n", "   \n\n", std::string(70000, 'x') + "\n\n###### Heading\n\n[link](target) and **bold**\n"}) {
+        auto expected = tn::parseMarkdown(text);
+        auto blocks = tn::parseMarkdownBlocks(text);
+        std::vector<tn::MarkdownSpan> actual;
+        size_t end = 0;
+        for (const auto& block : blocks) {
+            CHECK(block.start == end);
+            CHECK(block.end > block.start);
+            for (auto span : block.spans) {
+                REQUIRE(span.end <= block.end - block.start);
+                span.start += block.start;
+                span.end += block.start;
+                actual.push_back(span);
+            }
+            end = block.end;
+        }
+        CHECK(end == std::string_view(text).size());
+        REQUIRE(actual.size() == expected.size());
+        for (size_t i = 0; i < actual.size(); ++i) {
+            CHECK(actual[i].start == expected[i].start);
+            CHECK(actual[i].end == expected[i].end);
+            CHECK(actual[i].kind == expected[i].kind);
+            CHECK(actual[i].element == expected[i].element);
+            CHECK(actual[i].level == expected[i].level);
+        }
+    }
+}

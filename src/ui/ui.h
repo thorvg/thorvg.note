@@ -2232,6 +2232,7 @@ namespace ui
  *
  * @note offsets and x have equal lengths and nondecreasing values. Bounds and x
  * use unscrolled document coordinates; separate cells may occupy the same vertical range.
+ * Stored offsets are relative to base; hit(), position() and rangeRect() use document offsets.
  */
 struct TextLine
 {
@@ -2239,6 +2240,14 @@ struct TextLine
     std::vector<size_t> offsets;
     std::vector<float> x;
     float breakWidth = 0;
+    ptrdiff_t base = 0;  ///< Byte displacement added to the stored offsets.
+
+    size_t length = 0;                                      ///< Source length when detailed character geometry has not been measured.
+    double top = std::numeric_limits<double>::quiet_NaN();  ///< Precise document y; NaN uses bounds.y.
+
+    size_t start() const { return base + (offsets.empty() ? 0 : offsets.front()); }
+    size_t end() const { return base + (offsets.empty() ? length : offsets.back()); }
+    double y() const { return std::isnan(top) ? double(bounds.y) : top; }
 
     /**
      * @brief Finds the closest source byte boundary at a document-space x coordinate.
@@ -2273,6 +2282,7 @@ struct TextLine
  *
  * @note The borrowed session must outlive the view. The host supplies layout,
  * scroll-coordinate conversion, focus, and optional clipboard access.
+ * Queries use origin-relative y coordinates when an origin is set.
  */
 class TextView
 {
@@ -2303,12 +2313,21 @@ public:
      *
      * @return Whether the replacement was accepted; invalid input preserves the previous layout.
      */
-    bool layout(size_t first, size_t count, std::vector<TextLine> value, ptrdiff_t offset, float y);
+    bool layout(size_t first, size_t count, std::vector<TextLine> value, ptrdiff_t offset, double y);
 
     /**
      * @brief Returns current unscrolled document-space lines; mutations invalidate element references.
      */
     const std::vector<TextLine>& layout() const;
+
+    /** @brief Supplies character geometry on demand for lines whose offset/x arrays are empty. */
+    void measure(std::function<void(size_t)> line);
+
+    /** @brief Releases one line's character arrays while retaining its source range and bounds. */
+    void discard(size_t line);
+
+    /** @brief Uses viewport-relative y coordinates for queries while retaining precise document positions. */
+    void origin(double y);
 
     /**
      * @brief Maps unscrolled document-space coordinates to a source byte boundary.
@@ -2518,6 +2537,7 @@ public:
      * @param[in] bounds Editor bounds in the host coordinate space.
      *
      * @pre Synchronize the host Canvas before changing submitted Paints.
+     * @note Character geometry is retained near the viewport; horizontal extent grows as wider rows are measured.
      */
     void render(Context& host, std::string_view id, Rect bounds);
 
@@ -2708,7 +2728,7 @@ public:
     /**
      * @brief Returns the vertical scroll displacement in logical pixels.
      */
-    float scrollY() const;
+    double scrollY() const;
 
     /**
      * @brief Restores requested scroll offsets, clamped to current content.
@@ -2725,7 +2745,7 @@ public:
      *
      * @note Render and restore the selection first, then apply the host-saved offsets.
      */
-    void scroll(float x, float y);
+    void scroll(float x, double y);
 
     /**
      * @brief Optional synchronous clipboard reader returning owned UTF-8 text.

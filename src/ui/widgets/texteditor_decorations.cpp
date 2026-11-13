@@ -47,10 +47,11 @@ std::vector<Rect> TextEditor::rangeRects(size_t start, size_t end)
     if (composing()) return {};
     impl->relayout();
     auto area = impl->textArea();
-    auto result = impl->view.rangeRects(start, end, Rect{impl->horizontal, impl->vertical, area.w, area.h});
+    impl->view.origin(impl->vertical);
+    auto result = impl->view.rangeRects(start, end, Rect{impl->horizontal, 0, area.w, area.h});
     for (auto& rect : result) {
         rect.x += area.x - impl->horizontal;
-        rect.y += area.y - impl->vertical;
+        rect.y += area.y;
     }
     return result;
 }
@@ -60,7 +61,7 @@ Rect TextEditor::Impl::rangeRect(const TextLine& line, size_t start, size_t end)
     auto rect = line.rangeRect(start, end);
     auto area = textArea();
     rect.x += area.x - horizontal;
-    rect.y += area.y - vertical;
+    rect.y = float(line.y() - vertical) + area.y;
     return rect;
 }
 
@@ -72,8 +73,8 @@ void TextEditor::Impl::paintDecorations(size_t first, size_t end, bool borders)
     for (const auto& layer : decorations) {
         if (layer.revision != revision) continue;
         // Prefix maxima also find overlapping ranges that begin above the viewport.
-        auto it = std::lower_bound(layer.ranges.begin(), layer.ranges.end(), lines[first].offsets.front(), [](const auto& range, size_t offset) { return range.maxEnd < offset; });
-        for (; it != layer.ranges.end() && it->range.start <= lines[end - 1].offsets.back(); ++it) {
+        auto it = std::lower_bound(layer.ranges.begin(), layer.ranges.end(), lines[first].start(), [](const auto& range, size_t offset) { return range.maxEnd < offset; });
+        for (; it != layer.ranges.end() && it->range.start <= lines[end - 1].end(); ++it) {
             const auto& range = it->range;
             auto color = (borders ? range.border : range.background).resolve(themeTokens);
             if (!color.a) continue;
