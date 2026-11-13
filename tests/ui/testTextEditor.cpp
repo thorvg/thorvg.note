@@ -1951,3 +1951,27 @@ TEST_CASE_FIXTURE(Editor, "platform_lookup_keeps_cached_substitute_rows")
     textPoses(context.scene(), poses);
     CHECK(std::any_of(poses.begin(), poses.end(), [&](const auto& pose) { return pose.text == retained.get(); }));
 }
+
+TEST_CASE_FIXTURE(Editor, "color_changes_preserve_measured_text_and_apply_to_cached_paints")
+{
+    REQUIRE(document.text("AVAV\n# Heading"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    raster();
+    std::vector<TextPose> before;
+    textPoses(context.scene(), before);
+    auto found = std::find_if(before.begin(), before.end(), [](const auto& pose) { return pose.text->text() && std::string_view(pose.text->text()) == "AVAV"; });
+    REQUIRE(found != before.end());
+    found->text->ref();
+    std::unique_ptr<tvg::Text, void (*)(tvg::Text*)> retained(found->text, [](tvg::Text* text) { text->unref(); });
+    auto width = editor.rangeRects(0, 4).front().w;
+    theme.text = {12, 172, 92};
+    editor.theme(theme);
+    editor.options(options);  // Unchanged options must not discard layout during a theme update.
+    CHECK(pixels(theme.text) > 0);
+    CHECK(editor.rangeRects(0, 4).front().w == doctest::Approx(width));
+    std::vector<TextPose> after;
+    textPoses(context.scene(), after);
+    CHECK(std::any_of(after.begin(), after.end(), [&](const auto& pose) { return pose.text == retained.get(); }));
+}

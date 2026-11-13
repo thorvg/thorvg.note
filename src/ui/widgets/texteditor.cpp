@@ -62,16 +62,24 @@ void TextEditor::Impl::resize(float w, float h)
 
 void TextEditor::theme(Theme value)
 {
+    bool layout = value.font != impl->themeTokens.font || value.boldFont != impl->themeTokens.boldFont;
     impl->themeTokens = std::move(value);
-    impl->restyle();
+    if (layout) impl->restyle();
+    else {
+        ++impl->textStyleRevision;
+        impl->textContentDirty = true;
+        impl->invalidate();
+    }
 }
 
 void TextEditor::options(TextEditorOptions value)
 {
     if (!std::isfinite(value.fontSize) || value.fontSize <= 0 || value.fontSize > TextEditorOptions::maxFontSize) value.fontSize = impl->configuration.fontSize;
     value.padding = std::clamp(value.padding, 0.0f, 64.0f);
+    impl->editing.readOnly(value.readOnly);
+    const auto& current = impl->configuration;
+    if (current.fontSize == value.fontSize && current.padding == value.padding && current.lineNumbers == value.lineNumbers && current.readOnly == value.readOnly && current.markdown == value.markdown) return;
     impl->configuration = value;
-    impl->editing.readOnly(impl->configuration.readOnly);
     impl->restyle();
 }
 

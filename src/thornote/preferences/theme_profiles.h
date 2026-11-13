@@ -12,6 +12,10 @@ struct ThemeProfile
     std::string name;
 };
 
+// Interpolate effective colors; font names and dimensions come from the destination.
+ui::Theme blendTheme(const ui::Theme& from, const ui::Theme& to, float amount);
+bool sameThemeColors(const ui::Theme&, const ui::Theme&);
+
 ThemeProfile defaultTheme(bool dark);
 bool parseTheme(std::string_view source, const std::string& filename, bool dark, ThemeProfile&, std::string& error);
 std::string encodeTheme(const ThemeProfile&);

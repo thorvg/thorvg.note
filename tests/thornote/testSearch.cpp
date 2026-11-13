@@ -70,6 +70,9 @@ public:
         }
     }
 
+    const ui::Theme& appearance() const { return app->theme; }
+    bool transitioning() const { return app->themeTransition.has_value(); }
+    void drawAt(double seconds) { app->render(800, 600, seconds); }
     void prepareFont(DocumentTab& tab, std::string_view added) { app->prepareFont(tab, added); }
     bool editorFocused() const { return app->editorFocus; }
     void focusEditor() { app->focusEditor(true); }
@@ -561,4 +564,56 @@ TEST_CASE_FIXTURE(EditorTest, "first_added_codepoints_survive_initial_font_prepa
     prepareFont(tab, "\xed\x95\x9c");
     CHECK(tab.codepoints == points);
     CHECK(tab.document.text() == "ABC");
+}
+
+TEST_CASE_FIXTURE(EditorTest, "theme_transitions_preserve_the_current_frame_when_reversed")
+{
+    CHECK(!transitioning());
+    drawAt(10);
+    auto initial = appearance();
+    REQUIRE(run("theme.toggle"));
+    CHECK(transitioning());
+    CHECK(tn::sameThemeColors(appearance(), initial));
+    drawAt(20);  // An idle interval must not consume the animation before its first frame.
+    CHECK(tn::sameThemeColors(appearance(), tn::blendTheme(initial, appearance(), 0)));
+    REQUIRE(app->context.nextFrame());
+    CHECK(*app->context.nextFrame() <= 20 + 1.0 / 60 + 0.00001);
+    drawAt(20.5);
+    auto middle = appearance();
+    CHECK(middle.background.r != initial.background.r);
+    CHECK(middle.text.r != initial.text.r);
+    REQUIRE(run("theme.toggle"));
+    CHECK(tn::sameThemeColors(appearance(), middle));
+    drawAt(20.51);
+    CHECK(tn::sameThemeColors(appearance(), middle));
+    drawAt(21.6);
+    CHECK(!transitioning());
+    CHECK(tn::sameThemeColors(appearance(), initial));
+}
+
+TEST_CASE_FIXTURE(EditorTest, "repeating_a_theme_selection_does_not_restart_its_transition")
+{
+    REQUIRE(run("theme.dark"));
+    CHECK(!transitioning());  // Startup appearance is immediate.
+    drawAt(1);
+    REQUIRE(run("theme.light"));
+    drawAt(2);
+    drawAt(2.5);
+    REQUIRE(run("theme.light"));
+    drawAt(3.01);
+    CHECK(!transitioning());
+    CHECK(appearance().background.r == tn::defaultTheme(false).colors.background.r);
+}
+
+TEST_CASE("theme_blending_resolves_inherited_markdown_colors")
+{
+    auto from = tn::defaultTheme(false).colors, to = tn::defaultTheme(true).colors;
+    auto halfway = tn::blendTheme(from, to, 0.5f);
+    CHECK(halfway.background.r > to.background.r);
+    CHECK(halfway.background.r < from.background.r);
+    CHECK(halfway.markdownHeading.a == 255);
+    CHECK(halfway.markdownHeading.r == halfway.accent.r);
+    CHECK(halfway.markdownStrong.r == halfway.text.r);
+    CHECK(halfway.markdownQuote.r == halfway.muted.r);
+    CHECK(tn::sameThemeColors(tn::blendTheme(from, to, 1), to));
 }

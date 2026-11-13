@@ -74,6 +74,31 @@ bool color(std::string_view value, ui::Color& result)
 }
 }  // namespace
 
+bool sameThemeColors(const ui::Theme& first, const ui::Theme& second)
+{
+    return std::all_of(std::begin(colorFields), std::end(colorFields), [&](const auto& field) {
+        auto a = first.*field.member, b = second.*field.member;
+        return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+    });
+}
+
+ui::Theme blendTheme(const ui::Theme& from, const ui::Theme& to, float amount)
+{
+    auto result = to;
+    amount = std::clamp(amount, 0.0f, 1.0f);
+    if (amount == 1) return result;
+    auto channel = [amount](uint8_t first, uint8_t last) {
+        return uint8_t(std::lround(first + (float(last) - first) * amount));
+    };
+    for (const auto& field : colorFields) {
+        bool markdown = std::string_view(field.name).starts_with("markdown");
+        auto first = markdown ? from.markdownColor(field.member) : from.*field.member;
+        auto last = markdown ? to.markdownColor(field.member) : to.*field.member;
+        result.*field.member = {channel(first.r, last.r), channel(first.g, last.g), channel(first.b, last.b), channel(first.a, last.a)};
+    }
+    return result;
+}
+
 ThemeProfile defaultTheme(bool dark)
 {
     ui::Theme colors = dark

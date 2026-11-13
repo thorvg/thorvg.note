@@ -195,6 +195,9 @@ struct Theme
     std::string font = "DejaVuSans";
     std::string boldFont = "DejaVuSans-Bold";
 
+    /** @brief Resolves a Markdown color token, including its inherited fallback. */
+    Color markdownColor(Color Theme::*token) const;
+
     /** @brief Returns the built-in dark theme tokens and dimensions. */
     static Theme dark();
 

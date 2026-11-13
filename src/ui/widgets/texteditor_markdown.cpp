@@ -357,19 +357,6 @@ const std::vector<TextEditor::Impl::Format>& TextEditor::Impl::blockFormats(size
     return formats;
 }
 
-Color TextEditor::Impl::markdownColor(Color Theme::*token) const
-{
-    auto color = themeTokens.*token;
-    if (color.a || token == &Theme::text) return color;
-    if (token == &Theme::markdownNumber) return markdownColor(&Theme::markdownList);
-    if (token == &Theme::markdownNumberMarker) return markdownColor(&Theme::markdownListMarker);
-    if (token == &Theme::markdownQuote) return themeTokens.muted;
-    if (token == &Theme::markdownCodeBackground) return themeTokens.raised;
-    if (token == &Theme::markdownStrong || token == &Theme::markdownEmphasis || token == &Theme::markdownStrike || token == &Theme::markdownList) return themeTokens.text;
-    if (std::find(std::begin(operatorColors), std::end(operatorColors), token) != std::end(operatorColors) && themeTokens.markdownMarker.a) return themeTokens.markdownMarker;
-    return themeTokens.accent;
-}
-
 void TextEditor::Impl::prepareRuns(RenderLine& line)
 {
     const auto& runs = line.styles;
@@ -384,7 +371,7 @@ void TextEditor::Impl::prepareRuns(RenderLine& line)
         }
         if (i && !line.runs[i - 1]) line.runs[i - 1] = std::make_unique<RenderRun>();
         auto text = i ? line.runs[i - 1]->text : line.body;
-        auto color = markdownColor(run.format.color);
+        auto color = themeTokens.markdownColor(run.format.color);
         auto name = run.font ? fonts.textFont(run.font) : themeTokens.font.c_str();
         text->font(name);
         text->size(configuration.fontSize * run.scale * 72.0f / 96.0f);

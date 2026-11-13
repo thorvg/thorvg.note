@@ -153,7 +153,6 @@ struct TextEditor::Impl
     void measureLine(size_t row);
     void updateWidth(float before, float after);
     std::vector<TextLine> rowMetadata(std::string_view text, size_t base);
-    Color markdownColor(Color Theme::*token) const;
     void prepareRuns(RenderLine& line);
     size_t replaceRows(size_t first, size_t count, std::string_view text, size_t base, bool composed = false);
     RenderLine& prepareLine(size_t row);

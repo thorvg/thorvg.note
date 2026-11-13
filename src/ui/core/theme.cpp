@@ -3,6 +3,19 @@
 namespace ui
 {
 
+Color Theme::markdownColor(Color Theme::*token) const
+{
+    auto color = this->*token;
+    if (color.a || token == &Theme::text) return color;
+    if (token == &Theme::markdownNumber) return markdownColor(&Theme::markdownList);
+    if (token == &Theme::markdownNumberMarker) return markdownColor(&Theme::markdownListMarker);
+    if (token == &Theme::markdownQuote) return muted;
+    if (token == &Theme::markdownCodeBackground) return raised;
+    if (token == &Theme::markdownStrong || token == &Theme::markdownEmphasis || token == &Theme::markdownStrike || token == &Theme::markdownList) return text;
+    if (token != &Theme::markdownHeading && token != &Theme::markdownCode && token != &Theme::markdownLink && token != &Theme::markdownImage && markdownMarker.a) return markdownMarker;
+    return accent;
+}
+
 Theme Theme::dark()
 {
     return {{23, 25, 29}, {30, 33, 38}, {39, 43, 49}, {57, 62, 70}, {235, 237, 239}, {151, 158, 168}, {168, 190, 151}, {24, 36, 25}, {53, 67, 54}, {153, 194, 162}, {224, 148, 140}, {76, 64, 32}, {107, 80, 26}};

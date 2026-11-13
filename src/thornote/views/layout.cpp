@@ -291,6 +291,8 @@ void EditorApp::render(float w, float h, double seconds)
 {
     width = w;
     height = h;
+    if (!std::isfinite(seconds) || seconds < 0) seconds = ui::frameTime();
+    advanceAppearance(seconds);
     for (const auto& tab : workspace.documents()) {
         configure(*tab);
     }
@@ -309,7 +311,6 @@ void EditorApp::render(float w, float h, double seconds)
     syncInputExtensions();
     updateFind();
     hint.clear();
-    if (!std::isfinite(seconds) || seconds < 0) seconds = ui::frameTime();
     context.begin(theme, {0, 0, w, h}, seconds);
     context.pointerPosition(pointerX, pointerY);
     context.rect({0, 0, w, h}, theme.background);
@@ -423,6 +424,7 @@ void EditorApp::render(float w, float h, double seconds)
         if (!windowFocused) border.a = 128;
         context.rect({0.5f, 0.5f, w - 1, h - 1}, {0, 0, 0, 0}, 0, border);
     }
+    if (themeTransition) context.requestAnimationFrame();
     context.end();
     // Keyboard focus may have reached or left the editor inside the context; a closing modal layer restores its own focus.
     if (context.focused() == "editor") focusEditor(menu.empty() && !palette && prompt == Prompt::None);

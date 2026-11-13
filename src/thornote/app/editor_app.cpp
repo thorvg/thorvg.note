@@ -7,6 +7,7 @@
 #include <ui/core/text/internal.h>
 #include <algorithm>
 #include <exception>
+#include <cmath>
 #include <limits>
 
 namespace tn
@@ -177,7 +178,13 @@ void EditorApp::applyAppearance()
     previews.clear();
     nextPreview = 0;
     themeProfiles.refresh(dark);
-    theme = themeProfiles.profile(dark).colors;
+    auto target = themeProfiles.profile(dark).colors;
+    if (width <= 0 || height <= 0 || sameThemeColors(theme, target)) {
+        themeTransition.reset();
+        theme = std::move(target);
+    } else if (!themeTransition || !sameThemeColors(themeTransition->to, target)) {
+        themeTransition = ThemeTransition{theme, std::move(target), {}};
+    } else themeTransition->to = std::move(target);
     options.lineNumbers = layout().lineNumbers;
     options.padding = 16;
     settings.preview.theme(theme);
@@ -197,6 +204,20 @@ void EditorApp::applyAppearance()
             editor.scroll(horizontal, editor.scrollY() + (caret.y + caret.h / 2) - (anchor.y + anchor.h / 2));
         }
     }
+}
+
+void EditorApp::advanceAppearance(double seconds)
+{
+    if (!themeTransition) return;
+    auto& transition = *themeTransition;
+    if (!transition.started) transition.started = seconds;
+    auto amount = float(std::clamp((seconds - *transition.started) / 1.0, 0.0, 1.0));
+    auto eased = amount * amount * amount * (amount * (6 * amount - 15) + 10);
+    theme = blendTheme(transition.from, transition.to, eased);
+    settings.preview.theme(theme);
+    for (const auto& tab : workspace.documents())
+        tab->editor.theme(theme);
+    if (amount == 1) themeTransition.reset();
 }
 
 void EditorApp::editorCommand(ui::Key key)

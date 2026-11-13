@@ -92,6 +92,7 @@ private:
     void finishPrompt(bool discard);
     void cancelPrompt();
     void applyAppearance();
+    void advanceAppearance(double seconds);
     void editTheme();
     void configure(DocumentTab&);
     void prepareFont(DocumentTab&, std::string_view added = {});
@@ -161,6 +162,12 @@ private:
 
     ThemeProfiles themeProfiles;
     ui::Theme theme;
+    struct ThemeTransition
+    {
+        ui::Theme from, to;
+        std::optional<double> started;
+    };
+    std::optional<ThemeTransition> themeTransition;
     RecentItems recent;
     storage::Path findDirectory;  // Folder shown by the pending open dialog.
     std::unique_ptr<tvg::Picture> titleBarIcon;

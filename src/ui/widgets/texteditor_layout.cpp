@@ -543,7 +543,7 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
                 auto text = i ? cached->runs[i - 1]->text : cached->body;
                 if (!text->text()) continue;
                 cached->group->add(text);
-                auto color = markdownColor(run.format.color);
+                auto color = themeTokens.markdownColor(run.format.color);
                 auto stroke = [&](float position) {
                     auto path = tvg::Shape::gen();
                     auto top = height * position;
@@ -561,7 +561,7 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
                         cached->background = tvg::Scene::gen();
                         cached->background->ref();
                     }
-                    auto color = markdownColor(&Theme::markdownCodeBackground);
+                    auto color = themeTokens.markdownColor(&Theme::markdownCodeBackground);
                     auto shape = tvg::Shape::gen();
                     shape->appendRect(run.left, 0, run.width, height, 2, 2);
                     shape->fill(color.r, color.g, color.b, color.a);
