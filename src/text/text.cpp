@@ -117,8 +117,20 @@ struct Document::Impl
     void notify();
     void commit(std::vector<Edit>, uint64_t group);
     void splice(size_t offset, size_t removed, std::string_view inserted);
+    struct LineChunk
+    {
+        size_t base, row;
+        std::vector<size_t> offsets;
+    };
+    static constexpr size_t chunkLines = 1024;
+    size_t chunkAt(size_t offset) const;
+    size_t lineStart(size_t row) const;
+    size_t lineAt(size_t offset) const;
+    void indexLines();
+    void spliceLines(size_t offset, size_t removed, std::string_view inserted);
     std::string value;
-    std::vector<size_t> starts{0};
+    std::vector<LineChunk> chunks{{0, 0, {0}}};
+    size_t lineTotal = 1;
     std::vector<EditGroup> history;
     std::vector<Change> changes;
     size_t historyPosition = 0;
@@ -129,12 +141,13 @@ struct Document::Impl
 
     Impl() = default;
     Impl(const Impl& other) :
-        value(other.value), starts(other.starts), history(other.history), changes(other.changes),
+        value(other.value), chunks(other.chunks), lineTotal(other.lineTotal), history(other.history), changes(other.changes),
         historyPosition(other.historyPosition), version(other.version), tracked(other.tracked) {}
     Impl& operator=(const Impl& other)
     {
         value = other.value;
-        starts = other.starts;
+        chunks = other.chunks;
+        lineTotal = other.lineTotal;
         history = other.history;
         changes = other.changes;
         historyPosition = other.historyPosition;
@@ -153,6 +166,7 @@ bool _continuation(unsigned char ch)
 
 bool _normalize(std::string_view source, std::string& output)
 {
+    output.reserve(source.size());
     for (size_t i = 0; i < source.size();) {
         auto ch = static_cast<unsigned char>(source[i]);
         if (ch == '\r') {
@@ -239,7 +253,7 @@ void Document::Impl::notify()
 
 size_t Document::lineCount() const
 {
-    return impl->starts.size();
+    return impl->lineTotal;
 }
 uint64_t Document::Impl::group() const
 {
@@ -254,18 +268,115 @@ bool Document::canRedo() const
     return impl->historyPosition < impl->history.size();
 }
 
+size_t Document::Impl::chunkAt(size_t offset) const
+{
+    return size_t(std::upper_bound(chunks.begin(), chunks.end(), offset, [](size_t value, const auto& chunk) { return value < chunk.base; }) - chunks.begin() - 1);
+}
+
+size_t Document::Impl::lineStart(size_t row) const
+{
+    auto chunk = std::upper_bound(chunks.begin(), chunks.end(), row, [](size_t value, const auto& chunk) { return value < chunk.row; }) - 1;
+    return chunk->base + chunk->offsets[row - chunk->row];
+}
+
+size_t Document::Impl::lineAt(size_t offset) const
+{
+    const auto& chunk = chunks[chunkAt(offset)];
+    return chunk.row + size_t(std::upper_bound(chunk.offsets.begin(), chunk.offsets.end(), offset - chunk.base) - chunk.offsets.begin() - 1);
+}
+
+void Document::Impl::indexLines()
+{
+    lineTotal = size_t(std::count(value.begin(), value.end(), '\n')) + 1;
+    auto count = (lineTotal + chunkLines - 1) / chunkLines;
+    if (chunks.capacity() > count + count / 8) std::vector<LineChunk>{}.swap(chunks);
+    chunks.clear();
+    chunks.reserve(count);
+    auto append = [&](size_t offset, size_t row) {
+        if (row % chunkLines == 0) {
+            chunks.push_back({offset, row, {}});
+            chunks.back().offsets.reserve(std::min(chunkLines, lineTotal - row));
+        }
+        auto& chunk = chunks.back();
+        chunk.offsets.push_back(offset - chunk.base);
+    };
+    append(0, 0);
+    size_t row = 1;
+    for (size_t i = 0; i < value.size(); ++i)
+        if (value[i] == '\n') append(i + 1, row++);
+}
+
+void Document::Impl::spliceLines(size_t offset, size_t removed, std::string_view inserted)
+{
+    auto first = chunkAt(offset), last = chunkAt(offset + removed);
+    auto prefix = size_t(std::upper_bound(chunks[first].offsets.begin(), chunks[first].offsets.end(), offset - chunks[first].base) - chunks[first].offsets.begin());
+    auto suffix = size_t(std::upper_bound(chunks[last].offsets.begin(), chunks[last].offsets.end(), offset + removed - chunks[last].base) - chunks[last].offsets.begin());
+    auto erased = chunks[last].row + suffix - chunks[first].row - prefix;
+    auto added = size_t(std::count(inserted.begin(), inserted.end(), '\n'));
+    if (first == last && erased == added) {
+        auto& chunk = chunks[first];
+        size_t row = prefix;
+        if (added) {
+            for (size_t i = 0; i < inserted.size(); ++i)
+                if (inserted[i] == '\n') chunk.offsets[row++] = offset + i + 1 - chunk.base;
+        }
+        if (inserted.size() == removed) return;
+        // Ordinary typing touches one chunk's offsets and only the bases of following chunks.
+        for (size_t i = suffix; i < chunk.offsets.size(); ++i)
+            chunk.offsets[i] = chunk.offsets[i] - removed + inserted.size();
+        for (size_t i = first + 1; i < chunks.size(); ++i)
+            chunks[i].base = chunks[i].base - removed + inserted.size();
+        return;
+    }
+    auto base = chunks[first].base, row = chunks[first].row;
+    auto end = std::min(last + 2, chunks.size());
+    std::vector<size_t> offsets;
+    offsets.reserve(prefix + added + chunks[last].offsets.size() - suffix + (last + 1 < end ? chunks[last + 1].offsets.size() : 0));
+    offsets.insert(offsets.end(), chunks[first].offsets.begin(), chunks[first].offsets.begin() + prefix);
+    for (size_t i = 0; i < inserted.size(); ++i)
+        if (inserted[i] == '\n') offsets.push_back(offset + i + 1 - base);
+    for (size_t block = last; block < end; ++block) {
+        const auto& chunk = chunks[block];
+        for (size_t i = block == last ? suffix : 0; i < chunk.offsets.size(); ++i)
+            offsets.push_back(chunk.base - base + chunk.offsets[i] - removed + inserted.size());
+    }
+    // Balance the boundary chunks with a neighbor, so repeated newline edits do not leave tiny chunks.
+    auto count = (offsets.size() + chunkLines - 1) / chunkLines;
+    std::vector<LineChunk> replacement;
+    replacement.reserve(count);
+    for (size_t i = 0; i < offsets.size();) {
+        auto length = (offsets.size() - i) / (count - replacement.size());
+        auto& chunk = replacement.emplace_back(LineChunk{base + offsets[i], row + i, {}});
+        chunk.offsets.reserve(length);
+        for (size_t j = 0; j < length; ++j)
+            chunk.offsets.push_back(offsets[i + j] - offsets[i]);
+        i += length;
+    }
+    for (size_t i = end; i < chunks.size(); ++i) {
+        chunks[i].base = chunks[i].base - removed + inserted.size();
+        chunks[i].row = chunks[i].row - erased + added;
+    }
+    if (replacement.size() == end - first) std::move(replacement.begin(), replacement.end(), chunks.begin() + first);
+    else {
+        auto at = chunks.erase(chunks.begin() + first, chunks.begin() + end);
+        chunks.insert(at, std::make_move_iterator(replacement.begin()), std::make_move_iterator(replacement.end()));
+    }
+    lineTotal = lineTotal - erased + added;
+}
+
 void Document::Impl::splice(size_t offset, size_t removed, std::string_view inserted)
 {
-    value.replace(offset, removed, inserted);
-    // Line starts follow each newline: drop the removed ones, shift later ones and add inserted ones.
-    auto first = std::upper_bound(starts.begin(), starts.end(), offset);
-    auto last = std::upper_bound(first, starts.end(), offset + removed);
-    for (auto it = last; it != starts.end(); ++it)
-        *it = *it + inserted.size() - removed;
-    std::vector<size_t> added;
-    for (size_t i = 0; i < inserted.size(); ++i)
-        if (inserted[i] == '\n') added.push_back(offset + i + 1);
-    starts.insert(starts.erase(first, last), added.begin(), added.end());
+    auto size = value.size() - removed + inserted.size();
+    if (size > value.capacity() && size > 65536) {
+        // Grow large documents with bounded spare capacity instead of doubling the buffer.
+        std::string next;
+        next.reserve(size + size / 8);
+        next.append(value, 0, offset);
+        next.append(inserted);
+        next.append(value, offset + removed, std::string::npos);
+        value = std::move(next);
+    } else value.replace(offset, removed, inserted);
+    spliceLines(offset, removed, inserted);
     // Kept until the text is replaced, so a session can follow it from whichever revision it saw last.
     changes.push_back({version, offset, removed, inserted.size()});
 }
@@ -303,30 +414,30 @@ bool Document::Impl::changesSince(uint64_t revision, const Change*& list, size_t
 bool Document::text(std::string_view source)
 {
     std::string next;
+    // Leave room for typing without retaining a second document's worth of spare bytes.
+    if (source.size() > 65536) next.reserve(source.size() + 65536);
     if (!_normalize(source, next)) return false;
     impl->value = std::move(next);
     impl->history.clear();
     impl->historyPosition = 0;
     impl->tracked = ++impl->version;
     impl->changes.clear();
-    impl->starts = {0};
-    for (size_t i = 0; i < impl->value.size(); ++i)
-        if (impl->value[i] == '\n') impl->starts.push_back(i + 1);
+    impl->indexLines();
     impl->notify();
     return true;
 }
 
 size_t Document::lineStart(size_t line) const
 {
-    return impl->starts[std::min(line, impl->starts.size() - 1)];
+    return impl->lineStart(std::min(line, impl->lineTotal - 1));
 }
 size_t Document::lineEnd(size_t line) const
 {
-    return line < impl->starts.size() - 1 ? impl->starts[line + 1] - 1 : impl->value.size();
+    return line < impl->lineTotal - 1 ? impl->lineStart(line + 1) - 1 : impl->value.size();
 }
 size_t Document::lineAt(size_t offset) const
 {
-    return size_t(std::upper_bound(impl->starts.begin(), impl->starts.end(), std::min(offset, impl->value.size())) - impl->starts.begin() - 1);
+    return impl->lineAt(std::min(offset, impl->value.size()));
 }
 
 size_t Document::clamp(size_t offset) const

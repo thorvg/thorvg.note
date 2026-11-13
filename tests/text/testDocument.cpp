@@ -62,6 +62,154 @@ TEST_CASE("invalid_text")
     CHECK(document.text() == "original");
 }
 
+TEST_CASE("large_document_growth_preserves_ranges_and_history")
+{
+    tn::Document document;
+    auto original = std::string(70000, 'a') + "\nlast";
+    REQUIRE(document.text(original));
+    tn::EditSession session(document);
+    session.select(35000, 35003);
+    REQUIRE(session.insert(std::string(9000, 'b') + "\r\n"));
+    auto expected = original;
+    expected.replace(35000, 3, std::string(9000, 'b') + '\n');
+    CHECK(document.text() == expected);
+    CHECK(document.lineCount() == 3);
+    CHECK(document.lineStart(1) == 44001);
+    CHECK(document.lineAt(44001) == 1);
+    CHECK(session.selection().caret == 44001);
+    REQUIRE(session.undo());
+    CHECK(document.text() == original);
+    CHECK(document.lineCount() == 2);
+    REQUIRE(session.redo());
+    CHECK(document.text() == expected);
+
+    REQUIRE(document.text(std::string(70000, '\n')));
+    session.select(0, 0);
+    REQUIRE(session.insert("x\n"));
+    CHECK(document.lineCount() == 70002);
+    CHECK(document.lineStart(1) == 2);
+    CHECK(document.lineStart(70001) == 70002);
+    REQUIRE(session.undo());
+    CHECK(document.lineCount() == 70001);
+    CHECK(document.lineStart(70000) == 70000);
+}
+
+TEST_CASE("large_line_index_preserves_boundaries_across_edits")
+{
+    tn::Document document;
+    tn::EditSession session(document);
+    std::string original;
+    for (size_t i = 0; i < 6145; ++i)
+        original += "line " + std::to_string(i) + '\n';
+    auto verify = [&](const tn::Document& value, const std::string& expected) {
+        REQUIRE(value.text() == expected);
+        std::vector<size_t> starts{0};
+        for (size_t i = 0; i < expected.size(); ++i)
+            if (expected[i] == '\n') starts.push_back(i + 1);
+        REQUIRE(value.lineCount() == starts.size());
+        for (size_t row = 0; row < starts.size(); ++row) {
+            CAPTURE(row);
+            REQUIRE(value.lineStart(row) == starts[row]);
+            REQUIRE(value.lineEnd(row) == (row + 1 < starts.size() ? starts[row + 1] - 1 : expected.size()));
+            REQUIRE(value.lineAt(starts[row]) == row);
+            if (row) REQUIRE(value.lineAt(starts[row] - 1) == row - 1);
+        }
+        CHECK(value.lineStart(size_t(-1)) == starts.back());
+        CHECK(value.lineAt(size_t(-1)) == starts.size() - 1);
+    };
+    REQUIRE(document.text(original));
+    const struct
+    {
+        size_t first, last;
+        std::string text;
+    } edits[] = {
+        {0, 0, "x"},
+        {0, 0, "\n\n"},
+        {1020, 1022, "x\nmiddle\n"},
+        {1023, 1025, "joined"},
+        {2047, 4097, "first\nsecond\n"},
+        {6144, 6145, std::string(4097, '\n')},
+        {0, 6146, ""},
+    };
+    for (const auto& edit : edits) {
+        CAPTURE(edit.first);
+        CAPTURE(edit.last);
+        REQUIRE(document.text(original));
+        std::vector<size_t> starts{0};
+        for (size_t i = 0; i < original.size(); ++i)
+            if (original[i] == '\n') starts.push_back(i + 1);
+        auto first = edit.first < starts.size() ? starts[edit.first] : original.size();
+        auto last = edit.last < starts.size() ? starts[edit.last] : original.size();
+        auto expected = original;
+        expected.replace(first, last - first, edit.text);
+        session.select(first, last);
+        REQUIRE(session.insert(edit.text));
+        verify(document, expected);
+        REQUIRE(session.undo());
+        verify(document, original);
+        REQUIRE(session.redo());
+        verify(document, expected);
+        tn::Document copied(document), assigned;
+        assigned = document;
+        verify(copied, expected);
+        verify(assigned, expected);
+        tn::EditSession copiedSession(copied);
+        REQUIRE(copiedSession.undo());
+        verify(copied, original);
+        verify(document, expected);
+    }
+}
+
+TEST_CASE("large_line_index_matches_randomized_reference")
+{
+    tn::Document document;
+    tn::EditSession session(document);
+    std::string expected;
+    for (size_t i = 0; i < 4097; ++i)
+        expected += "row " + std::to_string(i) + '\n';
+    REQUIRE(document.text(expected));
+    std::mt19937 random(29);
+    const std::vector<std::string> pieces{"x", "", "\n", "first\nsecond", "\n\n", "\xed\x95\x9c", std::string(1025, '\n')};
+    auto boundary = [&](size_t offset) {
+        while (offset && offset < expected.size() && (static_cast<unsigned char>(expected[offset]) & 0xc0) == 0x80)
+            --offset;
+        return offset;
+    };
+    auto verify = [&] {
+        REQUIRE(document.text() == expected);
+        size_t row = 0, start = 0;
+        for (size_t i = 0; i <= expected.size(); ++i) {
+            if (i != expected.size() && expected[i] != '\n') continue;
+            REQUIRE(document.lineStart(row) == start);
+            REQUIRE(document.lineEnd(row) == i);
+            REQUIRE(document.lineAt(start) == row);
+            REQUIRE(document.lineAt(i) == row);
+            start = i + 1;
+            ++row;
+        }
+        REQUIRE(document.lineCount() == row);
+    };
+    for (size_t step = 0; step < 160; ++step) {
+        CAPTURE(step);
+        auto before = expected;
+        auto first = boundary(step % 7 ? size_t(random()) % (expected.size() + 1) : 0);
+        auto last = boundary(std::min(expected.size(), first + random() % 12));
+        const auto& inserted = pieces[random() % pieces.size()];
+        expected.replace(first, last - first, inserted);
+        session.select(first, last);
+        auto changed = session.insert(inserted);
+        CHECK(changed == (expected != before));
+        verify();
+        if (!changed) continue;
+        REQUIRE(session.undo());
+        std::swap(expected, before);
+        verify();
+        REQUIRE(session.redo());
+        std::swap(expected, before);
+        verify();
+    }
+}
+
 // All ranges use the original revision; the resulting selection uses the edited text.
 TEST_CASE("edit_batches")
 {
