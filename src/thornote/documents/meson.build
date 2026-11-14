@@ -3,4 +3,12 @@ thornote_sources += files(
   'recent.cpp',
   'session.cpp',
   'workspace.cpp',
+  'widgets.cpp',
+  'emoji.cpp',
 )
+
+if target_platform == 'emscripten'
+  thornote_link_args += '-sFETCH=1'
+else
+  thornote_deps += dependency('libcurl')
+endif

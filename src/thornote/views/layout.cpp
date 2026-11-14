@@ -258,7 +258,15 @@ void EditorApp::drawStatus(ui::Rect r)
         : tab->stamp.exists()                                   ? savedLabel
                                                                 : "Not saved";
     if (!tab->editor.inputState().status.empty()) state = tab->editor.inputState().status + " · " + state;
-    context.text({r.x + 12, r.y, r.w / 2, r.h}, state, theme.muted, 10);
+    tab->widgets.update(tab->document);
+    if (tab->widgets.total) {
+        state += " · Tasks " + std::to_string(tab->widgets.completed) + '/' + std::to_string(tab->widgets.total);
+        ui::Rect progress{r.x + r.w / 2 - 70, r.y + r.h / 2 - 2, 58, 4};
+        context.rect(progress, theme.border, 2);
+        progress.w *= float(tab->widgets.completed) / tab->widgets.total;
+        if (progress.w > 0) context.rect(progress, theme.accent, 2);
+    }
+    context.text({r.x + 12, r.y, r.w / 2 - (tab->widgets.total ? 86 : 12), r.h}, state, theme.muted, 10);
     context.text({r.x + r.w / 2, r.y, r.w / 2 - 12, r.h}, "Ln " + std::to_string(line + 1) + ", Col " + std::to_string(column) + "     UTF-8     " + eol, theme.muted, 10, false, ui::Align::End);
 }
 

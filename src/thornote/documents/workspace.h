@@ -3,6 +3,7 @@
 #include <ui/ui.h>
 #include <storage/storage.h>
 #include "session.h"
+#include "widgets.h"
 
 namespace tn
 {
@@ -20,6 +21,7 @@ struct DocumentTab
     std::string title;
     tn::Document document;
     ui::TextEditor editor;
+    DocumentWidgets widgets;
     // Distinct non-ASCII codepoints seen in the document, and the state they were collected for.
     std::vector<uint32_t> codepoints;
     uint64_t fontRevision = uint64_t(-1);

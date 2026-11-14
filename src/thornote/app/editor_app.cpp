@@ -20,6 +20,22 @@ EditorApp::EditorApp(std::function<void()> wake, storage::Path settingsDirectory
     bundledFonts = {ui::loadFont(utf8(appData("assets/Pretendard-Regular.ttf")).c_str()), ui::loadFont(utf8(appData("assets/Pretendard-Bold.ttf")).c_str())};
     lineNumberFont = ui::loadFont(utf8(appData("assets/DejaVuSansMono.ttf")).c_str());
     editorFont = bundledFonts[0];
+    context.iconLoader([this](std::string_view name) {
+        auto asset = emojiAssets.load(name, context.time());
+        if (name.starts_with("emoji/") && emojiAssets.pending()) context.requestFrameAt(context.time() + .05);
+        if (!asset && name.starts_with("emoji/")) {
+            static auto pending = [] {
+                auto asset = std::make_shared<ui::IconAsset>();
+                asset->name = "emoji/pending";
+                asset->mime = "svg";
+                asset->tint = false;
+                asset->data = R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g fill="#929292"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></g></svg>)";
+                return asset;
+            }();
+            return std::shared_ptr<const ui::IconAsset>(pending);
+        }
+        return asset;
+    });
     layoutScript.iconAssets(settingsDirectory.empty() ? storage::Path{} : settingsDirectory / "icons",
                             [this](std::vector<ui::IconAsset> assets, std::string& error) { return context.icons(std::move(assets), error); });
     settings.sample.text("The quick brown fox jumps over the lazy dog.\n한글 가나다 · 中文 · 日本語 · 0123456789  () {} []");
@@ -111,6 +127,7 @@ void EditorApp::configure(DocumentTab& tab)
     if (tab.configured) return;
     tab.editor.theme(theme);
     tab.editor.options(options);
+    tab.widgets.attach(tab.editor);
     tab.editor.readClipboard = readClipboardText;
     tab.editor.writeClipboard = writeClipboardText;
     tab.configured = true;
@@ -238,8 +255,7 @@ void EditorApp::editorCommand(ui::Key key)
         else if (key == ui::Key::Y) editor.redo();
         else if (key == ui::Key::A) editor.selectAll();
         else if (key == ui::Key::V && editor.readClipboard) editor.insert(editor.readClipboard(), error);
-        else if (!editor.session().selection().empty() && editor.writeClipboard) {
-            editor.writeClipboard(editor.session().selectedText());
+        else if (editor.copy()) {
             if (key == ui::Key::X) editor.insert("", error);
         }
     } catch (const std::exception& failure) {

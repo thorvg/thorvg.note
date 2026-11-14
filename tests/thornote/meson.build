@@ -10,6 +10,7 @@ app_tests = executable(
   'app-tests',
   '../common/main.cpp',
   'testSearch.cpp',
+  'testDocumentWidgets.cpp',
   'testMarkdownTheme.cpp',
   'testNoteBrowser.cpp',
   'testWorkspace.cpp',

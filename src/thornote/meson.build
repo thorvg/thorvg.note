@@ -114,6 +114,7 @@ thornote_fonts = files(
   'data/assets/Pretendard.LICENSE',
   'data/assets/DejaVuSansMono.ttf',
   'data/assets/DejaVuSans.LICENSE',
+  'data/assets/AnimatedEmoji.LICENSE',
 )
 thornote_layouts = files('data/layouts/workspace.lua', 'data/layouts/titlebar.lua')
 install_data(thornote_fonts, install_dir: thornote_data / 'assets', install_tag: 'runtime')

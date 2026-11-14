@@ -1,6 +1,7 @@
 #pragma once
 
 #include <thornote/documents/workspace.h>
+#include <thornote/documents/emoji.h>
 #include <thornote/documents/autosave.h>
 #include <thornote/preferences/layout.h>
 #include <thornote/scripting/layout_script.h>
@@ -27,6 +28,7 @@ class EditorApp
 {
     friend class test::EditorTest;
     SystemFonts systemFonts;
+    EmojiAssets emojiAssets;
 
 public:
     using WindowAction = tn::WindowAction;
