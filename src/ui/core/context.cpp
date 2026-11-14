@@ -560,6 +560,11 @@ bool Context::icons(std::vector<IconAsset> assets, std::string& error)
     return impl->icons.replace(std::move(assets), error);
 }
 
+void Context::iconLoader(std::function<std::shared_ptr<const IconAsset>(std::string_view)> callback)
+{
+    impl->icons.loader(std::move(callback));
+}
+
 void Context::focusRing(Rect bounds)
 {
     rect(bounds.inset(-3), {0, 0, 0, 0}, impl->theme->radius + 3, impl->theme->accent, 1.5f);

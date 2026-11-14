@@ -10,6 +10,7 @@ ui_tests = executable(
   'testLayout.cpp',
   'testLua.cpp',
   'testTextEditor.cpp',
+  'testTextWidgets.cpp',
   'testTextView.cpp',
   'testWidgets.cpp',
   dependencies: [test_dep, ui_dep],

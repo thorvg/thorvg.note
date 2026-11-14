@@ -371,7 +371,7 @@ void TextEditor::Impl::prepareRuns(RenderLine& line)
         }
         if (i && !line.runs[i - 1]) line.runs[i - 1] = std::make_unique<RenderRun>();
         auto text = i ? line.runs[i - 1]->text : line.body;
-        auto color = themeTokens.markdownColor(run.format.color);
+        auto color = run.foreground.value_or(themeTokens.markdownColor(run.format.color));
         auto name = run.font ? fonts.textFont(run.font) : themeTokens.font.c_str();
         text->font(name);
         text->size(configuration.fontSize * run.scale * 72.0f / 96.0f);

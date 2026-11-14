@@ -16,8 +16,8 @@ TextEditor::Impl::Impl(TextEditor& owner, tn::Document& document) :
     owner(owner), editing(document), view(editing), measurer(tvg::Text::gen())
 {
     view.measure([this](size_t row) { measureLine(row); });
-    view.writeClipboard = [this](std::string_view text) {
-        if (this->owner.writeClipboard) this->owner.writeClipboard(text);
+    view.writeClipboard = [this](std::string_view) {
+        this->owner.copy();
     };
 }
 
@@ -205,6 +205,7 @@ void TextEditor::Impl::pointerDown(float x, float y, bool extend, int clicks)
     auto area = textArea();
     view.origin(vertical);
     view.pointerDown(x - area.x + horizontal, y - area.y, extend, clicks);
+    snapWidgets(true, true);
     dragging = true;
     edited(false, false);
 }
@@ -226,6 +227,7 @@ void TextEditor::Impl::pointerMove(float x, float y)
     clampScroll();
     view.origin(vertical);
     view.pointerMove(x - area.x + horizontal, y - area.y);
+    snapWidgets(true, true);
     edited(false, false);
 }
 
@@ -291,6 +293,7 @@ void TextEditor::Impl::textInput(std::string_view text)
 {
     if (owner.wantsTextInput()) {
         if (composedRows) owner.composition("", 0);
+        snapWidgets(true, true);
         edited(editing.insert(text));
     }
 }
@@ -317,6 +320,15 @@ bool TextEditor::Impl::key(Key key, Modifiers mods)
 {
     if (!hasFocus) return false;
     if (!preedit.empty() && key != Key::Escape) return false;
+    if (widgetPopup && widgetPopup->suggestion && widgetPopup->event.revision == editing.document().revision() && !mods.primary && !mods.word) {
+        if (key == Key::Escape) {
+            owner.closeWidget();
+            return true;
+        }
+        auto callback = widgetRules[widgetPopup->rule].rule.popupKey;
+        auto event = widgetPopup->event;
+        if (callback && callback(key, owner, event)) return true;
+    }
     relayout();
     if (mods.primary) {
         if (key == Key::X) {
@@ -337,6 +349,7 @@ bool TextEditor::Impl::key(Key key, Modifiers mods)
     view.origin(vertical);
     if (view.key(key, mods, textArea().h)) {
         if (mods.primary && key == Key::C) return true;
+        snapWidgets(key != Key::Left && key != Key::Up && key != Key::Home && key != Key::PageUp);
         bool verticalMove = key == Key::Up || key == Key::Down || key == Key::PageUp || key == Key::PageDown;
         if (!verticalMove) view.resetPreferredX();
         preedit.clear();
@@ -350,9 +363,35 @@ bool TextEditor::Impl::key(Key key, Modifiers mods)
         return true;
     }
     if (configuration.readOnly) return false;
-    if (key == Key::Backspace) edited(editing.backspace(mods.word));
-    else if (key == Key::Delete) edited(editing.deleteForward(mods.word));
-    else if (key == Key::Enter) textInput("\n");
+    if (key == Key::Backspace || key == Key::Delete) {
+        const auto& document = editing.document();
+        auto target = [&](tn::Selection range) {
+            if (range.empty()) {
+                if (key == Key::Backspace) range.anchor = mods.word ? document.wordPrevious(range.caret) : document.previous(range.caret);
+                else range.caret = mods.word ? document.wordNext(range.caret) : document.next(range.caret);
+            }
+            return range;
+        };
+        const auto& selections = editing.selections();
+        bool atomic = !widgetRules.empty() && std::any_of(selections.begin(), selections.end(), [&](auto range) {
+            range = target(range);
+            return widgetBoundary(range.start(), false) != range.start() || widgetBoundary(range.end(), true) != range.end();
+        });
+        if (atomic) {
+            tn::EditBatch batch;
+            batch.revision = document.revision();
+            for (auto range : selections) {
+                range = target(range);
+                auto start = widgetBoundary(range.start(), false), end = widgetBoundary(range.end(), true);
+                if (start == end) continue;
+                if (!batch.edits.empty() && start <= batch.edits.back().end) batch.edits.back().end = std::max(end, batch.edits.back().end);
+                else batch.edits.push_back({start, end, {}});
+            }
+            edited(editing.apply(batch));
+        } else {
+            edited(key == Key::Backspace ? editing.backspace(mods.word) : editing.deleteForward(mods.word));
+        }
+    } else if (key == Key::Enter) textInput("\n");
     else if (key == Key::Tab) textInput("\t");
     else return false;
     return true;
@@ -381,6 +420,7 @@ void TextEditor::Impl::handle(Context& host, std::string_view id, Rect bounds, c
     switch (event.type) {
         case EventType::Press:
             // The scrollbar is a separate control that does not take focus by itself.
+            if (widgetPopup && widgetPopup->suggestion) owner.closeWidget();
             host.focus(id);
             focus(true);
             pointerDown(x, y, event.modifiers.shift, event.clicks);
@@ -422,6 +462,7 @@ void TextEditor::render(Context& host, std::string_view id, Rect bounds)
     // Queue the scene before rebuilding it, so damage covers its previous content.
     host.add(scene);
     impl->update(host.time());
+    impl->paintWidgets(host, id, bounds);
     if (!impl->nextBlink) return;
     auto caret = caretRect();
     caret.x += bounds.x;

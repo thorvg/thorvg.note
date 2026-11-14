@@ -65,21 +65,28 @@ float TextEditor::Impl::measure(std::string_view text, FontId font, float scale)
     return width;
 }
 
-std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& styles)
+std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& styles, std::vector<Widget>* widgets, bool composed)
 {
     auto* fonts = documentFont ? &detail::fontManager() : nullptr;
     std::vector<TextLine> lines;
+    auto selection = editing.selection();
+    auto sourceOffset = [&](size_t offset) {
+        if (!composed || offset <= selection.start()) return offset;
+        if (offset < selection.start() + preedit.size()) return selection.start();
+        return size_t(ptrdiff_t(offset) - ptrdiff_t(preedit.size()) + ptrdiff_t(selection.end() - selection.start()));
+    };
+    size_t widget = 0;
     constexpr float headingScale[] = {1, 2, 1.65f, 1.4f, 1.2f, 1.1f, 1.05f};
     for (size_t begin = 0;;) {
         auto stop = std::min(text.find('\n', begin), text.size());
-        auto block = markdownBlock(base + begin);
+        auto block = markdownBlock(sourceOffset(base + begin));
         const auto& formats = blockFormats(block);
         auto blockBase = markdownBlocks.empty() ? 0 : markdownBlocks[block].start;
-        auto cursor = std::upper_bound(formats.begin(), formats.end(), base + begin - blockBase, [](size_t offset, const auto& format) { return offset < format.start; });
+        auto cursor = std::upper_bound(formats.begin(), formats.end(), sourceOffset(base + begin) - blockBase, [](size_t offset, const auto& format) { return offset < format.start; });
         if (cursor != formats.begin()) --cursor;
         auto formatAt = [&](size_t offset) {
             if (!configuration.markdown) return Format{};
-            auto relative = offset - blockBase;
+            auto relative = sourceOffset(offset) - blockBase;
             while (cursor != formats.end() && cursor->end <= relative)
                 ++cursor;
             if (cursor == formats.end() || cursor->start > relative) return Format{};
@@ -102,6 +109,8 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         // Accumulate precisely because these positions also anchor visible text slices.
         double x = 0;
         size_t column = 0;
+        auto firstWidget = widget;
+        bool widgetBreak = false;
         line.base = base + begin;
         line.length = stop - begin;
         line.offsets.reserve(stop - begin + 1);
@@ -135,6 +144,33 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
             }
         };
         for (size_t offset = begin; offset < stop;) {
+            auto item = widgets && widget < widgets->size() ? &(*widgets)[widget] : nullptr;
+            if (item && offset == item->range.start && item->range.display == TextWidget::Replace) {
+                auto width = item->range.width * size;
+                item->bounds = {float(x), 0, width, 0};
+                // Hidden source does not need glyph lookup, font fallback, or outline metrics.
+                while (offset < item->range.end) {
+                    auto next = offset + 1;
+                    while (next < item->range.end && (static_cast<unsigned char>(text[next]) & 0xc0) == 0x80)
+                        ++next;
+                    if (text[offset] == '\t') {
+                        auto spaces = 4 - column % 4;
+                        shown.append(spaces, ' ');
+                        column += spaces;
+                    } else {
+                        shown.append(text.substr(offset, next - offset));
+                        ++column;
+                    }
+                    offset = next;
+                }
+                x += width;
+                line.offsets.push_back(offset - begin);
+                line.x.push_back(x);
+                widgetBreak = true;
+                ++widget;
+                continue;
+            }
+            if (item && offset == item->range.start) widgetBreak = true;
             auto next = offset + 1;
             while (next < stop && (static_cast<unsigned char>(text[next]) & 0xc0) == 0x80)
                 ++next;
@@ -148,7 +184,7 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 if (face != documentFont && !fonts->glyph(resolved, glyph)) resolved = fonts->fallback(documentFont, glyph);
                 face = resolved;
             }
-            if (runs.empty() || format.start != current.start || format.end != current.end || face != font) {
+            if (runs.empty() || format.start != current.start || format.end != current.end || face != font || widgetBreak) {
                 current = format;
                 font = face;
                 measurer->font(fonts ? fonts->textFont(font) : themeTokens.font.c_str());
@@ -156,9 +192,11 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 tvg::TextMetrics metrics{};
                 measurer->metrics(metrics);
                 rowHeight = std::max(rowHeight, metrics.advance);
-                runs.push_back({.first = shown.size(), .left = float(x), .top = metrics.ascent - metrics.descent, .scale = sizeScale, .font = font, .format = format});
+                bool styled = item && offset >= item->range.start && offset < item->range.end;
+                runs.push_back({.first = shown.size(), .left = float(x), .top = metrics.ascent - metrics.descent, .scale = sizeScale, .font = font, .format = format, .foreground = styled ? item->range.foreground : std::nullopt, .background = styled ? item->range.background : std::nullopt});
                 leading = true;
                 previous = 0;
+                widgetBreak = false;
             }
             if (fonts && !fonts->glyph(font, cp == '\t' ? uint32_t(' ') : cp)) runs.back().missing = true;
             if (cp == '\t') {
@@ -173,10 +211,34 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
             line.offsets.push_back(next - begin);
             line.x.push_back(x);
             offset = next;
+            if (item && offset == item->range.end) {
+                auto width = item->range.width * size;
+                item->bounds = {float(x), 0, width, 0};
+                if (item->range.display != TextWidget::Below) {
+                    x += width;
+                    line.x.back() = x;
+                }
+                widgetBreak = true;
+                ++widget;
+            }
         }
         for (auto& run : runs)
             run.top = (rowHeight - run.top) / 2;
-        line.bounds = {0, 0, float(x), rowHeight};
+        float below = 0;
+        if (widgets)
+            for (size_t i = firstWidget; i < widget; ++i) {
+                auto& item = (*widgets)[i];
+                if (item.range.display == TextWidget::Below) {
+                    float h = item.range.height * configuration.fontSize;
+                    item.bounds = {0, rowHeight + below + configuration.fontSize * .5f, std::min(textArea().w, item.range.width * configuration.fontSize), h};
+                    below += h + configuration.fontSize;
+                    continue;
+                }
+                item.bounds.h = std::min(rowHeight, size * 1.25f);
+                item.bounds.y = (rowHeight - item.bounds.h) / 2;
+            }
+        line.textHeight = rowHeight;
+        line.bounds = {0, 0, float(x), rowHeight + below};
         lines.push_back(std::move(line));
         display.push_back(std::move(shown));
         styles.push_back(std::move(runs));
@@ -197,6 +259,7 @@ std::vector<TextLine> TextEditor::Impl::rowMetadata(std::string_view text, size_
     size_t span = 0, headingEnd = 0, boldEnd = 0;
     unsigned heading = 0;
     constexpr float scale[] = {1, 2, 1.65f, 1.4f, 1.2f, 1.1f, 1.05f};
+    std::vector<Widget> widgets;
     for (size_t begin = 0;;) {
         auto end = std::min(text.find('\n', begin), text.size());
         auto offset = base + begin;
@@ -234,6 +297,10 @@ std::vector<TextLine> TextEditor::Impl::rowMetadata(std::string_view text, size_
         line.base = offset;
         line.length = end - begin;
         line.bounds.h = std::max(lineHeight, boldEnd > offset ? boldAdvance : 0.0f) * multiplier;
+        line.textHeight = line.bounds.h;
+        matchWidgets(widgets, text.substr(begin, end - begin), offset, true);
+        for (const auto& item : widgets)
+            line.bounds.h += (item.range.height + 1) * configuration.fontSize;
         result.push_back(std::move(line));
         if (end == text.size()) break;
         begin = end + 1;
@@ -265,7 +332,8 @@ void TextEditor::Impl::measureLine(size_t row)
     auto source = std::string_view(editing.document().text()).substr(sourceBase, old.length);
     std::vector<std::string> display;
     std::vector<std::vector<Run>> styles;
-    auto lines = layoutRows(source, sourceBase, display, styles);
+    matchWidgets(cached->widgets, source, sourceBase);
+    auto lines = layoutRows(source, sourceBase, display, styles, &cached->widgets);
     lines[0].base = old.base;
     lines[0].top = old.y();
     lines[0].bounds.y = old.bounds.y;
@@ -283,7 +351,32 @@ size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_vie
 {
     std::vector<std::string> display;
     std::vector<std::vector<Run>> runs;
-    auto lines = composed ? layoutRows(text, base, display, runs) : rowMetadata(text, base);
+    std::vector<Widget> widgets;
+    if (composed && !widgetRules.empty()) {
+        const auto& document = editing.document();
+        auto selection = editing.selection();
+        auto firstRow = document.lineAt(selection.start()), lastRow = document.lineAt(selection.end());
+        std::vector<Widget> matches;
+        auto collect = [&](size_t row) {
+            auto start = document.lineStart(row);
+            matchWidgets(matches, std::string_view(document.text()).substr(start, document.lineEnd(row) - start), start);
+            for (auto item : matches) {
+                auto begin = start + item.range.start, end = start + item.range.end;
+                if (end <= selection.start()) {
+                    item.range.start = begin - base;
+                    item.range.end = end - base;
+                } else if (begin >= selection.end()) {
+                    auto shift = ptrdiff_t(preedit.size()) - ptrdiff_t(selection.end() - selection.start());
+                    item.range.start = size_t(ptrdiff_t(begin - base) + shift);
+                    item.range.end = size_t(ptrdiff_t(end - base) + shift);
+                } else continue;
+                widgets.push_back(std::move(item));
+            }
+        };
+        collect(firstRow);
+        if (lastRow != firstRow) collect(lastRow);
+    }
+    auto lines = composed ? layoutRows(text, base, display, runs, &widgets, true) : rowMetadata(text, base);
     auto oldSize = view.lineCount();
     if (!lineWidths.empty()) {
         for (size_t row = first; row < first + count; ++row)
@@ -307,6 +400,7 @@ size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_vie
     linePaints.erase(eraseFirst, eraseEnd);
     view.layout(first, count, std::move(lines), shift, y - bottom);
     if (composed) {
+        auto widget = widgets.begin();
         for (size_t i = 0; i < rows; ++i) {
             auto& cached = linePaints[first + i];
             cached = std::make_unique<RenderLine>();
@@ -314,6 +408,12 @@ size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_vie
             cacheTabs(*cached, text.substr(row.start() - base, row.length));
             cached->display = std::move(display[i]);
             cached->styles = std::move(runs[i]);
+            while (widget != widgets.end() && base + widget->range.start < row.end()) {
+                auto item = std::move(*widget++);
+                item.range.start -= row.start() - base;
+                item.range.end -= row.start() - base;
+                cached->widgets.push_back(std::move(item));
+            }
             cached->measured = true;
         }
     }
@@ -435,12 +535,12 @@ void TextEditor::Impl::relayout()
         preeditRects.clear();
         for (size_t row = first; row < first + composedRows; ++row) {
             const auto& line = view.line(row);
-            if (cursor >= line.start() && cursor <= line.end()) preeditCaret = {line.position(cursor), float(line.y() - vertical), 1.5f, line.bounds.h};
+            if (cursor >= line.start() && cursor <= line.end()) preeditCaret = {line.position(cursor), float(line.y() - vertical), 1.5f, line.textHeight};
             if (finish > line.start() && begin <= line.end()) {
                 float left = line.position(std::max(begin, line.start()));
                 float right = line.position(std::min(finish, line.end()));
                 if (finish > line.end()) right += line.breakWidth;
-                preeditRects.push_back({left, float(line.y() - vertical), right - left, line.bounds.h});
+                preeditRects.push_back({left, float(line.y() - vertical), right - left, line.textHeight});
             }
         }
     }
@@ -520,7 +620,7 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
     if (!cached->assigned) cached->number->text(std::to_string(row + 1).c_str());
     const auto& geometry = view.line(row);
     // Keep boundary kerning and glyph overhang outside the visible clip.
-    auto padding = geometry.bounds.h * 2;
+    auto padding = geometry.textHeight * 2;
     auto begin = std::lower_bound(geometry.x.begin(), geometry.x.end(), horizontal - padding);
     if (begin != geometry.x.begin()) --begin;
     auto end = std::upper_bound(begin, geometry.x.end(), horizontal + textArea().w + padding);
@@ -552,7 +652,7 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
         cached->numberWidth = measure(std::to_string(row + 1), lineNumberFont, numberScale);
         cached->style = textStyleRevision;
     }
-    if (configuration.markdown || cached->styles.size() > 1 || (!cached->styles.empty() && cached->styles.front().font != documentFont)) {
+    if (configuration.markdown || !cached->widgets.empty() || cached->styles.size() > 1 || (!cached->styles.empty() && cached->styles.front().font != documentFont)) {
         if (restyled || !cached->assigned || clipped) {
             prepareRuns(*cached);
             if (!cached->group) {
@@ -561,14 +661,14 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
             }
             clearScene(cached->group);
             if (cached->background) clearScene(cached->background);
-            auto height = view.line(row).bounds.h;
+            auto height = view.line(row).textHeight;
             for (size_t i = 0; i < cached->styles.size(); ++i) {
                 const auto& run = cached->styles[i];
                 if (run.end <= cached->clipFirst || run.first >= cached->clipEnd) continue;
                 auto text = i ? cached->runs[i - 1]->text : cached->body;
                 if (!text->text()) continue;
                 cached->group->add(text);
-                auto color = themeTokens.markdownColor(run.format.color);
+                auto color = run.foreground.value_or(themeTokens.markdownColor(run.format.color));
                 auto stroke = [&](float position) {
                     auto path = tvg::Shape::gen();
                     auto top = height * position;
@@ -581,12 +681,12 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
                 };
                 if (run.format.strike) stroke(0.55f);
                 if (run.format.link) stroke(0.85f);
-                if (run.format.code) {
+                if (run.format.code || run.background) {
                     if (!cached->background) {
                         cached->background = tvg::Scene::gen();
                         cached->background->ref();
                     }
-                    auto color = themeTokens.markdownColor(&Theme::markdownCodeBackground);
+                    auto color = run.background.value_or(themeTokens.markdownColor(&Theme::markdownCodeBackground));
                     auto shape = tvg::Shape::gen();
                     shape->appendRect(run.left, 0, run.width, height, 2, 2);
                     shape->fill(color.r, color.g, color.b, color.a);

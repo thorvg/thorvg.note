@@ -31,7 +31,7 @@ bool same(Color a, Color b)
 bool same(const IconAsset& a, const IconAsset& b)
 {
     return a.name == b.name && a.data == b.data && a.mime == b.mime && a.tint == b.tint
-        && a.duration == b.duration && a.markers == b.markers;
+        && a.duration == b.duration && a.loop == b.loop && a.markers == b.markers;
 }
 
 std::string mime(const IconAsset& asset)
@@ -183,6 +183,12 @@ struct Drawing
 
     void tick(double now)
     {
+        if (animation && asset->loop) {
+            auto frame = std::fmod(frames[0] + (now - started) / animation->duration() * animation->totalFrame(), animation->totalFrame());
+            // Fractional out-points can leave gaps between otherwise consecutive authored frames.
+            animation->frame(float(std::floor(frame)));
+            return;
+        }
         if (!moving) return;
         auto progress = std::clamp((now - started) / duration, 0.0, 1.0);
         if (progress == 1) {
@@ -206,7 +212,7 @@ struct Drawing
 
     void state(const IconState& state, double now)
     {
-        if (!animation) return;
+        if (!animation || asset->loop) return;
         auto index = pose(state);
         auto next = frames[index];
         if (next == target) return;
@@ -300,6 +306,21 @@ std::unique_ptr<Drawing> load(const IconAsset& asset, std::string& error)
         auto total = animation->totalFrame();
         if (!std::isfinite(total) || total <= 0 || !std::isfinite(animation->duration()) || animation->duration() <= 0)
             return fail("invalid animation duration");
+        if (asset.loop) {
+            // Full-timeline playback does not use interaction poses. Exported metadata
+            // may contain duplicate or out-of-range markers unrelated to the animation.
+            const auto& idle = asset.markers[0];
+            for (uint32_t i = 0; i < animation->markersCnt(); ++i) {
+                float begin = 0, end = 0;
+                auto name = animation->marker(i, &begin, &end);
+                if (!name || !std::isfinite(begin) || begin < 0 || begin >= total) continue;
+                std::string_view marker = name;
+                if (marker.size() != idle.size() || !std::equal(marker.begin(), marker.end(), idle.begin(), [](unsigned char a, unsigned char b) { return std::tolower(a) == std::tolower(b); })) continue;
+                drawing->frames.fill(begin);
+                break;
+            }
+            return drawing;
+        }
         for (uint32_t i = 0; i < animation->markersCnt(); ++i) {
             float begin = 0, end = 0;
             auto name = animation->marker(i, &begin, &end);
@@ -351,6 +372,7 @@ struct Icons::Impl
     std::unordered_map<std::string, std::shared_ptr<const IconAsset>> users, builtins;
     std::unordered_map<std::string, std::unique_ptr<Drawing>> instances;
     double now = 0;
+    std::function<std::shared_ptr<const IconAsset>(std::string_view)> loader;
 
     const detail::BuiltinIcon* builtin(std::string_view name) const
     {
@@ -366,7 +388,7 @@ struct Icons::Impl
         auto cached = builtins.find(name);
         if (cached != builtins.end()) return cached->second;
         auto source = builtin(name);
-        if (!source) return nullptr;
+        if (!source) return loader ? loader(name) : nullptr;
         auto asset = std::make_shared<IconAsset>();
         asset->name = source->name;
         asset->data = source->data;
@@ -408,6 +430,11 @@ bool Icons::contains(std::string_view name) const
     return impl->users.find(std::string(name)) != impl->users.end() || impl->builtin(name);
 }
 
+void Icons::loader(std::function<std::shared_ptr<const IconAsset>(std::string_view)> callback)
+{
+    impl->loader = std::move(callback);
+}
+
 void Icons::begin(double seconds)
 {
     if (std::isfinite(seconds)) impl->now = std::max(impl->now, seconds);
@@ -428,6 +455,7 @@ tvg::Picture* Icons::picture(std::string_view instance, std::string_view name, c
         if (!next) return nullptr;
         next->asset = std::move(asset);
         next->target = next->frames[pose(state)];
+        next->started = impl->now;
         if (next->animation) next->animation->frame(next->target);
         entry = std::move(next);
     }
@@ -450,7 +478,7 @@ void Icons::end()
 bool Icons::animating() const
 {
     return std::any_of(impl->instances.begin(), impl->instances.end(), [](const auto& item) {
-        return item.second && item.second->moving;
+        return item.second && (item.second->moving || (item.second->animation && item.second->asset->loop));
     });
 }
 

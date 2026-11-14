@@ -268,7 +268,7 @@ bool TextView::layout(size_t first, size_t count, std::vector<TextLine> value, p
     if (first > impl->count || count > impl->count - first || !std::isfinite(y)) return false;
     for (const auto& line : value) {
         const auto& r = line.bounds;
-        if ((!std::isnan(line.top) && !std::isfinite(line.top)) || line.offsets.size() != line.x.size() || !std::is_sorted(line.offsets.begin(), line.offsets.end()) || !std::is_sorted(line.x.begin(), line.x.end()) || !std::all_of(line.x.begin(), line.x.end(), [](float x) { return std::isfinite(x); }) || !std::isfinite(r.x) || !std::isfinite(r.y) || !std::isfinite(r.w) || !std::isfinite(r.h) || r.w < 0 || r.h < 0 || !std::isfinite(line.breakWidth) || line.breakWidth < 0) return false;
+        if ((!std::isnan(line.top) && !std::isfinite(line.top)) || line.offsets.size() != line.x.size() || !std::is_sorted(line.offsets.begin(), line.offsets.end()) || !std::is_sorted(line.x.begin(), line.x.end()) || !std::all_of(line.x.begin(), line.x.end(), [](float x) { return std::isfinite(x); }) || !std::isfinite(r.x) || !std::isfinite(r.y) || !std::isfinite(r.w) || !std::isfinite(r.h) || r.w < 0 || r.h < 0 || !std::isfinite(line.breakWidth) || line.breakWidth < 0 || !std::isfinite(line.textHeight) || line.textHeight < 0 || line.textHeight > r.h) return false;
     }
     auto inserted = value.size();
     auto full = first == 0 && count == impl->count;
@@ -530,7 +530,7 @@ Rect TextView::caretRect() const
     if (!impl->count) return {};
     auto offset = impl->selecting.selection().caret;
     const auto& line = impl->line(impl->lineAt(offset));
-    return {line.position(offset), float(line.y() - impl->origin), 1.5f, line.bounds.h};
+    return {line.position(offset), float(line.y() - impl->origin), 1.5f, line.textHeight > 0 ? line.textHeight : line.bounds.h};
 }
 
 std::vector<Rect> TextView::selectionRects(std::optional<Rect> viewport) const

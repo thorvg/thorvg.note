@@ -128,8 +128,10 @@ bool TextEditor::navigate(std::string_view motion, size_t count, bool extend)
     } else return false;
     impl->relayout();
     impl->view.origin(impl->vertical);
-    for (size_t i = 0; i < count; ++i)
+    for (size_t i = 0; i < count; ++i) {
         impl->view.key(key, modifiers, impl->textArea().h);
+        impl->snapWidgets(key != Key::Left && key != Key::Up && key != Key::Home && key != Key::PageUp);
+    }
     if (key != Key::Up && key != Key::Down && key != Key::PageUp && key != Key::PageDown) impl->view.resetPreferredX();
     impl->ensureCaret();
     impl->invalidate();

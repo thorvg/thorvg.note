@@ -269,6 +269,7 @@ struct IconAsset
     std::string name, data, mime;
     bool tint = true;
     float duration = .16f;
+    bool loop = false;  ///< Play the full timeline while visible; an optional idle marker sets the initial frame.
     std::array<std::string, 6> markers{"idle", "hover", "pressed", "active", "disabled", "focused"};
 };
 
@@ -344,6 +345,9 @@ public:
      * @brief Tests whether a built-in or user asset name is available.
      */
     bool contains(std::string_view name) const;
+
+    /** @brief Resolves missing assets lazily; return null while data is unavailable. */
+    void loader(std::function<std::shared_ptr<const IconAsset>(std::string_view)> callback);
 
     /**
      * @brief Starts an icon frame on the host monotonic clock.
@@ -1333,6 +1337,9 @@ public:
      */
     bool icons(std::vector<IconAsset> assets, std::string& error);
 
+    /** @brief Supplies missing icon assets without replacing user or built-in icons. */
+    void iconLoader(std::function<std::shared_ptr<const IconAsset>(std::string_view)> callback);
+
     /**
      * @brief Draws the theme focus indicator around logical bounds.
      *
@@ -2243,7 +2250,8 @@ struct TextLine
     std::vector<size_t> offsets;
     std::vector<float> x;
     float breakWidth = 0;
-    ptrdiff_t base = 0;  ///< Byte displacement added to the stored offsets.
+    float textHeight = 0;  ///< Glyph and caret height; zero uses bounds.h.
+    ptrdiff_t base = 0;    ///< Byte displacement added to the stored offsets.
 
     size_t length = 0;                                      ///< Source length when detailed character geometry has not been measured.
     double top = std::numeric_limits<double>::quiet_NaN();  ///< Precise document y; NaN uses bounds.y.
@@ -2490,6 +2498,63 @@ struct TextDecoration
     StyleColor border{};
 };
 
+class TextEditor;
+
+/** @brief A single-line source range represented by an inline or below-source control. */
+struct TextWidget
+{
+    enum Display
+    {
+        Replace,
+        After,
+        Below
+    };
+    size_t start = 0, end = 0;
+    Display display = Replace;
+    float width = 1.25f;                                    ///< Reserved width in document em units; Below fits the text viewport.
+    std::optional<Color> foreground = {}, background = {};  ///< Optional styling of the literal source.
+    float height = 12;                                      ///< Below-source height in document em units.
+};
+
+/** @brief An owned, revision-checked source snapshot for widget actions. */
+struct TextWidgetEvent
+{
+    size_t start = 0, end = 0;
+    uint64_t revision = 0;
+    Rect bounds;
+    std::string value;
+};
+
+/**
+ * @brief Matches source text and supplies inline and popup UI.
+ *
+ * Match receives one measured source line and its document byte offset. Emit nonempty,
+ * UTF-8-aligned ranges within that line. Earlier registered rules win overlaps.
+ * Drawing runs only for visible widgets; use stable instance IDs for retained animations.
+ * Below ranges preserve the source line and reserve height beneath it. Their rule must
+ * set block so row metadata includes the extra height before the line becomes visible.
+ * Render callbacks must not edit the document; event handlers use replaceWidget().
+ * Each measured row accepts at most 128 nonoverlapping widgets, with source ranges up to
+ * 4096 bytes and reserved widths in (0, 32] em. Invalid matches are ignored.
+ */
+struct TextWidgetRule
+{
+    std::function<void(std::string_view, size_t, std::vector<TextWidget>&)> match;
+    std::function<void(Context&, std::string_view, Rect, State, std::string_view)> draw;
+    std::function<void(TextEditor&, const TextWidgetEvent&)> activate;
+    std::function<void(Context&, std::string_view, Rect, TextEditor&, const TextWidgetEvent&)> popup;
+    /// Return the trigger's byte index in the source prefix, or npos. The prefix ends at
+    /// the caret and contains at most 4096 bytes from its physical line. Suggestions
+    /// keep editor focus, update while typing, and dismiss on Escape or an outside click.
+    std::function<size_t(std::string_view)> suggest;
+    std::function<bool(Key, TextEditor&, const TextWidgetEvent&)> popupKey;
+    std::function<std::string(std::string_view)> clipboard;  ///< External text for a fully selected widget.
+    float popupWidth = 256, popupHeight = 180;
+    float popupPadding = 12;
+    bool code = false;   ///< Whether matches are allowed in Markdown code spans.
+    bool block = false;  ///< Match during row layout to reserve below-source space.
+};
+
 /**
  * @brief Editable Document view with retained text, selection, caret, and scroll presentation.
  *
@@ -2733,6 +2798,27 @@ public:
 
     /** @brief Removes only the named owner's decoration layer. */
     void clearDecorations(std::string_view owner);
+
+    /**
+     * @brief Registers or replaces one named widget rule without changing source text.
+     * @return False for an empty owner, missing match/draw callbacks or invalid popup size.
+     * @note Matches are cached with measured rows, not scanned across the whole document.
+     * Replacements expose caret stops only at their edges. The composition range stays
+     * literal while surrounding widgets remain visible.
+     */
+    bool widgets(std::string_view owner, TextWidgetRule rule);
+
+    /** @brief Removes one widget rule and restores its literal text presentation. */
+    void clearWidgets(std::string_view owner);
+
+    /** @brief Replaces a widget's checked source range through the normal undoable edit path. */
+    bool replaceWidget(const TextWidgetEvent& event, std::string_view value, std::string& error);
+
+    /** @brief Dismisses the active widget popup. */
+    void closeWidget();
+
+    /** @brief Copies selected text, applying widget clipboard representations. */
+    bool copy();
 
     /** @brief Returns visible range rectangles in editor-local coordinates for host overlays and anchors. */
     std::vector<Rect> rangeRects(size_t start, size_t end);

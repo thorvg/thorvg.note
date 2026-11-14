@@ -21,6 +21,13 @@ struct TextEditor::Impl
         FontId font = 0;
         Format format;
         bool missing = false;
+        std::optional<Color> foreground = {}, background = {};
+    };
+    struct Widget
+    {
+        TextWidget range;
+        size_t rule;
+        Rect bounds;
     };
     struct RenderRun
     {
@@ -40,6 +47,7 @@ struct TextEditor::Impl
         size_t clipFirst = 0, clipEnd = 0;
         float clipX = 0;
         std::vector<Run> styles;
+        std::vector<Widget> widgets;
         bool assigned = false, measured = false;
         std::vector<std::unique_ptr<RenderRun>> runs;
         float bodyLeft = 0, numberWidth = 0;
@@ -88,6 +96,34 @@ struct TextEditor::Impl
         std::vector<Decoration> ranges;
     };
     std::vector<DecorationLayer> decorations;
+    struct WidgetRule
+    {
+        std::string owner;
+        TextWidgetRule rule;
+    };
+    struct WidgetPopup
+    {
+        size_t rule;
+        TextWidgetEvent event;
+        bool opened = false;
+        bool suggestion = false;
+    };
+    std::vector<WidgetRule> widgetRules;
+    struct WidgetIdentity
+    {
+        size_t rule, start, end;
+        uint64_t id;
+        bool seen = false;
+    };
+    std::vector<WidgetIdentity> widgetIdentities;
+    uint64_t widgetRevision = uint64_t(-1), nextWidgetId = 0;
+    size_t widgetSourceSize = 0;
+    std::optional<WidgetPopup> widgetPopup;
+    uint64_t widgetGeneration = 0;
+    uint64_t suggestionRevision = uint64_t(-1);
+    size_t suggestionCaret = size_t(-1), suggestionAnchor = size_t(-1);
+    Context* widgetHost = nullptr;
+    std::string widgetEditorId;
     FontId documentFont = 0, lineNumberFont = 0, preferredFont = 0, preferredNumberFont = 0;
     float documentTop = 0, numberTop = 0, numberScale = 1;
     uint64_t textStyleRevision = 1;
@@ -146,7 +182,7 @@ struct TextEditor::Impl
     float measure(std::string_view text, FontId font = 0, float scale = 1) const;
     void cacheTabs(RenderLine& line, std::string_view source);
     float prepareText(tvg::Text* text, const RenderLine& line, const Run* run = nullptr);
-    std::vector<TextLine> layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& runs);
+    std::vector<TextLine> layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& runs, std::vector<Widget>* widgets = nullptr, bool composed = false);
     void parseMarkdown(size_t& start, size_t& end, bool incremental);
     size_t markdownBlock(size_t offset) const;
     const std::vector<Format>& blockFormats(size_t block);
@@ -158,6 +194,10 @@ struct TextEditor::Impl
     RenderLine& prepareLine(size_t row);
     void prepareViewport(size_t first, size_t end);
     void paintDecorations(size_t first, size_t end, bool borders);
+    void matchWidgets(std::vector<Widget>& result, std::string_view text, size_t base, bool blocks = false);
+    size_t widgetBoundary(size_t offset, bool forward);
+    void snapWidgets(bool forward, bool expand = false);
+    void paintWidgets(Context& host, std::string_view id, Rect bounds);
     Rect rangeRect(const TextLine& line, size_t start, size_t end) const;
 };
 

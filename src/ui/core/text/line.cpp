@@ -23,12 +23,13 @@ float TextLine::position(size_t offset) const
 Rect TextLine::rangeRect(size_t start, size_t end) const
 {
     if (offsets.empty() || start > end || start > this->end() || end < this->start()) return {};
-    if (start == end) return {position(start), float(y()), 1.5f, bounds.h};
+    auto height = textHeight > 0 ? textHeight : bounds.h;
+    if (start == end) return {position(start), float(y()), 1.5f, height};
     if (end == this->start()) return {};
     float left = position(std::max(start, this->start()));
     float right = position(std::min(end, this->end()));
     if (end > this->end()) right += breakWidth;
-    return {left, float(y()), right - left, bounds.h};
+    return {left, float(y()), right - left, height};
 }
 
 }  // namespace ui
