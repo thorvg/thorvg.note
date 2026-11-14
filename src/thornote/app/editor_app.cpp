@@ -128,6 +128,17 @@ void EditorApp::configure(DocumentTab& tab)
     tab.editor.theme(theme);
     tab.editor.options(options);
     tab.widgets.attach(tab.editor);
+    tab.widgets.image = [this, id = tab.id](ui::Context& context, std::string_view key, ui::Rect bounds, std::string_view source) {
+        auto tab = workspace.find(id);
+        auto images = markdownImages(source);
+        if (tab && !images.empty()) imagePreviews.render(context, key, bounds, imagePath(images.front().source, tab->path));
+    };
+    tab.widgets.chooseImage = [this, id = tab.id](const ui::TextWidgetEvent& event) {
+        if (dialog || !chooseImage) return;
+        dialog = true;
+        focusEditor(false);
+        chooseImage(id, event);
+    };
     tab.editor.readClipboard = readClipboardText;
     tab.editor.writeClipboard = writeClipboardText;
     tab.configured = true;
@@ -446,6 +457,23 @@ void EditorApp::save(uint64_t id, bool saveAs)
             chooseFile(true, id, {});
         }
     } else if (workspace.save(id) && prompt != Prompt::None) waitingSave = true;
+}
+
+void EditorApp::imageResult(uint64_t id, const ui::TextWidgetEvent& event, const std::vector<std::string>& paths, const std::string& error)
+{
+    dialog = false;
+    if (!error.empty()) workspace.error = error;
+    else if (auto tab = workspace.find(id); tab && !paths.empty()) {
+        std::string message;
+        auto replacement = imageMarkdown(utf8Path(paths.front()), tab->path);
+        auto images = markdownImages(event.value);
+        if (!images.empty()) {
+            const auto& image = images.front();
+            replacement = event.value.substr(0, image.sourceStart) + replacement.substr(4, replacement.size() - 5) + event.value.substr(image.sourceEnd);
+        }
+        if (!tab->editor.replaceWidget(event, replacement, message)) workspace.error = std::move(message);
+    }
+    focusEditor(prompt == Prompt::None && !palette);
 }
 
 void EditorApp::dialogResult(bool saving, uint64_t id, const std::vector<std::string>& paths, const std::string& error)

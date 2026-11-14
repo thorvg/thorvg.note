@@ -2,6 +2,7 @@
 
 #include <thornote/documents/workspace.h>
 #include <thornote/documents/emoji.h>
+#include <thornote/documents/images.h>
 #include <thornote/documents/autosave.h>
 #include <thornote/preferences/layout.h>
 #include <thornote/scripting/layout_script.h>
@@ -29,6 +30,7 @@ class EditorApp
     friend class test::EditorTest;
     SystemFonts systemFonts;
     EmojiAssets emojiAssets;
+    ImagePreviews imagePreviews;
 
 public:
     using WindowAction = tn::WindowAction;
@@ -46,9 +48,10 @@ public:
     bool nativeKeyDown(const SDL_KeyboardEvent&);
     bool poll();
     int nextPollDelay(uint64_t now) const;
-    bool filesPending() const { return workspace.busy() || noteBrowser.loading(); }
+    bool filesPending() const { return workspace.busy() || noteBrowser.loading() || imagePreviews.pending(); }
     void requestQuit();
     void dialogResult(bool save, uint64_t target, const std::vector<std::string>& paths, const std::string& error);
+    void imageResult(uint64_t target, const ui::TextWidgetEvent&, const std::vector<std::string>& paths, const std::string& error);
     std::optional<ui::Rect> textInputArea();
     // The document whose editor owns the keyboard and accepts committed text.
     DocumentTab* textInputTarget() const;
@@ -69,6 +72,7 @@ public:
     Workspace workspace;
     ui::Context context;
     std::function<void(bool save, uint64_t target, const storage::Path& directory)> chooseFile;
+    std::function<void(uint64_t, const ui::TextWidgetEvent&)> chooseImage;
     std::function<void(uint64_t)> exportFile;
     std::function<void(WindowAction)> changeWindow;
     std::function<bool(float x, float y, std::string_view selection, const ui::CommandRegistry&)> showTextMenu;

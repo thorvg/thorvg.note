@@ -29,7 +29,7 @@ if target_platform == 'emscripten'
       'optimization=' + get_option('optimization'),
       'b_ndebug=' + get_option('b_ndebug'),
       'engines=cpu',
-      'loaders=svg,lottie,ttf,png,jpg',
+      'loaders=svg,lottie,ttf,png,jpg,webp,gif',
       'threads=false',
       'extra=',
       'static=true',

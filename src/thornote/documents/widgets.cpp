@@ -1,5 +1,6 @@
 #include "widgets.h"
 #include "emoji.h"
+#include "images.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -86,6 +87,19 @@ void replace(ui::TextEditor& editor, const ui::TextWidgetEvent& event, std::stri
 
 void DocumentWidgets::attach(ui::TextEditor& editor)
 {
+    ui::TextWidgetRule images;
+    images.block = true;
+    images.match = [](std::string_view text, size_t base, std::vector<ui::TextWidget>& ranges) {
+        for (const auto& image : markdownImages(text))
+            ranges.push_back({base + image.start, base + image.end, ui::TextWidget::Below, 32});
+    };
+    images.draw = [this](ui::Context& context, std::string_view id, ui::Rect bounds, ui::State, std::string_view source) {
+        if (image) image(context, id, bounds, source);
+    };
+    images.activate = [this](ui::TextEditor&, const ui::TextWidgetEvent& event) {
+        if (chooseImage) chooseImage(event);
+    };
+    editor.widgets("image", std::move(images));
     ui::TextWidgetRule colors;
     colors.code = true;
     colors.popupWidth = 288;

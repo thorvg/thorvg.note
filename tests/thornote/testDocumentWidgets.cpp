@@ -1,5 +1,6 @@
 #include <thornote/documents/widgets.h>
 #include <thornote/documents/emoji.h>
+#include <thornote/documents/images.h>
 #include <common/doctest/doctest.h>
 #include <common/engine.h>
 #include <thornote/app/app_identity.h>
@@ -148,6 +149,28 @@ TEST_CASE("incremental_task_progress_matches_full_scans_across_chunk_and_fence_e
             verify();
         }
     }
+}
+
+TEST_CASE("markdown_images_parse_inline_destinations_and_preserve_local_paths")
+{
+    using namespace tn;
+    auto images = markdownImages("before ![alt](https://example.test/a(b).png \"title\") ![](<images/a b.png>) ![]() after");
+    REQUIRE(images.size() == 3);
+    CHECK(images[0].start == 7);
+    CHECK(images[0].source == "https://example.test/a(b).png");
+    CHECK(images[1].source == "images/a b.png");
+    CHECK(images[2].source.empty());
+    CHECK(markdownImages("\\![](skip.png) ![broken](missing").empty());
+    CHECK(markdownImages("![nested [alt]](a\\(b\\).png)").front().source == "a(b).png");
+    auto document = utf8Path("/notes/folder/document.md");
+    CHECK(imagePath("../images/a%20b.png", document) == "/notes/images/a b.png");
+    CHECK(imagePath("file:///tmp/a%23b.png", {}) == "/tmp/a#b.png");
+    CHECK(imagePath("https://example.test/a%20b.png", document) == "https://example.test/a%20b.png");
+    CHECK(imagePath("other://image", document).empty());
+    auto path = utf8Path("/notes/images/a #b(1).png");
+    auto source = imageMarkdown(path, document);
+    REQUIRE(markdownImages(source).size() == 1);
+    CHECK(imagePath(markdownImages(source).front().source, document) == utf8(path));
 }
 
 TEST_CASE("document_emojis_keep_playing_during_text_edits_and_composition")

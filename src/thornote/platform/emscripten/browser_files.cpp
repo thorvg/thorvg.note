@@ -60,7 +60,7 @@ void browserRecoverySubmit(void* pending, const std::string& obsolete)
     thornoteRecoverySubmit(pending, obsolete.c_str());
 }
 
-void browserOpenFiles(std::function<void(const char* const*, const char*)> complete)
+void browserOpenFiles(std::function<void(const char* const*, const char*)> complete, bool images)
 {
     auto callback = new std::function<void(const char* const*, const char*)>(std::move(complete));
     EM_ASM({
@@ -77,8 +77,8 @@ void browserOpenFiles(std::function<void(const char* const*, const char*)> compl
                 if (message) _free(message);
             }
         };
-        if (Module['onOpenFiles']) Module['onOpenFiles'](finish);
-        else finish([], 'Browser file import is unavailable'); }, callback);
+        if (Module['onOpenFiles']) Module['onOpenFiles'](finish, !!$1);
+        else finish([], 'Browser file import is unavailable'); }, callback, images);
 }
 
 void browserSync(std::function<void(std::string)> complete)

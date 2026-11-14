@@ -760,7 +760,7 @@ public:
     void render(Context& context, std::string_view instance, std::string_view name, Rect bounds, ImageFit fit, float opacity = 1);
 
     /**
-     * @brief Releases instances not requested since begin().
+     * @brief Releases unseen instances, keeping one decoded animation per asset for reuse.
      */
     void end();
 

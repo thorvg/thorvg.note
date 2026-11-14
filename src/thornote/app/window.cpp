@@ -37,6 +37,7 @@ struct DialogResult
     uint64_t target;
     std::vector<std::string> paths;
     std::string error;
+    std::optional<ui::TextWidgetEvent> image;
 };
 struct Mailbox
 {
@@ -60,11 +61,13 @@ struct DialogRequest
     bool save;
     uint64_t target;
     std::string initial;
+    std::optional<ui::TextWidgetEvent> image;
 };
 void SDLCALL dialogCallback(void* data, const char* const* paths, int)
 {
     std::unique_ptr<DialogRequest> request(static_cast<DialogRequest*>(data));
-    DialogResult result{request->save, request->target, {}, {}};
+    DialogResult result{request->save, request->target, {}, {}, {}};
+    result.image = std::move(request->image);
     if (!paths) result.error = std::string("File dialog failed: ") + SDL_GetError();
     else
         for (auto current = paths; *current; ++current)
@@ -165,7 +168,7 @@ public:
         if (!options.layoutDirectory.empty()) app->setLayoutDirectory(utf8Path(options.layoutDirectory));
         if (options.layoutSpecified) app->setLayout(options.layout);
         app->chooseFile = [this](bool save, uint64_t target, const storage::Path& directory) {
-            auto request = new DialogRequest{mailbox, save, target, {}};
+            auto request = new DialogRequest{mailbox, save, target, {}, {}};
             if (save) {
                 auto folder = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
                 request->initial = utf8(app->suggestedSavePath(target, folder ? utf8Path(folder) : storage::Path{}));
@@ -184,6 +187,19 @@ public:
 #else
             if (save) SDL_ShowSaveFileDialog(dialogCallback, request, window, nullptr, 0, request->initial.c_str());
             else SDL_ShowOpenFileDialog(dialogCallback, request, window, nullptr, 0, request->initial.empty() ? nullptr : request->initial.c_str(), true);
+#endif
+        };
+        app->chooseImage = [this](uint64_t target, const ui::TextWidgetEvent& event) {
+            auto request = new DialogRequest{mailbox, false, target, {}, event};
+#ifdef __EMSCRIPTEN__
+            browserOpenFiles([request](const char* const* paths, const char* error) {
+                if (error) SDL_SetError("%s", error);
+                dialogCallback(request, error ? nullptr : paths, 0);
+            },
+                             true);
+#else
+            static const SDL_DialogFileFilter filters[]{{"Images and animations", "png;jpg;jpeg;svg;webp;gif;json;lot"}};
+            SDL_ShowOpenFileDialog(dialogCallback, request, window, filters, 1, nullptr, false);
 #endif
         };
         for (const auto& path : options.paths)
@@ -220,7 +236,8 @@ public:
             results.swap(mailbox->results);
         }
         for (const auto& result : results) {
-            app->dialogResult(result.save, result.target, result.paths, result.error);
+            if (result.image) app->imageResult(result.target, *result.image, result.paths, result.error);
+            else app->dialogResult(result.save, result.target, result.paths, result.error);
             dirty = true;
         }
         // Reloads and file completions can replace controls; rebuild before queued input.

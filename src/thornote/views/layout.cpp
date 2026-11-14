@@ -320,6 +320,7 @@ void EditorApp::render(float w, float h, double seconds)
     updateFind();
     hint.clear();
     context.begin(theme, {0, 0, w, h}, seconds);
+    imagePreviews.begin();
     context.pointerPosition(pointerX, pointerY);
     context.rect({0, 0, w, h}, theme.background);
     auto& state = layout();
@@ -434,6 +435,7 @@ void EditorApp::render(float w, float h, double seconds)
     }
     if (themeTransition) context.requestAnimationFrame();
     context.end();
+    imagePreviews.end();
     // Keyboard focus may have reached or left the editor inside the context; a closing modal layer restores its own focus.
     if (context.focused() == "editor") focusEditor(menu.empty() && !palette && prompt == Prompt::None);
     else if (!context.focused().empty()) focusEditor(false);

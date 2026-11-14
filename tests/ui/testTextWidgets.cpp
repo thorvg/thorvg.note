@@ -624,6 +624,48 @@ TEST_CASE_FIXTURE(Widgets, "below_widgets_activate_from_the_preview_without_sele
     CHECK(document.text() == ":ok:\nnext");
 }
 
+TEST_CASE_FIXTURE(Widgets, "gif_image_instances_animate_and_stop_when_removed")
+{
+    const unsigned char bytes[]{
+        'G', 'I', 'F', '8', '9', 'a', 1, 0, 1, 0, 0x80, 0, 0, 255, 0, 0, 0, 0, 255,
+        0x21, 0xff, 11, 'N', 'E', 'T', 'S', 'C', 'A', 'P', 'E', '2', '.', '0', 3, 1, 0, 0, 0,
+        0x21, 0xf9, 4, 0, 10, 0, 0, 0, 0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 1, 0,
+        0x21, 0xf9, 4, 0, 10, 0, 0, 0, 0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x4c, 1, 0, 0x3b};
+    ui::Images images;
+    std::string error;
+    REQUIRE(images.replace({{"test", std::string(reinterpret_cast<const char*>(bytes), sizeof(bytes)), "gif"}}, error));
+    std::vector<uint32_t> pixels(400 * 300);
+    std::unique_ptr<tvg::SwCanvas> canvas(tvg::SwCanvas::gen());
+    REQUIRE(canvas->target(pixels.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+    auto drawImage = [&](double time, std::string_view id = "instance") {
+        context.begin(theme, viewport, time);
+        images.begin();
+        images.render(context, id, "test", {20, 20, 40, 40}, ui::ImageFit::Contain);
+        context.end();
+        images.end();
+        CHECK(context.nextFrame().has_value());
+        REQUIRE(canvas->update() == tvg::Result::Success);
+        REQUIRE(canvas->draw(true) == tvg::Result::Success);
+        REQUIRE(canvas->sync() == tvg::Result::Success);
+    };
+    REQUIRE(canvas->add(context.scene()) == tvg::Result::Success);
+    drawImage(0);
+    auto first = context.scene()->paints().front();
+    first->ref();
+    CHECK(std::count(pixels.begin(), pixels.end(), 0xffff0000u) > 100);
+    drawImage(.15);
+    CHECK(std::count(pixels.begin(), pixels.end(), 0xff0000ffu) > 100);
+    context.begin(theme, viewport, 1);
+    images.begin();
+    context.end();
+    images.end();
+    CHECK_FALSE(context.nextFrame().has_value());
+    drawImage(2, "reentered");
+    CHECK(first == context.scene()->paints().front());
+    CHECK(std::count(pixels.begin(), pixels.end(), 0xffff0000u) > 100);
+    first->unref();
+}
+
 TEST_CASE_FIXTURE(Widgets, "looping_icons_sample_authored_frames_across_fractional_layer_boundaries")
 {
     auto asset = animatedIcon();
@@ -719,4 +761,52 @@ TEST_CASE_FIXTURE(Widgets, "below_previews_keep_fractional_wheel_distance_and_vi
             if (found != before.end()) CHECK(rect.y == doctest::Approx(found->second.y + delta * step).epsilon(.0001));
         }
     }
+}
+
+TEST_CASE_FIXTURE(Widgets, "image_previews_use_static_pictures_and_reuse_decoded_lottie_timelines")
+{
+    auto asset = animatedIcon();
+    bool animated = true;
+    std::string mime = "json", data = asset->data;
+    SUBCASE("lottie") {}
+    SUBCASE("svg")
+    {
+        animated = false;
+        mime = "svg+xml";
+        data = R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="4" fill="#ff0000"/></svg>)";
+    }
+    ui::Images images;
+    std::string error;
+    REQUIRE(images.replace({{"preview", data, mime}}, error));
+    std::vector<uint32_t> pixels(400 * 300);
+    std::unique_ptr<tvg::SwCanvas> canvas(tvg::SwCanvas::gen(tvg::EngineOption::SmartRender));
+    REQUIRE(canvas->target(pixels.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+    REQUIRE(canvas->add(context.scene()) == tvg::Result::Success);
+    auto show = [&](double time, std::string_view id) {
+        context.begin(theme, viewport, time);
+        images.begin();
+        images.render(context, id, "preview", {20, 20, 96, 96}, ui::ImageFit::Contain);
+        context.end();
+        images.end();
+        CHECK(context.nextFrame().has_value() == animated);
+        REQUIRE(canvas->update() == tvg::Result::Success);
+        REQUIRE(canvas->draw(false) == tvg::Result::Success);
+        REQUIRE(canvas->sync() == tvg::Result::Success);
+    };
+    show(0, "first");
+    CHECK(std::count(pixels.begin(), pixels.end(), 0xffff0000u) > 100);
+    auto initial = pixels;
+    show(.5, "first");
+    CHECK((pixels != initial) == animated);
+    auto first = context.scene()->paints().front();
+    first->ref();
+    context.begin(theme, viewport, 1);
+    images.begin();
+    context.end();
+    images.end();
+    CHECK_FALSE(context.nextFrame().has_value());
+    show(2, "reentered");
+    CHECK((first == context.scene()->paints().front()) == animated);
+    CHECK((pixels == initial));
+    first->unref();
 }
