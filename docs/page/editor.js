@@ -7,7 +7,7 @@
     var theme = options.get('theme');
     var layout = (options.get('layout') || stage.dataset.layout) === 'note' ? 'note' : 'memo';
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
-    var samples = ['README.md', 'Markdown.md', 'Theme.md', 'Welcome.md', 'Rendering.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
+    var samples = ['README.md', 'Markdown.md', 'Theme.md', 'Welcome.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
     var sample = options.get('sample') || stage.dataset.sample || 'Welcome.md';
     if (samples.indexOf(sample) === -1) sample = 'Welcome.md';
     // Shown alone when the sample notes cannot be fetched, as when the page is opened from disk.
