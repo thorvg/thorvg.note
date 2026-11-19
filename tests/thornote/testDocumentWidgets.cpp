@@ -1,6 +1,5 @@
 #include <thornote/documents/widgets.h>
 #include <thornote/documents/emoji.h>
-#include <thornote/documents/images.h>
 #include <common/doctest/doctest.h>
 #include <common/engine.h>
 #include <thornote/app/app_identity.h>
@@ -151,26 +150,38 @@ TEST_CASE("incremental_task_progress_matches_full_scans_across_chunk_and_fence_e
     }
 }
 
-TEST_CASE("markdown_images_parse_inline_destinations_and_preserve_local_paths")
+TEST_CASE("markdown_image_references_preserve_source_and_normal_row_heights")
 {
-    using namespace tn;
-    auto images = markdownImages("before ![alt](https://example.test/a(b).png \"title\") ![](<images/a b.png>) ![]() after");
-    REQUIRE(images.size() == 3);
-    CHECK(images[0].start == 7);
-    CHECK(images[0].source == "https://example.test/a(b).png");
-    CHECK(images[1].source == "images/a b.png");
-    CHECK(images[2].source.empty());
-    CHECK(markdownImages("\\![](skip.png) ![broken](missing").empty());
-    CHECK(markdownImages("![nested [alt]](a\\(b\\).png)").front().source == "a(b).png");
-    auto document = utf8Path("/notes/folder/document.md");
-    CHECK(imagePath("../images/a%20b.png", document) == "/notes/images/a b.png");
-    CHECK(imagePath("file:///tmp/a%23b.png", {}) == "/tmp/a#b.png");
-    CHECK(imagePath("https://example.test/a%20b.png", document) == "https://example.test/a%20b.png");
-    CHECK(imagePath("other://image", document).empty());
-    auto path = utf8Path("/notes/images/a #b(1).png");
-    auto source = imageMarkdown(path, document);
-    REQUIRE(markdownImages(source).size() == 1);
-    CHECK(imagePath(markdownImages(source).front().source, document) == utf8(path));
+    tn::test::Engine engine;
+    struct Fonts
+    {
+        ~Fonts() { ui::unloadFonts(); }
+    } fonts;
+    ui::Context context;
+    auto theme = ui::Theme::light();
+    tn::Document document;
+    std::string source = "![image](https://example.test/picture.png)\n![vector](local.svg)\n![animation](https://example.test/animation.gif)\n![lottie](animation.json)\n![]()\nNext line";
+    REQUIRE(document.text(source));
+    ui::TextEditor editor(document);
+    auto font = ui::loadFont(tn::utf8(tn::appData("assets/Pretendard-Regular.ttf")).c_str());
+    REQUIRE(font);
+    editor.font(font);
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    auto end = document.lineStart(5);
+    editor.select(end, end);
+    auto draw = [&] {
+        context.begin(theme, {0, 0, 600, 400});
+        editor.render(context, "editor", {0, 0, 600, 400});
+        context.end();
+        return editor.caretRect().y;
+    };
+    auto baseline = draw();
+    tn::DocumentWidgets widgets;
+    widgets.attach(editor);
+    CHECK(draw() == doctest::Approx(baseline));
+    CHECK(document.text() == source);
 }
 
 TEST_CASE("document_emojis_keep_playing_during_text_edits_and_composition")

@@ -10,8 +10,6 @@ public:
     void attach(ui::TextEditor& editor);
     void update(const Document& document);
     size_t total = 0, completed = 0;
-    std::function<void(ui::Context&, std::string_view, ui::Rect, std::string_view)> image;
-    std::function<void(const ui::TextWidgetEvent&)> chooseImage;
 
 private:
     struct ScanState

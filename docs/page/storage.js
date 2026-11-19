@@ -65,11 +65,11 @@
                 if (!exists(path) || window.confirm('Replace "' + name + '"?')) return path;
             }
         }
-        function openFiles(done, images) {
+        function openFiles(done) {
             var input = document.createElement('input');
             input.type = 'file';
-            input.accept = images ? '.png,.jpg,.jpeg,.svg,.webp,.gif,.json,.lot' : '.txt,.md';
-            input.multiple = !images;
+            input.accept = '.txt,.md';
+            input.multiple = true;
             input.hidden = true;
             document.body.appendChild(input);
             input.addEventListener('cancel', function () {
@@ -82,12 +82,12 @@
                 if (!files.length) return done([], '');
                 try {
                     var contents = await Promise.all(files.map(function (file) {
-                        if (!(images ? /\.(png|jpe?g|svg|webp|gif|json|lot)$/i : /\.(txt|md)$/i).test(file.name)) throw new Error('Unsupported file: ' + file.name);
+                        if (!/\.(txt|md)$/i.test(file.name)) throw new Error('Unsupported file: ' + file.name);
                         if (file.size > 16 * 1024 * 1024) throw new Error('File is too large: ' + file.name);
                         if (!file.name || file.name === '.' || file.name === '..' || /[\/\\\x00-\x1f\x7f]/.test(file.name)) throw new Error('Invalid filename');
                         return file.arrayBuffer();
                     }));
-                    var directory = root + '/notes' + (images ? '/images' : '');
+                    var directory = root + '/notes';
                     fs.mkdirTree(directory);
                     var paths = files.map(function (file, index) {
                         var dot = file.name.lastIndexOf('.');

@@ -5,7 +5,6 @@ thornote_sources += files(
   'workspace.cpp',
   'widgets.cpp',
   'emoji.cpp',
-  'images.cpp',
 )
 
 if target_platform == 'emscripten'
