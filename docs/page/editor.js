@@ -11,7 +11,7 @@
     var sample = options.get('sample') || stage.dataset.sample || 'Welcome.md';
     if (samples.indexOf(sample) === -1) sample = 'Welcome.md';
     // Shown alone when the sample notes cannot be fetched, as when the page is opened from disk.
-    var spare = '# Welcome to thor.note\n\nYou are typing into the real editor.\nClick here and type. F1 opens the command palette.\n\nServe this folder over HTTP to load the sample notes.\n';
+    var spare = '# 👋 Welcome to thor.note\n\nYou are typing into the real editor.\nClick here and type. F1 opens the command palette.\n\nServe this folder over HTTP to load the sample notes.\n';
 
     function fail(message) {
         stage.dataset.state = 'failed';

@@ -1,4 +1,4 @@
-# Welcome to thor.note
+# 👋 Welcome to thor.note
 
 You are typing into the real editor, not a recording.
 Every glyph, icon and panel in this window is a vector path,

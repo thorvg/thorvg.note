@@ -1,4 +1,4 @@
-# Keyboard
+# 💻 Keyboard
 
 Mod is Command on macOS and Ctrl everywhere else, in the browser too.
 

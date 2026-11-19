@@ -1,4 +1,4 @@
-# Layout
+# ⚙️ Layout
 
 Memo   A few files, side by side in tabs.
 Note   A folder as a library, with favorites and search.

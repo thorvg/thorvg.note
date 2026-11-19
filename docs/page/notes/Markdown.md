@@ -1,9 +1,9 @@
-# Markdown Base
+# ✏️ Markdown Base
 
 Write Markdown directly. Syntax stays visible while text takes on its style.
 Click anywhere to edit this guide and try the examples yourself.
 
-## Headings
+## 📚 Headings
 
 Start a line with one to six # characters followed by a space.
 Headings are bold and scale relative to the document font size.
@@ -13,12 +13,12 @@ Headings are bold and scale relative to the document font size.
 ##### A fifth-level heading
 ###### A sixth-level heading
 
-## Text styles
+## ✨ Text styles
 
 Use **bold text**, *italic text*, and ~~strikethrough~~ within a sentence.
 Combine them with **bold and *italic* text**.
 
-## Lists
+## ✅ Lists
 
 - Start a bullet with a dash and a space.
 - Keep each item on its own line.
@@ -28,7 +28,7 @@ Combine them with **bold and *italic* text**.
 2. Add a space before the item text.
 3. Continue with the next item.
 
-## Code
+## 💻 Code
 
 Use backticks for inline code: `canvas->draw()`.
 Place three backticks on separate lines around a code block.
@@ -39,7 +39,7 @@ shape->appendRect(20, 20, 160, 80);
 shape->fill(80, 140, 220);
 ```
 
-## Links and images
+## 🖇️ Links and images
 
 Put link text in brackets and the destination in parentheses:
 [ThorVG](https://www.thorvg.org)
@@ -47,12 +47,12 @@ Put link text in brackets and the destination in parentheses:
 An image reference uses the same syntax with an exclamation mark:
 ![A vector illustration](illustration.svg)
 
-## Quotes
+## 💬 Quotes
 
 > Start a quoted line with > and a space.
 > Continue the quote on the next line.
 
-## Make it your own
+## 🪄 Make it your own
 
 Edit a heading, add a list item, or change a link above.
 Use the text-size shortcuts to resize the document; headings scale with it.

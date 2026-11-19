@@ -1,4 +1,4 @@
-# Multilingual sample
+# 🌏 Multilingual sample
 
 The bundled typeface is Pretendard, so Latin and Hangul share one face.
 
