@@ -70,6 +70,25 @@ struct Editor : ui::test::Frame
 
 TEST_SUITE_BEGIN("editor");
 
+TEST_CASE_FIXTURE(Editor, "checked_task_styles_follow_edits_and_undo")
+{
+    REQUIRE(document.text("- [ ] Finish **the note**\n- [ ] Keep editing\n"));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    theme.markdownStrike = {245, 20, 190};
+    editor.theme(theme);
+    CHECK(pixels(theme.markdownStrike) == 0);
+    editor.select(3, 4);
+    std::string error;
+    REQUIRE(editor.insert("x", error));
+    CHECK(pixels(theme.markdownStrike) > 0);
+    REQUIRE(editor.undo());
+    CHECK(pixels(theme.markdownStrike) == 0);
+    REQUIRE(editor.redo());
+    CHECK(pixels(theme.markdownStrike) > 0);
+}
+
 TEST_CASE_FIXTURE(Editor, "input_reaches_the_editor_through_the_context")
 {
     int changes = 0;

@@ -109,6 +109,22 @@ TEST_CASE("markdown_operators_retain_their_element_kind")
     CHECK(std::any_of(spans.begin(), spans.end(), [](const auto& span) { return span.kind == MarkdownKind::List; }));
 }
 
+TEST_CASE("markdown_checked_tasks_strike_their_own_text_and_keep_source_offsets")
+{
+    std::string source = "- [x] Done **bold** and [link](target)\n  continued\n  - [ ] Open child\n  - [X] Finished child\n- [ ] Pending\n\n- [x] Parent\n\n      literal code\n\nOutside\n\n```md\n- [x] Fenced\n```\n";
+    auto spans = tn::parseMarkdown(source);
+    auto struck = [&](std::string_view word) {
+        auto at = source.find(word);
+        return std::any_of(spans.begin(), spans.end(), [&](const auto& span) {
+            return span.kind == tn::MarkdownKind::Strike && span.start <= at && span.end >= at + word.size();
+        });
+    };
+    for (auto word : {"Done", "bold", "link", "continued", "Finished child", "Parent"})
+        CHECK(struck(word));
+    for (auto word : {"[x]", "Open child", "Pending", "literal code", "Outside", "Fenced"})
+        CHECK_FALSE(struck(word));
+}
+
 TEST_SUITE_END();
 
 TEST_CASE("markdown_blocks_preserve_full_document_semantics")

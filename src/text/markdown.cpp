@@ -45,7 +45,7 @@ struct Frame
     int type;
     unsigned level = 0;
     char fence = 0;
-    bool ordered = false;
+    bool ordered = false, checked = false;
     size_t first = std::string_view::npos, end = 0, hint = 0;
 };
 
@@ -100,6 +100,12 @@ struct Parser
                 frame.first = std::min(frame.first, first);
                 frame.end = std::max(frame.end, end);
             }
+        for (auto it = blocks.rbegin(); it != blocks.rend(); ++it) {
+            if (it->type == MD_BLOCK_CODE) break;
+            if (it->type != MD_BLOCK_LI) continue;
+            if (it->checked) add(first, end, MarkdownKind::Strike);
+            break;
+        }
         cursor = end;
     }
     void block()
@@ -298,6 +304,7 @@ bool parse(Parser& parser)
         if (type == MD_BLOCK_LI) {
             const auto& item = *static_cast<MD_BLOCK_LI_DETAIL*>(detail);
             frame.ordered = !p.blocks.empty() && p.blocks.back().type == MD_BLOCK_OL;
+            frame.checked = item.is_task && (item.task_mark == 'x' || item.task_mark == 'X');
             if (item.is_task && item.task_mark_offset) p.addMarker(item.task_mark_offset - 1, item.task_mark_offset + 2, frame.ordered ? MarkdownKind::NumberedList : MarkdownKind::List);
         }
         p.blocks.push_back(frame);
