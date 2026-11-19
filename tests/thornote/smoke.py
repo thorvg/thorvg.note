@@ -6,7 +6,7 @@ import tempfile
 
 
 executable = sys.argv[1]
-environment = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
+environment = dict(os.environ, SDL_AUDIODRIVER="dummy")
 
 
 def run(*arguments, expected=0):

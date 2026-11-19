@@ -56,8 +56,6 @@ public:
     {
         return draw(drawFrame);
     }
-    // True while the expose watch draws; the window contents must be presented again.
-    bool exposing() const { return exposed; }
     bool draw(const std::function<bool()>& render)
     {
         if (failed || !render) return false;
@@ -101,9 +99,7 @@ private:
         if (SDL_IsMainThread() && event->type == SDL_EVENT_WINDOW_EXPOSED) {
             auto& self = *static_cast<LiveResize*>(data);
             if (event->window.windowID == self.windowId && !self.drawing) {
-                self.exposed = true;
                 if (self.draw()) self.exposedAt = event->common.timestamp;
-                self.exposed = false;
             }
         }
         return true;
@@ -113,7 +109,7 @@ private:
     std::function<bool()> drawFrame;
     Size frameSize;
     Uint64 exposedAt = 0;
-    bool watching = false, drawing = false, failed = false, hasFrame = false, exposed = false;
+    bool watching = false, drawing = false, failed = false, hasFrame = false;
 };
 
 }  // namespace tn

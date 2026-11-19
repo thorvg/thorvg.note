@@ -101,15 +101,17 @@
             }],
             onRuntimeInitialized: function () { storage.prepare(); },
             postRun: [function () {
+                if (stage.dataset.state === 'failed') return;
                 // The window starts at its default size; a resize makes it adopt the canvas box.
                 window.dispatchEvent(new Event('resize'));
                 storage.sync(function (error) {
                     if (error) return fail('Browser storage could not be initialized. Reload to retry.');
+                    if (stage.dataset.state === 'failed') return;
                     stage.dataset.state = 'running';
                     status.textContent = '';
                 });
             }],
-            onAbort: function () { fail('The app stopped unexpectedly'); }
+            onAbort: function (reason) { fail(typeof reason === 'string' ? reason : 'The app stopped unexpectedly'); }
         };
         var script = document.createElement('script');
         script.src = 'ThorNote.js';
@@ -117,6 +119,9 @@
         document.body.appendChild(script);
     }
 
+    canvas.addEventListener('webglcontextlost', function () {
+        fail('The graphics context was lost. Reload to restart the editor.');
+    });
     var composing = false;
     stage.addEventListener('contextmenu', function (event) { event.preventDefault(); });
     keyboard.addEventListener('compositionstart', function () { composing = true; });

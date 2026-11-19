@@ -2,7 +2,7 @@
 
 You are typing into the real editor, not a recording.
 Every glyph, icon and panel in this window is a vector path,
-rasterized by ThorVG and copied to a canvas.
+drawn by ThorVG with WebGL 2.
 
 Things to try
 

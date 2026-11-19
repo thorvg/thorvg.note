@@ -17,7 +17,7 @@ if target_platform == 'emscripten'
     'SDL_HIDAPI': false,
     'SDL_SENSOR': false,
     'SDL_OPENGL': false,
-    'SDL_OPENGLES': false,
+    'SDL_OPENGLES': true,
     'SDL_PTHREADS': false,
     'CMAKE_C_FLAGS_RELEASE': '-Os -DNDEBUG',
   })
@@ -82,6 +82,8 @@ if target_platform == 'emscripten'
     '-sMAXIMUM_MEMORY=4GB',
     '-sSTACK_SIZE=1048576',
     '-sENVIRONMENT=web',
+    '-sMIN_WEBGL_VERSION=2',
+    '-sMAX_WEBGL_VERSION=2',
     '-sEXPORTED_RUNTIME_METHODS=FS,IDBFS,ENV,addRunDependency,removeRunDependency',
     '-lidbfs.js',
     '--embed-file', meson.current_source_dir() / 'data/layouts@/layouts',

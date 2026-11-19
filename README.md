@@ -8,7 +8,7 @@ A native plain-text editor rendered with ThorVG. Includes multiple documents, co
 
 ## Build and run
 
-Requires a C/C++20 toolchain, Meson 1.2+, Ninja, pkg-config, Python 3, ThorVG 1.2+ (CPU renderer and TTF loader) and SDL3 3.2+. ThorVG and SDL3 must be installed. Lua 5.4+ is used when available; otherwise Meson downloads it.
+Requires a C/C++20 toolchain, Meson 1.2+, Ninja, pkg-config, Python 3, ThorVG 1.2+ (GL and CPU renderers and the TTF loader) and SDL3 3.2+. ThorVG and SDL3 must be installed. Lua 5.4+ is used when available; otherwise Meson downloads it.
 
 ```sh
 meson setup build

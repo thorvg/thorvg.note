@@ -14,7 +14,10 @@
 #include <optional>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <GLES3/gl3.h>
 #include <thornote/platform/emscripten/browser_files.h>
+#else
+#include <SDL3/SDL_opengl.h>
 #endif
 
 #ifdef __EMSCRIPTEN__
@@ -93,7 +96,7 @@ public:
         }
         canvas.reset();
         app.reset();
-        SDL_DestroySurface(frame);
+        if (gl) SDL_GL_DestroyContext(gl);
         SDL_DestroyWindow(window);
         SDL_Quit();
     }
@@ -101,12 +104,27 @@ public:
     bool initialize(const RunOptions& options)
     {
         if (!initializeAppIdentity() || !SDL_Init(SDL_INIT_VIDEO)) return false;
-        window = SDL_CreateWindow("ThorNote", 1080, 720, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
+#ifdef __EMSCRIPTEN__
+        constexpr int profile = SDL_GL_CONTEXT_PROFILE_ES, major = 3, minor = 0;
+#elif defined(__APPLE__)
+        constexpr int profile = SDL_GL_CONTEXT_PROFILE_CORE, major = 4, minor = 1;
+#else
+        constexpr int profile = SDL_GL_CONTEXT_PROFILE_CORE, major = 3, minor = 3;
+#endif
+        if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, profile) || !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, major) || !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor)) return false;
+        window = SDL_CreateWindow("ThorNote", 1080, 720, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
         if (!window) return false;
+        gl = SDL_GL_CreateContext(window);
+        if (!gl) return false;
+        canvas.reset(tvg::GlCanvas::gen());
+        if (!canvas) return SDL_SetError("ThorVG GL renderer is unavailable");
+        snapshotMode = !options.snapshot.empty();
+#ifndef __EMSCRIPTEN__
         if (!applyAppIcon(window)) {
             std::cerr << "ThorNote: cannot set app icon: " << SDL_GetError() << '\n';
             SDL_ClearError();
         }
+#endif
         nativeInputReady = nativeInput.initialize(window, [this](const auto& edit) { app->nativeTextInput(edit); updateTextInput(); }, [this](const auto& key) { SDL_Event event{}; event.key = key; app->event(event, inputX, inputY); updateTextInput(); }, [this](const auto& key) {
 #ifdef __EMSCRIPTEN__
             // The browser hands over clipboard shortcuts at once; the input queued before them comes first.
@@ -149,7 +167,6 @@ public:
             pendingWindowAction = action;
             mailbox->wake();
         };
-        bool headless = std::string_view(SDL_GetCurrentVideoDriver()) == "dummy";
         bool custom = nativeWindowChromeSupported(window) && SDL_SetWindowHitTest(window, hitTest, this) && titleBarInput.initialize(window, [this](float x, float y) { return app->customTitleBarVisible() && !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) && app->windowDraggableAt(x * inputX, y * inputY); }, [this] { app->changeWindow(EditorApp::WindowAction::TitleBarDoubleClick); });
         if (custom) custom = updateNativeWindowChrome(window, false);
         if (!custom) {
@@ -158,7 +175,7 @@ public:
             if (!updateNativeWindowChrome(window, true)) return false;
             SDL_ClearError();
         }
-        app->setCustomTitleBarSupported((nativeWindowChromeAvailable() && headless) || custom);
+        app->setCustomTitleBarSupported(custom);
         if (!options.fresh) {
             if (auto restored = app->restoreSession()) SDL_SetWindowSize(window, std::max(1, int(restored->w * scale)), std::max(1, int(restored->h * scale)));
         }
@@ -189,7 +206,7 @@ public:
         for (const auto& path : options.paths)
             app->openPath(utf8Path(path));
         if (options.settings) app->openSettings();
-        // Apply restored geometry before creating the first software surface.
+        // Apply restored geometry before creating the first GL frame.
         if (!SDL_SyncWindow(window)) return false;
         if (!liveResize.start(window, [this] { return drawFrame(); })) return false;
 #ifdef __EMSCRIPTEN__
@@ -197,7 +214,7 @@ public:
         EM_ASM({ window.addEventListener("resize", function() { _thornoteWindowExposed($0); }); }, SDL_GetWindowID(window));
 #endif
         if (!draw()) return false;
-        std::cout << "ThorNote: render engine cpu; native UI + TextEditor\n";
+        std::cout << "ThorNote: render engine gl; native UI + TextEditor\n";
         if (options.snapshot.empty()) SDL_ShowWindow(window);
         return true;
     }
@@ -263,7 +280,6 @@ private:
     bool dispatch(SDL_Event& event, bool redraw = true)
     {
         if ((event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT) || event.type == SDL_EVENT_WINDOW_FOCUS_LOST) SDL_CaptureMouse(false);
-        if (event.type >= SDL_EVENT_WINDOW_FIRST && event.type <= SDL_EVENT_WINDOW_LAST) presentWhole = true;
         bool handled = titleBarInput.event(event);
         if (!handled && nativeInputReady) handled = nativeInput.event(event);
         if (!handled) {
@@ -298,47 +314,26 @@ private:
         auto flags = SDL_GetWindowFlags(window);
         app->setWindowState(flags & SDL_WINDOW_MAXIMIZED, flags & SDL_WINDOW_FULLSCREEN);
         if (!updateNativeWindowChrome(window, app->nativeTitleBarVisible())) return false;
-        auto target = SDL_GetWindowSurface(window);
-        if (!target) return false;
         titleBarInput.update(app->customTitleBarVisible(), flags & SDL_WINDOW_INPUT_FOCUS);
-        int ww = 0, wh = 0;
-        SDL_GetWindowSize(window, &ww, &wh);
-        if (ww <= 0 || wh <= 0 || target->w <= 0 || target->h <= 0) return true;
+        int ww, wh, width, height;
+        if (!SDL_GetWindowSize(window, &ww, &wh) || !SDL_GetWindowSizeInPixels(window, &width, &height)) return false;
+        if (ww <= 0 || wh <= 0 || width <= 0 || height <= 0) return true;
         auto scale = SDL_GetWindowDisplayScale(window);
         if (scale <= 0) scale = 1;
-        inputX = float(target->w) / ww / scale;
-        inputY = float(target->h) / wh / scale;
-        canvas->sync();
-        bool retarget = !frame || frame->w != target->w || frame->h != target->h;
-        if (retarget) {
-            SDL_DestroySurface(frame);
-            pixels.assign(size_t(target->w) * target->h, 0);
-#ifdef __EMSCRIPTEN__
-            constexpr auto colors = tvg::ColorSpace::ABGR8888;
-            constexpr auto format = SDL_PIXELFORMAT_RGBA32;
-#else
-            constexpr auto colors = tvg::ColorSpace::ARGB8888;
-            constexpr auto format = SDL_PIXELFORMAT_ARGB8888;
-#endif
-            if (canvas->target(pixels.data(), target->w, target->w, target->h, colors) != tvg::Result::Success) return false;
-            frame = SDL_CreateSurfaceFrom(target->w, target->h, format, pixels.data(), target->w * 4);
-            if (!frame) return false;
-#ifdef __EMSCRIPTEN__
-            // The complete rendered frame already contains the window background.
-            if (!SDL_SetSurfaceBlendMode(frame, SDL_BLENDMODE_NONE)) return false;
-#endif
+        inputX = float(width) / ww / scale;
+        inputY = float(height) / wh / scale;
+        if (width != targetWidth || height != targetHeight) {
+            if (canvas->target(nullptr, nullptr, gl, 0, width, height, tvg::ColorSpace::ABGR8888S) != tvg::Result::Success) return SDL_SetError("Cannot set the GL render target");
+            targetWidth = width;
+            targetHeight = height;
         }
-        app->render(target->w / scale, target->h / scale);
+        app->render(width / scale, height / scale);
         ui::transform(app->context.scene(), {scale, 0, 0, 0, scale, 0, 0, 0, 1});
         if (!attached) {
             if (canvas->add(app->context.scene()) != tvg::Result::Success) return false;
             attached = true;
         }
-        // Unchanged paints are retained, so ThorVG repaints and reports only the regions that changed.
-        if (canvas->update() != tvg::Result::Success || canvas->draw(false) != tvg::Result::Success) return false;
-        regions.resize(canvas->dirtyRegions());
-        if (!regions.empty() && canvas->dirtyRegions(regions.data(), uint32_t(regions.size())) != tvg::Result::Success) return false;
-        if (canvas->sync() != tvg::Result::Success) return false;
+        if (canvas->update() != tvg::Result::Success || canvas->draw(true) != tvg::Result::Success || canvas->sync() != tvg::Result::Success) return SDL_SetError("Cannot draw the GL frame");
         SDL_SetWindowTitle(window, app->windowTitle().c_str());
         updateTextInput();
         float mx = 0, my = 0;
@@ -347,19 +342,7 @@ private:
             auto hit = app->customTitleBarVisible() ? nativeWindowHitTest(window, {int(mx), int(my)}, false) : SDL_HITTEST_NORMAL;
             if (hit < SDL_HITTEST_RESIZE_TOPLEFT) cursors.set(app->context.cursor());
         }
-        bool whole = presentWhole || retarget || target != presented || liveResize.exposing();
-        presentWhole = false;
-        presented = target;
-        if (whole) return SDL_BlitSurface(frame, nullptr, target, nullptr) && SDL_UpdateWindowSurface(window);
-        rects.clear();
-        SDL_Rect bounds{0, 0, target->w, target->h};
-        for (const auto& region : regions) {
-            SDL_Rect rect{region.xMin, region.yMin, region.xMax - region.xMin, region.yMax - region.yMin};
-            if (!SDL_GetRectIntersection(&rect, &bounds, &rect)) continue;
-            if (!SDL_BlitSurface(frame, &rect, target, &rect)) return false;
-            rects.push_back(rect);
-        }
-        return rects.empty() || SDL_UpdateWindowSurfaceRects(window, rects.data(), int(rects.size()));
+        return snapshotMode || SDL_GL_SwapWindow(window);
     }
 
     void updateTextInput()
@@ -386,28 +369,39 @@ private:
 
     bool snapshot(const std::string& path)
     {
+        if (targetWidth <= 0 || targetHeight <= 0) return false;
+#ifdef __EMSCRIPTEN__
+        auto readPixels = glReadPixels;
+#else
+        auto readPixels = reinterpret_cast<decltype(&glReadPixels)>(SDL_GL_GetProcAddress("glReadPixels"));
+        if (!readPixels) return false;
+#endif
+        std::vector<uint8_t> pixels(size_t(targetWidth) * targetHeight * 4);
+        readPixels(0, 0, targetWidth, targetHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
         std::ofstream output(path, std::ios::binary);
         output << "P6\n"
-               << frame->w << ' ' << frame->h << "\n255\n";
-        for (auto pixel : pixels) {
-            char rgb[] = {char(pixel >> 16), char(pixel >> 8), char(pixel)};
-            output.write(rgb, 3);
+               << targetWidth << ' ' << targetHeight << "\n255\n";
+        for (int y = targetHeight - 1; y >= 0; --y) {
+            auto row = pixels.data() + size_t(y) * targetWidth * 4;
+            for (int x = 1; x < targetWidth; ++x) {
+                row[x * 3] = row[x * 4];
+                row[x * 3 + 1] = row[x * 4 + 1];
+                row[x * 3 + 2] = row[x * 4 + 2];
+            }
+            output.write(reinterpret_cast<const char*>(row), size_t(targetWidth) * 3);
         }
         return bool(output);
     }
 
     SDL_Window* window = nullptr;
-    SDL_Surface* frame = nullptr;
-    SDL_Surface* presented = nullptr;
-    std::vector<tvg::Region> regions;
-    std::vector<SDL_Rect> rects;
-    bool presentWhole = true;
+    SDL_GLContext gl = nullptr;
+    int targetWidth = 0, targetHeight = 0;
+    bool snapshotMode = false;
     tn::Cursors cursors;
     NativeTextInput nativeInput;
     NativeTitleBarInput titleBarInput;
     bool nativeInputReady = false;
-    std::vector<uint32_t> pixels;
-    std::unique_ptr<tvg::SwCanvas> canvas{tvg::SwCanvas::gen(tvg::EngineOption::SmartRender)};
+    std::unique_ptr<tvg::GlCanvas> canvas;
     std::shared_ptr<Mailbox> mailbox = std::make_shared<Mailbox>();
     std::unique_ptr<EditorApp> app;
     std::optional<EditorApp::WindowAction> pendingWindowAction;
@@ -430,6 +424,8 @@ int run(const RunOptions& options)
     auto session = new Session{options, {}};
     if (!session->window.initialize(session->options)) {
         std::cerr << "ThorNote: initialization failed: " << SDL_GetError() << '\n';
+        EM_ASM({ if (Module['onAbort']) Module['onAbort'](UTF8ToString($0)); }, SDL_GetError());
+        delete session;
         return 1;
     }
     emscripten_set_main_loop_arg(
