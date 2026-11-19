@@ -92,7 +92,7 @@ void TextEditor::Impl::focus(bool value)
     if (!value) {
         owner.endUndoGroup();
         dragging = false;
-        horizontalGrab.reset();
+        scrollAxis.reset();
         view.cancelPointer();
         preedit.clear();
     }
@@ -112,19 +112,26 @@ float TextEditor::Impl::maxHorizontalScroll() const
     return widest > area.w ? widest + configuration.fontSize - area.w : 0;
 }
 
-Rect TextEditor::Impl::horizontalTrack() const
+Rect TextEditor::Impl::scrollTrack(Axis axis) const
 {
     auto area = textArea();
+    if (axis == Axis::Vertical) {
+        if (maxVerticalScroll() <= 0) return {};
+        float w = std::min(width, 8.0f);
+        return {width - w, area.y, w, area.h};
+    }
     if (maxHorizontalScroll() == 0) return {};
     float h = std::min(height, scrollbarHeight);
     return {area.x, height - h, area.w, h};
 }
 
-Rect TextEditor::Impl::horizontalThumb() const
+Rect TextEditor::Impl::scrollThumb(Axis axis, Rect track) const
 {
-    auto track = horizontalTrack();
-    if (track.w == 0) return {};
-    return scrollbarThumb(track, textArea().w, widest + configuration.fontSize, horizontal, Axis::Horizontal);
+    if (axis == Axis::Horizontal) return scrollbarThumb(track, track.w, widest + configuration.fontSize, horizontal, axis);
+    auto range = maxVerticalScroll();
+    if (range <= 0) return {};
+    float h = std::min<double>(track.h, std::max(18.0, track.h * track.h / contentHeight()));
+    return {track.x, track.y + float((track.h - h) * vertical / range), track.w, h};
 }
 
 double TextEditor::Impl::maxVerticalScroll() const
@@ -187,14 +194,18 @@ void TextEditor::Impl::edited(bool changed, bool revealCaret)
 void TextEditor::Impl::pointerDown(float x, float y, bool extend, int clicks)
 {
     relayout();
-    horizontalGrab.reset();
-    auto track = horizontalTrack();
-    if (track.contains(x, y)) {
+    scrollAxis.reset();
+    for (auto axis : {Axis::Horizontal, Axis::Vertical}) {
+        auto track = scrollTrack(axis);
+        if (!track.contains(x, y)) continue;
         dragging = false;
         view.cancelPointer();
-        auto thumb = horizontalThumb();
-        horizontalGrab = thumb.contains(x, y) ? x - thumb.x : thumb.w / 2;
-        pointerMove(x, y);
+        scrollAxis = axis;
+        auto thumb = scrollThumb(axis, track);
+        bool onThumb = thumb.contains(x, y);
+        if (axis == Axis::Vertical) grabOffset = onThumb ? y - thumb.y : thumb.h / 2;
+        else grabOffset = onThumb ? x - thumb.x : thumb.w / 2;
+        if (!onThumb) pointerMove(x, y);
         invalidate();
         return;
     }
@@ -212,10 +223,12 @@ void TextEditor::Impl::pointerDown(float x, float y, bool extend, int clicks)
 
 void TextEditor::Impl::pointerMove(float x, float y)
 {
-    if (horizontalGrab) {
+    if (scrollAxis) {
         relayout();
-        auto track = horizontalTrack(), thumb = horizontalThumb();
-        if (track.w > thumb.w) owner.scroll((x - track.x - *horizontalGrab) * maxHorizontalScroll() / (track.w - thumb.w), vertical);
+        auto track = scrollTrack(*scrollAxis), thumb = scrollThumb(*scrollAxis, track);
+        if (*scrollAxis == Axis::Vertical) {
+            if (track.h > thumb.h) owner.scroll(horizontal, (y - track.y - grabOffset) * maxVerticalScroll() / (track.h - thumb.h));
+        } else if (track.w > thumb.w) owner.scroll((x - track.x - grabOffset) * maxHorizontalScroll() / (track.w - thumb.w), vertical);
         return;
     }
     if (!dragging) return;
@@ -234,8 +247,8 @@ void TextEditor::Impl::pointerMove(float x, float y)
 void TextEditor::Impl::pointerUp()
 {
     dragging = false;
-    bool scrolling = horizontalGrab.has_value();
-    horizontalGrab.reset();
+    bool scrolling = scrollAxis.has_value();
+    scrollAxis.reset();
     view.pointerUp();
     if (scrolling) invalidate();
 }
@@ -454,8 +467,10 @@ void TextEditor::render(Context& host, std::string_view id, Rect bounds)
         state->handle(host, id, bounds, event);
     };
     auto control = host.control(id, bounds, handler, true, ControlFlag::Focusable | ControlFlag::Scrollable | ControlFlag::Capture | ControlFlag::TabInput, Cursor::Text);
-    auto track = impl->horizontalTrack();
-    if (track.w > 0) host.control(std::string(id) + "/scroll", {bounds.x + track.x, bounds.y + track.y, track.w, track.h}, handler, true, ControlFlag::Capture);
+    for (auto axis : {Axis::Horizontal, Axis::Vertical}) {
+        auto track = impl->scrollTrack(axis);
+        if (track.w > 0) host.control(std::string(id) + (axis == Axis::Horizontal ? "/scroll" : "/vscroll"), {bounds.x + track.x, bounds.y + track.y, track.w, track.h}, handler, true, ControlFlag::Capture);
+    }
     impl->focus(control.focused);
     auto scene = impl->context.scene();
     transform(scene, {1, 0, bounds.x, 0, 1, bounds.y, 0, 0, 1});
@@ -569,18 +584,19 @@ bool TextEditor::Impl::update(double now)
             context.rect(paintCaret(), color);
         }
     });
-    double total = contentHeight(), range = maxVerticalScroll();
-    if (range > 0) {
-        float thumb = std::max(18.0, area.h * area.h / total);
-        float y = area.y + (area.h - thumb) * vertical / range;
-        context.rect({width - 6, y, 3, thumb}, themeTokens.border, 1.5f);
-    }
-    auto track = horizontalTrack();
-    if (track.w > 0) {
-        context.rect(track, themeTokens.surface);
-        auto thumb = horizontalThumb();
-        float thickness = std::min(4.0f, thumb.h);
-        context.rect({thumb.x, thumb.y + (thumb.h - thickness) / 2, thumb.w, thickness}, horizontalGrab ? themeTokens.muted : themeTokens.border, thickness / 2);
+    for (auto axis : {Axis::Vertical, Axis::Horizontal}) {
+        auto track = scrollTrack(axis);
+        if (!track.w) continue;
+        auto thumb = scrollThumb(axis, track);
+        auto color = scrollAxis == axis ? themeTokens.muted : themeTokens.border;
+        if (axis == Axis::Vertical) {
+            float thickness = std::min(3.0f, thumb.w);
+            context.rect({thumb.x + std::floor((thumb.w - thickness) / 2), thumb.y, thickness, thumb.h}, color, thickness / 2);
+        } else {
+            context.rect(track, themeTokens.surface);
+            float thickness = std::min(4.0f, thumb.h);
+            context.rect({thumb.x, thumb.y + (thumb.h - thickness) / 2, thumb.w, thickness}, color, thickness / 2);
+        }
     }
     context.end();
     paintedSelection = selection;

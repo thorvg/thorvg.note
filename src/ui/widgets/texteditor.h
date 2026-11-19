@@ -139,7 +139,8 @@ struct TextEditor::Impl
     bool restartCaret = true, plainMarkdown = false;
     double seconds = 0, caretEpoch = 0;
     std::optional<double> nextBlink;  // Set while a visible caret waits for its next phase.
-    std::optional<float> horizontalGrab;
+    std::optional<Axis> scrollAxis;
+    float grabOffset = 0;
     std::string preedit, measuredPreedit;
     size_t preeditCursor = 0, measuredCursor = 0;
     // Composed rows [composedFirst, +composedRows) display document rows [composedFirst, +composedSpan).
@@ -173,8 +174,8 @@ struct TextEditor::Impl
     Rect logicalCaret() const;
     Rect paintCaret();
     Rect textArea() const;
-    Rect horizontalTrack() const;
-    Rect horizontalThumb() const;
+    Rect scrollTrack(Axis axis) const;
+    Rect scrollThumb(Axis axis, Rect track) const;
     float maxHorizontalScroll() const;
     double maxVerticalScroll() const;
     double contentHeight() const;

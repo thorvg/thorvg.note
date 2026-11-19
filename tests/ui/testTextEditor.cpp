@@ -203,6 +203,53 @@ TEST_CASE_FIXTURE(Editor, "markdown_wheel_preserves_fractional_input_across_head
     CHECK(editor.scrollY() == doctest::Approx(limit - step * 0.25f));
 }
 
+TEST_CASE_FIXTURE(Editor, "scrollbar_drag_preserves_selection_and_reaches_both_ends")
+{
+    std::string text = std::string(160, 'W');
+    for (size_t i = 0; i < 150; ++i)
+        text += "\nshort";
+    REQUIRE(document.text(text));
+    editor.select(1, 4);
+    draw();
+    editor.scroll(1e6f, 1e6);
+    auto limitX = editor.scrollX();
+    auto limitY = editor.scrollY();
+    REQUIRE(limitX > bounds.w);
+    REQUIRE(limitY > bounds.h);
+    editor.scroll(0, 0);
+    draw();
+    auto x = bounds.x + bounds.w - 5, y = bounds.y + bounds.h - 5;
+    SUBCASE("vertical")
+    {
+        context.pointerDown(x, bounds.y + 3);
+        context.pointerMove(x - 40, bounds.y + bounds.h / 2);
+        CHECK(editor.scrollY() > 0);
+        CHECK(editor.scrollY() < limitY);
+        draw();
+        context.pointerMove(x - 40, y + 50);
+        CHECK(editor.scrollY() == limitY);
+        context.pointerMove(x, bounds.y - 10);
+        CHECK(editor.scrollY() == 0);
+        context.pointerUp(x, bounds.y - 10);
+        context.pointerMove(x, y);
+        CHECK(editor.scrollY() == 0);
+        click(x, bounds.y + bounds.h / 2);
+        CHECK(editor.scrollY() > 0);
+        CHECK(editor.scrollY() < limitY);
+        CHECK(editor.scrollX() == 0);
+    }
+    SUBCASE("horizontal")
+    {
+        context.pointerDown(bounds.x + editor.textViewport().x + 3, y);
+        context.pointerMove(x + 50, y - 40);
+        CHECK(editor.scrollX() == limitX);
+        context.pointerUp(x + 50, y - 40);
+        CHECK(editor.scrollY() == 0);
+    }
+    CHECK(editor.session().selection().anchor == 1);
+    CHECK(editor.session().selection().caret == 4);
+}
+
 TEST_CASE_FIXTURE(Editor, "scrolling_moves_parent_scenes_and_retains_text_in_the_viewport_cache")
 {
     std::string text;
