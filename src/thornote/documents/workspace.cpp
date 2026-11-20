@@ -82,7 +82,7 @@ uint64_t Workspace::open(const storage::Path& path, bool allowMissing)
     for (const auto& tab : tabs) {
         if (!tab->path.empty() && key(tab->path) == destination) {
             select(tab->id);
-            if (!tab->loading && tab->stamp.exists() && fileAccessed) fileAccessed(key(tab->path));
+            if (!tab->loading && tab->stamp.exists() && fileAccessed) fileAccessed(key(tab->path), false);
             return tab->id;
         }
     }
@@ -116,7 +116,7 @@ uint64_t Workspace::open(const storage::Path& path, bool allowMissing)
         tab->loading = false;
         if (pendingSelection == id) select(id);
         message = "Opened " + tab->title;
-        if (tab->stamp.exists() && fileAccessed) fileAccessed(key(tab->path));
+        if (tab->stamp.exists() && fileAccessed) fileAccessed(key(tab->path), false);
     });
     return id;
 }
@@ -205,7 +205,7 @@ void Workspace::write(uint64_t id, storage::Path path, storage::DiskStamp expect
                        tab->checkedRevision = uint64_t(-1);
                        tab->uncertain = false;
                        message = "Saved " + tab->title;
-                       if (fileAccessed) fileAccessed(key(tab->path));
+                       if (fileAccessed) fileAccessed(key(tab->path), true);
                    };
                    if (persist) persist(std::move(complete));
                    else complete({});

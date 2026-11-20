@@ -14,6 +14,9 @@ TEST_CASE("file_previews_load_without_opening_documents_and_refresh_after_edits"
 {
     storage::test::Directory directory;
     storage::test::write(directory.file(), "# Title\n\nFirst preview\n");
+    auto newer = directory.file("newer.md");
+    storage::test::write(newer, "# Newer\n");
+    std::filesystem::last_write_time(directory.file(), std::filesystem::last_write_time(newer) - std::chrono::hours(1));
     tn::NoteBrowser browser;
     auto wait = [&](const auto& complete) {
         auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -25,13 +28,28 @@ TEST_CASE("file_previews_load_without_opening_documents_and_refresh_after_edits"
     };
     browser.show({directory.path});
     REQUIRE(wait([&] { return !browser.loading(); }));
-    REQUIRE(browser.files().size() == 1);
-    REQUIRE(wait([&] { return browser.preview(0) == "First preview"; }));
+    REQUIRE(browser.files().size() == 2);
+    REQUIRE(browser.files()[0].path == newer);
+    REQUIRE(wait([&] { return browser.preview(1) == "First preview"; }));
 
     storage::test::write(directory.file(), "# Title\n\nUpdated preview\n");
-    browser.show({directory.path}, true);
-    CHECK(browser.preview(0) == "First preview");
+    std::filesystem::last_write_time(directory.file(), std::filesystem::last_write_time(newer) + std::chrono::hours(1));
+    SUBCASE("explicit refresh retains the previous preview during the scan")
+    {
+        browser.show({directory.path}, true);
+        CHECK(browser.preview(1) == "First preview");
+    }
+    SUBCASE("a completed save refreshes the order when the library is shown")
+    {
+        browser.fileAccessed(directory.file(), false);
+        browser.show({directory.path});
+        CHECK_FALSE(browser.loading());
+        browser.fileAccessed(directory.file(), true);
+        browser.show({directory.path});
+    }
+    CHECK(browser.files()[0].path == newer);
     REQUIRE(wait([&] { return !browser.loading(); }));
+    REQUIRE(browser.files()[0].path == directory.file());
     REQUIRE(wait([&] { return browser.preview(0) == "Updated preview"; }));
 }
 

@@ -9,12 +9,19 @@
 
 namespace tn
 {
+void NoteBrowser::fileAccessed(const storage::Path& path, bool saved)
+{
+    snippets.erase(path);
+    if (saved || std::none_of(entries.begin(), entries.end(), [&](const auto& file) { return file.path == path; })) needsRefresh = true;
+}
+
 void NoteBrowser::show(const std::vector<storage::Path>& paths, bool force)
 {
     auto roots = paths;
     std::sort(roots.begin(), roots.end());
     roots.erase(std::unique(roots.begin(), roots.end()), roots.end());
-    if (!force && roots == folders) return;
+    if (!force && !needsRefresh && roots == folders) return;
+    needsRefresh = false;
     service.cancel();
     previews.cancel();
     if (roots != folders) {

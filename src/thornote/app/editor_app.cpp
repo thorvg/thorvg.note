@@ -129,14 +129,12 @@ EditorApp::EditorApp(std::function<void()> wake, storage::Path settingsDirectory
         menuButton = anchor;
         openMenu(id);
     };
-    workspace.fileAccessed = [this](const storage::Path& path) {
+    workspace.fileAccessed = [this](const storage::Path& path, bool saved) {
         auto root = composition == Layout::Note ? recent.rootDirectory(path.parent_path()) : storage::Path{};
         recent.rememberFile(path, root.empty());
         if (!root.empty()) recent.rememberDirectory(root);
-        const auto& files = noteBrowser.files();
-        bool known = std::any_of(files.begin(), files.end(), [&](const auto& file) { return file.path == path; });
-        noteBrowser.invalidatePreview(path);
-        refreshNoteFiles(!known);
+        noteBrowser.fileAccessed(path, saved);
+        refreshNoteFiles();
     };
 }
 

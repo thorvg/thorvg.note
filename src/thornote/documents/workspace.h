@@ -61,7 +61,7 @@ public:
     size_t poll() { return files.poll(); }
     bool busy() const;
     std::string error, message;
-    std::function<void(const storage::Path&)> fileAccessed;
+    std::function<void(const storage::Path&, bool saved)> fileAccessed;
     // A backend can defer save completion until its durable storage has synchronized.
     std::function<void(std::function<void(std::string)>)> persist;
 

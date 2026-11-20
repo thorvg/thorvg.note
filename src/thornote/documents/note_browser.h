@@ -20,7 +20,7 @@ public:
     uint64_t revision() const { return filesVersion; }
     const std::string& error() const { return message; }
     const std::string& preview(size_t index);
-    void invalidatePreview(const storage::Path& path) { snippets.erase(path); }
+    void fileAccessed(const storage::Path&, bool saved);
 
 private:
     void loadPreview(const storage::Path&);
@@ -30,7 +30,7 @@ private:
     size_t pending = 0;
     uint64_t generation = 0;
     uint64_t filesVersion = 1;
-    bool needsSort = false;
+    bool needsSort = false, needsRefresh = false;
     std::map<storage::Path, std::string> snippets;
     // Join the worker before destroying captured state.
     storage::FileService service;
