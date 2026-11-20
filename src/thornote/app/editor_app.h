@@ -155,6 +155,7 @@ private:
     bool searchFocused() const;
     void editorCommand(ui::Key);
     bool key(const SDL_KeyboardEvent&);
+    bool markdownShortcut(const SDL_KeyboardEvent&, ui::platform::KeyModifiers);
     void commitText(uint64_t, std::string_view);
     bool syncInputExtensions();
     void editInputExtensions();

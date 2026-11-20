@@ -23,7 +23,8 @@ addToLibrary({
         var composed = function (event) { return event.isComposing || event.keyCode === 229; };
         var apple = /Mac|iPhone|iPad/.test(navigator.platform);
         var clipboard = function (event) {
-            return (apple ? event.metaKey : event.ctrlKey) && !event.altKey && event.key.length === 1 && 'cxv'.indexOf(event.key.toLowerCase()) >= 0;
+            var key = event.key.toLowerCase();
+            return (apple ? event.metaKey : event.ctrlKey) && !event.altKey && (key === 'c' || key === 'v' || (key === 'x' && !event.shiftKey));
         };
         // Keys the input method consumes stay with it; the app receives the text they produce instead.
         field.addEventListener('keydown', function (event) {

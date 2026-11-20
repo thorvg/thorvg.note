@@ -13,6 +13,62 @@
 namespace tn
 {
 
+namespace
+{
+enum class MarkdownModifier
+{
+    Primary,
+    Shift,
+    Alt
+};
+struct MarkdownCommand
+{
+    const char* id;
+    const char* title;
+    char key;
+    MarkdownModifier modifier;
+    ui::MarkdownFormat format;
+    unsigned level = 1;
+};
+
+using Format = ui::MarkdownFormat;
+using Modifier = MarkdownModifier;
+constexpr MarkdownCommand markdownCommands[] = {
+    {"markdown.bold", "Toggle bold", 'B', Modifier::Primary, Format::Bold},
+    {"markdown.italic", "Toggle italic", 'I', Modifier::Primary, Format::Italic},
+    {"markdown.code", "Toggle inline code", 'E', Modifier::Primary, Format::Code},
+    {"markdown.strike", "Toggle strikethrough", 'X', Modifier::Shift, Format::Strike},
+    {"markdown.link", "Insert or edit link", 'K', Modifier::Primary, Format::Link},
+    {"markdown.quote", "Toggle block quote", '.', Modifier::Shift, Format::Quote},
+    {"markdown.orderedList", "Toggle numbered list", '7', Modifier::Shift, Format::OrderedList},
+    {"markdown.bulletList", "Toggle bullet list", '8', Modifier::Shift, Format::BulletList},
+    {"markdown.taskList", "Toggle task list", '9', Modifier::Shift, Format::TaskList},
+    {"markdown.heading1", "Toggle heading 1", '1', Modifier::Alt, Format::Heading, 1},
+    {"markdown.heading2", "Toggle heading 2", '2', Modifier::Alt, Format::Heading, 2},
+    {"markdown.heading3", "Toggle heading 3", '3', Modifier::Alt, Format::Heading, 3},
+    {"markdown.heading4", "Toggle heading 4", '4', Modifier::Alt, Format::Heading, 4},
+    {"markdown.heading5", "Toggle heading 5", '5', Modifier::Alt, Format::Heading, 5},
+    {"markdown.heading6", "Toggle heading 6", '6', Modifier::Alt, Format::Heading, 6},
+};
+}  // namespace
+
+bool EditorApp::markdownShortcut(const SDL_KeyboardEvent& event, ui::platform::KeyModifiers keys)
+{
+    if (!editorFocus || settings.active || keys.control == keys.meta || (keys.shift && keys.alt) || (event.mod & SDL_KMOD_MODE)) return false;
+    auto modifier = keys.shift ? Modifier::Shift : keys.alt ? Modifier::Alt
+                                                            : Modifier::Primary;
+    auto key = event.key;
+    if (key >= SDLK_A && key <= SDLK_Z) key = 'A' + key - SDLK_A;
+    else if (event.scancode >= SDL_SCANCODE_1 && event.scancode <= SDL_SCANCODE_9) key = '1' + event.scancode - SDL_SCANCODE_1;
+    else if (event.scancode == SDL_SCANCODE_PERIOD) key = '.';
+    for (const auto& command : markdownCommands) {
+        if (key != SDL_Keycode(command.key) || modifier != command.modifier) continue;
+        if (!event.repeat) commands.execute(command.id);
+        return true;
+    }
+    return false;
+}
+
 EditorApp::EditorApp(std::function<void()> wake, storage::Path settingsDirectory) :
     workspace(wake), noteBrowser(wake), sessionStore(std::move(wake))
 {
@@ -301,6 +357,21 @@ void EditorApp::registerCommands()
     add("file.quit", "Quit editor", "File", "Mod+Q", [this] { requestQuit(); });
     add("edit.undo", "Undo", "Edit", "Mod+Z", [this] { editorCommand(ui::Key::Z); }, [this, editable] { return editable() && target()->document.canUndo(); }, "Nothing to undo");
     add("edit.redo", "Redo", "Edit", "Mod+Shift+Z", [this] { editorCommand(ui::Key::Y); }, [this, editable] { return editable() && target()->document.canRedo(); }, "Nothing to redo");
+    auto markdown = [this, editable] {
+        return editable() && !composing && !target()->editor.composing() && (target()->configured ? target()->editor.options().markdown : options.markdown);
+    };
+    for (const auto& command : markdownCommands) {
+        std::string shortcut = "Mod+";
+        if (command.modifier == Modifier::Alt) shortcut += "Alt+";
+        if (command.modifier == Modifier::Shift) shortcut += "Shift+";
+        shortcut += command.key;
+        commands.add({command.id, command.title, "Markdown", std::move(shortcut), [this, command] {
+                          auto& tab = *target();
+                          configure(tab);
+                          tab.editor.formatMarkdown(command.format, command.level);
+                      },
+                      markdown});
+    }
     for (const auto& entry : std::vector<std::pair<const char*, ui::Key>>{{"copy", ui::Key::C}, {"cut", ui::Key::X}, {"paste", ui::Key::V}, {"selectAll", ui::Key::A}}) {
         auto key = entry.second;
         const char* title = key == ui::Key::C ? "Copy selection" : key == ui::Key::X ? "Cut selection"

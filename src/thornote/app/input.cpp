@@ -120,6 +120,7 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
         switch (event.key) {
             case SDLK_C:
             case SDLK_X: {
+                if (event.key == SDLK_X && mods.shift) return true;
                 auto text = input->session.selectedText();
                 if (!text.empty()) {
                     SDL_SetClipboardText(text.c_str());
@@ -171,6 +172,7 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
         }
     }
     if (mods.primary) {
+        if (!searchFocused() && markdownShortcut(event, keys)) return true;
         const char* command = nullptr;
         switch (event.key) {
             case SDLK_N: command = "file.new"; break;
@@ -208,7 +210,9 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
             case SDLK_Y: command = "edit.redo"; break;
             case SDLK_A: command = "edit.selectAll"; break;
             case SDLK_C: command = "edit.copy"; break;
-            case SDLK_X: command = "edit.cut"; break;
+            case SDLK_X:
+                if (!mods.shift) command = "edit.cut";
+                break;
             case SDLK_V: command = "edit.paste"; break;
         }
         if (command) {

@@ -3,6 +3,17 @@
 Write Markdown directly. Syntax stays visible while text takes on its style.
 Click anywhere to edit this guide and try the examples yourself.
 
+## Formatting shortcuts
+
+In these shortcuts, Mod means Ctrl on Windows and Linux or Command on macOS.
+
+- Use `Mod+B` for bold, `Mod+I` for italic, `Mod+E` for inline code and `Mod+Shift+X` for strikethrough. Select text to wrap it, or start typing between the new markers.
+- Press `Mod+K` to turn a selection into a link and type its destination.
+- Press `Mod+Alt+1` through `Mod+Alt+6` to set the heading level. On macOS, use Option for Alt.
+- Press `Mod+Shift+7`, `Mod+Shift+8` or `Mod+Shift+9` for a numbered, bullet or task list. Use `Mod+Shift+.` for a quote.
+
+Line shortcuts apply to all selected lines. Repeat a heading, list or quote shortcut to remove its marker.
+
 ## 📚 Headings
 
 Start a line with one to six # characters followed by a space.

@@ -554,6 +554,52 @@ TEST_CASE_FIXTURE(EditorTest, "editor_leaves_printable_native_keys_for_text_inte
     CHECK(tab.document.text() == "a한");
 }
 
+TEST_CASE_FIXTURE(EditorTest, "markdown_shortcuts_use_the_editor_selection")
+{
+    auto& tab = document("한글 note");
+    draw();
+#ifdef __APPLE__
+    constexpr auto primary = SDL_KMOD_GUI;
+#else
+    constexpr auto primary = SDL_KMOD_CTRL;
+#endif
+    for (auto [shortcut, marker] : {std::pair{SDLK_B, "**"}, {SDLK_I, "*"}, {SDLK_E, "`"}}) {
+        tab.editor.select(6, 0);
+        key(shortcut, primary);
+        CHECK(tab.document.text() == std::string(marker) + "한글" + marker + " note");
+        CHECK(tab.editor.session().selection().anchor > tab.editor.session().selection().caret);
+        CHECK(tab.editor.session().selectedText() == "한글");
+        key(shortcut, primary);
+        CHECK(tab.document.text() == "한글 note");
+    }
+    auto shift = SDL_Keymod(primary | SDL_KMOD_SHIFT);
+    key(SDLK_X, shift);
+    CHECK(tab.document.text() == "~~한글~~ note");
+    key(SDLK_X, shift);
+    key(SDLK_2, SDL_Keymod(primary | SDL_KMOD_ALT));
+    CHECK(tab.document.text() == "## 한글 note");
+    key(SDLK_1, SDL_Keymod(primary | SDL_KMOD_ALT));
+    CHECK(tab.document.text() == "# 한글 note");
+    key(SDLK_1, SDL_Keymod(primary | SDL_KMOD_ALT));
+    key(SDLK_8, shift);
+    CHECK(tab.document.text() == "- 한글 note");
+    key(SDLK_7, shift);
+    CHECK(tab.document.text() == "1. 한글 note");
+    key(SDLK_9, shift);
+    CHECK(tab.document.text() == "- [ ] 한글 note");
+    key(SDLK_9, shift);
+    key(SDLK_PERIOD, shift);
+    CHECK(tab.document.text() == "> 한글 note");
+    key(SDLK_PERIOD, shift);
+    key(SDLK_K, primary);
+    CHECK(tab.document.text() == "[한글]() note");
+    CHECK(tab.editor.session().selection().caret == 9);
+    tab.editor.undo();
+    REQUIRE(run("edit.find"));
+    key(SDLK_B, primary);
+    CHECK(tab.document.text() == "한글 note");
+}
+
 TEST_CASE_FIXTURE(EditorTest, "first_added_codepoints_survive_initial_font_preparation")
 {
     auto& tab = document("ABC");
