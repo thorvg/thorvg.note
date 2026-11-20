@@ -1,11 +1,11 @@
-# 🌏 Multilingual sample
+# 🌏 Multilingual
 
-The bundled typeface is Pretendard, so Latin and Hangul share one face.
+Try typing or pasting these lines into the editor.
 
-English   The quick brown fox jumps over the lazy dog.
-한국어    다람쥐 헌 쳇바퀴에 타고파.
-Mixed     ThorVG 노트, thor.note
-Digits    0123456789  () {} [] <> +-*/=
+English — Hello, world!
+한국어 — 가나다라마바사 아자차카타파하
+简体中文 — 你好，世界！欢迎写中文。
+繁體中文 — 你好，世界！歡迎寫中文。
+日本語 — こんにちは！ノートに日本語を書きます。
 
-Hangul syllables, jamo and punctuation are drawn as the same
-vector paths as everything else in this window.
+Mix them on one line: Hello · 안녕 · 你好 · こんにちは

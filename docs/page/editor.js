@@ -31,13 +31,19 @@
         });
     }
 
-    function fetchFonts() {
-        return Promise.all(['Pretendard-Regular.ttf', 'Pretendard-Bold.ttf', 'DejaVuSansMono.ttf'].map(function (name) {
+    function fetchFonts(names) {
+        return Promise.all(names.map(function (name) {
             return fetch('fonts/' + name).then(function (response) {
                 if (!response.ok) throw new Error(name);
                 return response.arrayBuffer();
             }).then(function (bytes) { return {name: name, bytes: new Uint8Array(bytes)}; });
         }));
+    }
+
+    function installFonts(fonts) {
+        fonts.forEach(function (font) {
+            Module.FS.writeFile('/assets/' + font.name, font.bytes, {canOwn: true});
+        });
     }
 
     function scrollPage(x, y) {
@@ -52,13 +58,28 @@
         }
         appArguments.push('/notes/' + sample);
         var storage;
-        var fontData = fetchFonts().catch(function () {
+        var hanRequest;
+        var fontData = fetchFonts(['Pretendard-Regular.ttf', 'Pretendard-Bold.ttf', 'DejaVuSansMono.ttf']).catch(function () {
             fail('The app fonts could not be loaded');
             return null;
         });
         window.Module = {
             canvas: canvas,
             onUnhandledWheel: scrollPage,
+            onMissingHan: function () {
+                if (hanRequest) return;
+                hanRequest = fetchFonts(['NotoSansSC-Regular.ttf', 'NotoSansSC-Bold.ttf']).then(function (fonts) {
+                    installFonts(fonts);
+                    try {
+                        if (!Module._thornoteLoadHanFonts()) throw new Error('Invalid Han fallback fonts');
+                    } finally {
+                        fonts.forEach(function (font) { Module.FS.unlink('/assets/' + font.name); });
+                    }
+                }).catch(function (error) {
+                    console.warn('Chinese fonts could not be loaded', error);
+                    hanRequest = null;
+                });
+            },
             arguments: appArguments,
             print: function () {},
             printErr: function () {},
@@ -89,9 +110,7 @@
                     if (!fonts) return;
                     try {
                         Module.FS.mkdir('/assets');
-                        fonts.forEach(function (font) {
-                            Module.FS.writeFile('/assets/' + font.name, font.bytes, {canOwn: true});
-                        });
+                        installFonts(fonts);
                     } catch (error) {
                         fail('The app fonts could not be loaded');
                         return;

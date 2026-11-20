@@ -10,6 +10,7 @@ ThorNoteFS.prototype.mount;
 ThorNoteFS.prototype.syncfs;
 ThorNoteFS.prototype.symlink;
 ThorNoteFS.prototype.analyzePath;
+ThorNoteFS.prototype.unlink;
 
 /** @record */
 function ThorNoteFSPath() {}

@@ -92,10 +92,6 @@ bool EditorApp::selectFont(const FontChoice& choice)
     // from the default file face index used by the engine.
     fontChoice = automatic ? FontChoice{{}, 0, "System (Automatic)"}
                            : FontChoice{utf8Path(found.path), choice.index, choice.name.empty() ? found.name : choice.name};
-    // Document editors pick the face up on their next prepareFont().
-    std::vector<uint32_t> sample;
-    collectCodepoints(settings.sample.text(), sample);
-    settings.preview.font(systemFonts.fontFor(editorFont, sample), lineNumberFont);
     settings.fontError.clear();
     return true;
 }
@@ -280,6 +276,12 @@ void EditorApp::drawSettings(ui::Rect r)
             y += 26;
             ui::Rect preview{body.x, y, body.w, 80};
             context.rect(preview, theme.surface, 6, theme.border);
+            if (settings.previewFont != editorFont) {
+                std::vector<uint32_t> sample;
+                collectCodepoints(settings.sample.text(), sample);
+                settings.preview.font(systemFonts.fontFor(editorFont, sample), lineNumberFont);
+                settings.previewFont = editorFont;
+            }
             context.clip(preview.inset(1), [&] { settings.preview.render(context, "settings/preview", preview.inset(1)); });
             y += 96;
             context.text({body.x, y, 120, 32}, "Font size", theme.text, 12, true);

@@ -197,6 +197,7 @@ private:
         std::vector<FontChoice> catalog;
         tn::Document sample;
         ui::TextEditor preview{sample};
+        ui::FontId previewFont = 0;
     } settings;
     struct Find
     {
