@@ -422,6 +422,13 @@ struct Document
     size_t next(size_t offset) const;
 
     /**
+     * @brief Selects the same-category run under a UTF-8 byte offset, within its line.
+     * @return The run containing the codepoint, or an empty selection at a newline or the document end.
+     * @see wordPrevious(), wordNext()
+     */
+    Selection wordAt(size_t offset) const;
+
+    /**
      * @brief Moves backward over whitespace and the preceding character category.
      *
      * @return Document-relative byte offset at the start of the preceding character category, or zero.

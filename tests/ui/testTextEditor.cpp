@@ -148,6 +148,39 @@ TEST_CASE_FIXTURE(Editor, "pointer_selects_and_wheel_scrolls_in_host_coordinates
     CHECK(!context.wheel(-3));
 }
 
+TEST_CASE_FIXTURE(Editor, "double_click_selects_words_inside_markup_and_code")
+{
+    const std::string source = "![A vector illustration](illustration.svg)\n`canvas->draw()`.\n한글_name42  끝";
+    REQUIRE(document.text(source));
+    auto options = editor.options();
+    SUBCASE("plain text")
+    {
+        options.markdown = false;
+    }
+    SUBCASE("Markdown")
+    {
+        options.markdown = true;
+    }
+    editor.options(options);
+    auto check = [&](size_t start, size_t inside, std::string_view expected) {
+        editor.select(start + inside, start + inside);
+        draw();
+        auto caret = editor.caretRect();
+        float x = bounds.x + caret.x + 1, y = bounds.y + caret.y + caret.h / 2;
+        context.pointerDown(x, y, {}, 2);
+        context.pointerUp(x, y);
+        CHECK(editor.session().selection().start() == start);
+        CHECK(editor.session().selectedText() == expected);
+    };
+    check(source.find("illustration.svg"), 3, "illustration");
+    check(source.find("svg"), 2, "svg");
+    check(source.find("canvas"), 5, "canvas");
+    check(source.find("->"), 1, "->");
+    check(source.find("draw"), 0, "draw");
+    check(source.find("한글"), std::string_view("한").size(), "한글_name42");
+    check(source.find("  "), 1, "  ");
+}
+
 TEST_CASE_FIXTURE(Editor, "wheel_is_released_at_editor_scroll_boundaries")
 {
     std::string text;

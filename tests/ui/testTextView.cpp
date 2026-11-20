@@ -108,6 +108,19 @@ TEST_CASE_FIXTURE(View, "pointer_drags_and_selects_words")
     checkSelection(6, 1);
 }
 
+TEST_CASE_FIXTURE(View, "word_drag_uses_the_glyph_under_the_pointer_at_punctuation")
+{
+    REQUIRE(document.text("alpha.beta()\n  gamma"));
+    REQUIRE(view.layout({line(0, 12, 0), line(13, 7, 20)}));
+    view.pointerDown(99, 5, false, 2);  // Right edge of the 'a' in beta.
+    checkSelection(6, 10);
+    view.pointerMove(49, 5);
+    checkSelection(10, 0);
+    view.pointerMove(19, 25);
+    checkSelection(6, 15);
+    view.pointerUp();
+}
+
 TEST_CASE_FIXTURE(View, "range_geometry_is_independent_of_selection_and_clips_to_the_viewport")
 {
     auto first = line(0, 11, 0);

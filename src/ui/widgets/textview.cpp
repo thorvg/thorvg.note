@@ -164,7 +164,6 @@ struct TextView::Impl
     size_t hitLine(float x, float y) const;
     size_t hit(float x, float y) const;
     std::optional<size_t> characterAt(float x, float y) const;
-    tn::Selection wordAt(float x, float y) const;
     tn::Selection sentenceAt(size_t offset) const;
     tn::Selection paragraphAt(size_t offset) const;
     tn::Selection selectionAt(float x, float y, SelectionUnit unit) const;
@@ -447,23 +446,6 @@ std::optional<size_t> TextView::Impl::characterAt(float x, float y) const
     return line.base + line.offsets[size_t(std::upper_bound(line.x.begin(), line.x.end(), x) - line.x.begin() - 1)];
 }
 
-tn::Selection TextView::Impl::wordAt(float x, float y) const
-{
-    auto character = characterAt(x, y);
-    auto offset = character.value_or(hit(x, y));
-    if (!character) return {offset, offset};
-    const auto& document = selecting.document();
-    const auto& text = document.text();
-    if (offset >= text.size() || text[offset] == '\n') return {offset, offset};
-    bool whitespace = space(text[offset]);
-    size_t begin = offset, end = document.next(offset);
-    while (begin && text[document.previous(begin)] != '\n' && space(text[document.previous(begin)]) == whitespace)
-        begin = document.previous(begin);
-    while (end < text.size() && text[end] != '\n' && space(text[end]) == whitespace)
-        end = document.next(end);
-    return {begin, end};
-}
-
 tn::Selection TextView::Impl::paragraphAt(size_t offset) const
 {
     const auto& document = selecting.document();
@@ -503,9 +485,10 @@ tn::Selection TextView::Impl::sentenceAt(size_t offset) const
 
 tn::Selection TextView::Impl::selectionAt(float x, float y, SelectionUnit unit) const
 {
-    auto offset = characterAt(x, y).value_or(hit(x, y));
+    auto character = characterAt(x, y);
+    auto offset = character ? *character : hit(x, y);
     switch (unit) {
-        case SelectionUnit::Word: return wordAt(x, y);
+        case SelectionUnit::Word: return character ? selecting.document().wordAt(offset) : tn::Selection{offset, offset};
         case SelectionUnit::Sentence: return sentenceAt(offset);
         case SelectionUnit::Line: {
             const auto& document = selecting.document();

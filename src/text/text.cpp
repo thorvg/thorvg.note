@@ -464,6 +464,26 @@ size_t Document::next(size_t offset) const
     return offset;
 }
 
+Selection Document::wordAt(size_t offset) const
+{
+    const auto& value = impl->value;
+    offset = clamp(offset);
+    if (offset == value.size() || value[offset] == '\n') return {offset, offset};
+    auto group = _category(value[offset]);
+    auto matches = [&](size_t at) {
+        return value[at] != '\n' && _category(value[at]) == group;
+    };
+    size_t begin = offset, end = next(offset);
+    while (begin) {
+        auto left = previous(begin);
+        if (!matches(left)) break;
+        begin = left;
+    }
+    while (end < value.size() && matches(end))
+        end = next(end);
+    return {begin, end};
+}
+
 size_t Document::wordPrevious(size_t offset) const
 {
     offset = previous(offset);
