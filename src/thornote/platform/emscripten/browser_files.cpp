@@ -60,6 +60,19 @@ void browserRecoverySubmit(void* pending, const std::string& obsolete)
     thornoteRecoverySubmit(pending, obsolete.c_str());
 }
 
+void browserRestoreFile(storage::RecoverySnapshot& snapshot)
+{
+    if (snapshot.originalPath.empty()) return;
+    auto path = static_cast<char*>(EM_ASM_PTR({
+        var renamed = Module['onRestoreFile'] && Module['onRestoreFile'](UTF8ToString($0));
+        return renamed ? stringToNewUTF8(renamed) : 0; }, utf8(snapshot.originalPath).c_str()));
+    if (!path) return;
+    auto previous = snapshot.originalPath.filename();
+    snapshot.originalPath = utf8Path(path);
+    std::free(path);
+    if (snapshot.title == utf8(previous)) snapshot.title = utf8(snapshot.originalPath.filename());
+}
+
 void browserOpenFiles(std::function<void(const char* const*, const char*)> complete)
 {
     auto callback = new std::function<void(const char* const*, const char*)>(std::move(complete));

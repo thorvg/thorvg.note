@@ -7,9 +7,10 @@
     var theme = options.get('theme');
     var layout = (options.get('layout') || stage.dataset.layout) === 'note' ? 'note' : 'memo';
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
-    var samples = ['README.md', 'Markdown.md', 'Theme.md', 'Welcome.md', 'Keyboard.md', 'Layout.md', 'Multilingual.md'];
+    var samples = ['1. Welcome.md', '2. Markdown.md', '3. Multilingual.md', '4. Layout.md', '5. Theme.md', '6. Keyboard.md', '7. README.md'];
+    function originalName(name) { return name.replace(/^\d+\. /, ''); }
     var sample = options.get('sample') || stage.dataset.sample || 'Welcome.md';
-    if (samples.indexOf(sample) === -1) sample = 'Welcome.md';
+    sample = samples.find(function (name) { return name === sample || originalName(name) === sample; }) || samples[0];
     // Shown alone when the sample notes cannot be fetched, as when the page is opened from disk.
     var spare = '# 👋 Welcome to thor.note\n\nYou are typing into the real editor.\nClick here and type. F1 opens the command palette.\n\nServe this folder over HTTP to load the sample notes.\n';
 
@@ -23,8 +24,8 @@
             return fetch('notes/' + encodeURIComponent(name)).then(function (response) {
                 if (!response.ok) throw new Error(name);
                 return response.text();
-            }).then(function (text) { return {name: name, text: text}; }).catch(function () {
-                return name === 'Welcome.md' ? {name: name, text: spare} : null;
+            }).then(function (text) { return {name: name, previous: originalName(name), text: text}; }).catch(function () {
+                return name === samples[0] ? {name: name, previous: originalName(name), text: spare} : null;
             });
         })).then(function (notes) {
             return notes.filter(function (note) { return note !== null; });
@@ -88,11 +89,11 @@
                 Module.ENV.SDL_EMSCRIPTEN_KEYBOARD_ELEMENT = '#keyboard';
                 var settings = 'thornote-settings 1\ncomposition ' + (layout === 'note' ? '2' : '0') + '\n' +
                     (theme === 'light' || theme === 'dark' ? 'dark ' + (theme === 'dark' ? '1' : '0') + '\n' : '') +
-                    (sample === 'README.md' || sample === 'Markdown.md' ? 'layout 0 0 0 1 224 236 216\n' : '') +
+                    (originalName(sample) === 'README.md' || originalName(sample) === 'Markdown.md' ? 'layout 0 0 0 1 224 236 216\n' : '') +
                     'font-size 14\n' + notes.map(function (note) {
                         return 'recent-file "/notes/' + note.name + '"\n';
                     }).join('') + 'recent-directory "/notes"\n';
-                storage = window.ThorNoteStorage(Module, notes, settings, sample, theme, layout);
+                storage = window.ThorNoteStorage(Module, notes, settings, originalName(sample), theme, layout);
                 Module.onSyncStorage = storage.sync;
                 Module.onSaveAs = storage.saveAs;
                 Module.onOpenFiles = storage.openFiles;

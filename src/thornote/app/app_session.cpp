@@ -1,5 +1,8 @@
 #include "editor_app.h"
 #include <algorithm>
+#ifdef __EMSCRIPTEN__
+#include <thornote/platform/emscripten/browser_files.h>
+#endif
 
 namespace tn
 {
@@ -27,6 +30,9 @@ std::optional<ui::Rect> EditorApp::restoreSession()
     settings.category = saved.settingsCategory;
     settings.open = saved.settingsOpen;
     for (auto& record : saved.documents) {
+#ifdef __EMSCRIPTEN__
+        browserRestoreFile(record.content);
+#endif
         if (record.favorite) favorites.insert(record.id);
         workspace.restore(std::move(record));
         if (!workspace.error.empty()) sessionSave.enabled = false;

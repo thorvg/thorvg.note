@@ -21,23 +21,93 @@
             callbacks.push(done);
             flush();
         }
+        async function installNotes() {
+            var config = '/settings/settings.conf';
+            var sessionPath = '/settings/session/session.conf';
+            var session = exists(sessionPath) ? fs.readFile(sessionPath, {encoding: 'utf8'}) : '';
+            var preferences = exists(config) ? fs.readFile(config, {encoding: 'utf8'}) : settings;
+            var marker = '/settings/sample-renames.json';
+            var renamed = exists(marker) ? JSON.parse(fs.readFile(marker, {encoding: 'utf8'})) : {};
+            var changed = false;
+            var previousHashes = {
+                'Multilingual.md': ['ca7f6d87e23db41ce7e6c06421737cd98787339fa35beb262840b9bc797c1d96', '3bb5a9e5acd77d9dbcc4d3ee591cb96a993204cee6eaf65662d6acc16d7c4e32'],
+                'Keyboard.md': ['ac4e06515b4f74c00bb4573d3685bb330c0d51a05d19a1ab991bd7741f030feb', '5afb9729a0d5192185ac10ab57b9b014f248a03724ea09c20bfeb21173ab66f7'],
+                'Markdown.md': ['2eb571d754e0edf97b8947c0d470289a64321f245f775d2753ff0d94fb89a7b4']
+            };
+            async function refreshShippedText(note, path, old) {
+                var hashes = previousHashes[note.previous];
+                if (!hashes || !crypto.subtle) return;
+                var stat = fs.stat(path);
+                if (stat.size >= 4096) return;
+                var bytes = fs.readFile(path);
+                if (new TextDecoder().decode(bytes) === note.text) return;
+                var digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+                var hash = Array.from(digest, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+                if (!hashes.includes(hash)) return;
+                var dirty = session.split('\n').some(function (line) {
+                    var record = /^document \d+ "[0-9a-f]+" "([^"]+)" "(?:\\.|[^"\\])*" \d+ \d+ \d+ \d+ (\d+) (\d+)/.exec(line);
+                    return record && (record[2] === '1' || record[3] === '1') &&
+                        [old, root + old, path, root + path].includes(record[1]);
+                });
+                if (dirty) return;
+                fs.writeFile(path, note.text);
+                // IDBFS detects changes by mtime. Keep the guide in its reading-order slot.
+                var modified = stat.mtime.getTime() + 1;
+                fs.utime(path, modified, modified);
+            }
+            // Install the highest number first. A newest-first listing then follows reading order.
+            var installedAt = exists(marker) ? fs.stat(marker).mtime.getTime() : Date.now();
+            for (var i = notes.length - 1; i >= 0; --i) {
+                var note = notes[i], path = '/notes/' + note.name, old = '/notes/' + note.previous;
+                var firstInstall = !Object.hasOwn(renamed, note.previous);
+                if (firstInstall) {
+                    renamed[note.previous] = null;
+                    changed = true;
+                }
+                if (exists(path)) {
+                    if (!firstInstall && note.previous === 'Multilingual.md') await refreshShippedText(note, path, old);
+                    continue;
+                }
+                if (firstInstall && exists(old)) {
+                    fs.rename(old, path);
+                    renamed[note.previous] = note.name;
+                    ['', root].forEach(function (prefix) {
+                        preferences = preferences.replaceAll('recent-file "' + prefix + old + '"', 'recent-file "' + prefix + path + '"');
+                    });
+                    await refreshShippedText(note, path, old);
+                    if (fs.stat(path).size !== new TextEncoder().encode(note.text).length ||
+                        fs.readFile(path, {encoding: 'utf8'}) !== note.text) continue;
+                } else {
+                    fs.writeFile(path, note.text);
+                }
+                var modified = installedAt - (parseInt(note.name, 10) - 1) * 1000;
+                fs.utime(path, modified, modified);
+            }
+            if (changed) {
+                fs.writeFile(marker, JSON.stringify(renamed));
+                fs.utime(marker, installedAt, installedAt);
+            }
+            if (!exists(config) || changed) fs.writeFile(config, preferences);
+            module.onRestoreFile = function (path) {
+                var slash = path.lastIndexOf('/'), folder = path.slice(0, slash);
+                if (folder !== '/notes' && folder !== root + '/notes') return;
+                var name = renamed[path.slice(slash + 1)];
+                if (typeof name === 'string' && !exists(path) && exists(folder + '/' + name)) return folder + '/' + name;
+            };
+            if (session) module.arguments.pop();
+        }
         function restore(done) {
             try {
                 fs.mkdirTree(root);
                 fs.mount(module.IDBFS, {}, root);
-                fs.syncfs(true, function (error) {
+                fs.syncfs(true, async function (error) {
                     if (error) return done(error);
                     try {
                         fs.mkdirTree(root + '/notes');
                         fs.mkdirTree(root + '/settings');
                         fs.symlink(root + '/notes', '/notes');
                         fs.symlink(root + '/settings', '/settings');
-                        if (!exists('/settings/settings.conf')) fs.writeFile('/settings/settings.conf', settings);
-                        notes.forEach(function (note) {
-                            var path = '/notes/' + note.name;
-                            if (!exists(path)) fs.writeFile(path, note.text);
-                        });
-                        if (exists('/settings/session/session.conf')) module.arguments.pop();
+                        await installNotes();
                         module.storageRoot = root;
                         sync(done);
                     } catch (failure) { done(failure); }
