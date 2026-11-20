@@ -564,11 +564,18 @@ EditError Document::Impl::apply(const Document& document, const EditBatch& batch
         if (removed != change.text) edits.push_back({change.start, std::move(removed), change.text});
     }
     if (batch.selection) {
-        auto next = value;
-        for (auto it = edits.rbegin(); it != edits.rend(); ++it)
-            next.replace(it->offset, it->removed.size(), it->inserted);
         auto boundary = [&](size_t offset) {
-            return offset <= next.size() && (offset == next.size() || !_continuation(static_cast<unsigned char>(next[offset])));
+            // Walk the unchanged and inserted slices of the resulting text without copying it.
+            size_t original = 0;
+            for (const auto& edit : edits) {
+                auto unchanged = edit.offset - original;
+                if (offset < unchanged) return document.clamp(original + offset) == original + offset;
+                offset -= unchanged;
+                if (offset < edit.inserted.size()) return !_continuation(static_cast<unsigned char>(edit.inserted[offset]));
+                offset -= edit.inserted.size();
+                original = edit.offset + edit.removed.size();
+            }
+            return offset <= value.size() - original && document.clamp(original + offset) == original + offset;
         };
         if (!boundary(batch.selection->anchor) || !boundary(batch.selection->caret)) return EditError::InvalidRange;
     }

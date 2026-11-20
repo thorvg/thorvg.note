@@ -496,6 +496,8 @@ TEST_CASE("edit_errors")
         {"overlapping ranges", {revision, {{0, 3, "x"}, {1, 4, "y"}}, {}}, tn::EditError::InvalidRange},
         {"duplicate start", {revision, {{0, 1, "x"}, {0, 0, "y"}}, {}}, tn::EditError::InvalidRange},
         {"split selection", {revision, {}, tn::Selection{2, 2}}, tn::EditError::InvalidRange},
+        {"split inserted character", {revision, {{0, 1, "á"}, {3, 4, ""}}, tn::Selection{1, 1}}, tn::EditError::InvalidRange},
+        {"split shifted character", {revision, {{0, 1, "ab"}, {3, 4, ""}}, tn::Selection{3, 3}}, tn::EditError::InvalidRange},
         {"invalid UTF-8", {revision, {{0, 1, "\xff"}}, {}}, tn::EditError::InvalidText},
         {"embedded NUL", {revision, {{0, 1, std::string("\0", 1)}}, {}}, tn::EditError::InvalidText},
     };
