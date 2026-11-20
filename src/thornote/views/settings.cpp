@@ -285,7 +285,7 @@ void EditorApp::drawSettings(ui::Rect r)
             context.text({body.x, y, 120, 32}, "Font size", theme.text, 12, true);
             if (body.w < 390) y += 32;
             float x = body.x + (body.w < 390 ? 0 : std::min(150.0f, body.w - 260));
-            ui::button(context, "settings/size/decrease", {x, y, 32, 32}, "", [this] { commands.execute("editor.font.decrease"); }, {.icon = "minus", .enabled = options.fontSize > Preferences::minFontSize});
+            ui::button(context, "settings/size/decrease", {x, y, 32, 32}, "", [this] { commands.execute("editor.font.decrease"); }, {.icon = "minus"});
             std::ostringstream sizeLabel;
             sizeLabel << options.fontSize << " px";
             context.text({x + 40, y, 64, 32}, sizeLabel.str(), theme.text, 12, false, ui::Align::Center);

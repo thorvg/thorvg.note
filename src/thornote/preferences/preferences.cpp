@@ -47,7 +47,6 @@ bool decodePreferences(std::string_view text, Preferences& result)
             value.font.path = utf8Path(path);
         } else if (key == "font-size") {
             if (!(in >> value.fontSize) || !std::isfinite(value.fontSize) || value.fontSize <= 0) return false;
-            value.fontSize = std::max(value.fontSize, Preferences::minFontSize);
         } else if (key == "line-number-scale") {
             if (!(in >> value.lineNumberScale) || !std::isfinite(value.lineNumberScale) || value.lineNumberScale < 0.5f || value.lineNumberScale > 2) return false;
         } else if (key == "line-number-offset") {

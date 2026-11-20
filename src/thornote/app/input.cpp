@@ -93,7 +93,7 @@ void EditorApp::zoom(int direction, const SDL_KeyboardEvent& event)
         zoomKey = event.key;
     }
     auto step = 1 + std::min<uint64_t>((now - zoomStarted) / 300, 5);
-    setFontSize(options.fontSize + direction * static_cast<float>(step));
+    setFontSize(std::max(options.fontSize / 2, options.fontSize + direction * static_cast<float>(step)));
 }
 
 bool EditorApp::key(const SDL_KeyboardEvent& event)

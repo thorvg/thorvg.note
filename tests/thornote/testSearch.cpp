@@ -450,20 +450,20 @@ TEST_CASE_FIXTURE(EditorTest, "editor_zoom_accelerates_only_while_the_shortcut_i
     CHECK(press(SDLK_MINUS, 3000, true) == 24);
     CHECK(press(SDLK_MINUS, 4000, true) == 18);
     CHECK(press(SDLK_MINUS, 4100, true) == 12);
-    CHECK(press(SDLK_MINUS, 4200, true) == 12);
-    CHECK_FALSE(enabled("editor.font.decrease"));
-    CHECK_FALSE(run("editor.font.decrease"));
-    CHECK(press(SDLK_PLUS, 4300) == 13);
+    CHECK(press(SDLK_MINUS, 4200, true) == 6);
+    CHECK(enabled("editor.font.decrease"));
+    CHECK(run("editor.font.decrease"));
+    CHECK(press(SDLK_PLUS, 4300) == 6);
     CHECK(press(SDLK_0, 4400) == 16);
     CHECK(press(SDLK_KP_PLUS, 4500) == 17);
     CHECK(press(SDLK_KP_MINUS, 4600) == 16);
 }
 
-TEST_CASE("legacy_font_sizes_below_the_zoom_limit_keep_other_preferences")
+TEST_CASE("fractional_font_sizes_survive_loading_preferences")
 {
     tn::Preferences decoded;
     REQUIRE(decodePreferences("thornote-settings 1\nfont-size 0.125\ndark 1\n", decoded));
-    CHECK(decoded.fontSize == tn::Preferences::minFontSize);
+    CHECK(decoded.fontSize == 0.125f);
     CHECK(decoded.dark);
 }
 

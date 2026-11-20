@@ -13,7 +13,6 @@ inline constexpr const char* preferencesAppId = "ThorNote";
 
 struct Preferences
 {
-    static constexpr float minFontSize = 12;
     FontChoice font;
     float fontSize = 16;
     bool dark = false;

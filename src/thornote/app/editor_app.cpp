@@ -268,8 +268,8 @@ void EditorApp::applyAppearance()
 
 void EditorApp::setFontSize(float size)
 {
-    size = std::clamp(size, Preferences::minFontSize, ui::TextEditorOptions::maxFontSize);
-    if (size == options.fontSize) return;
+    size = std::min(size, ui::TextEditorOptions::maxFontSize);
+    if (size <= 0 || size == options.fontSize) return;
     options.fontSize = size;
     applyEditorOptions();
 }
@@ -474,7 +474,7 @@ void EditorApp::registerCommands()
     add("tabs.segmented", "Use segmented tabs", "Appearance", "", [this] { tabOptions.style = ui::TabStyle::Segmented; });
     add("tabs.underline", "Use underlined tabs", "Appearance", "", [this] { tabOptions.style = ui::TabStyle::Underline; });
     add("editor.font.increase", "Increase editor font size", "Appearance", "Mod++", [this] { setFontSize(options.fontSize + 1); }, [this] { return options.fontSize < ui::TextEditorOptions::maxFontSize; });
-    add("editor.font.decrease", "Decrease editor font size", "Appearance", "Mod+-", [this] { setFontSize(options.fontSize - 1); }, [this] { return options.fontSize > Preferences::minFontSize; });
+    add("editor.font.decrease", "Decrease editor font size", "Appearance", "Mod+-", [this] { setFontSize(options.fontSize - std::min(1.0f, options.fontSize / 2)); });
     add("editor.font.reset", "Reset editor font size", "Appearance", "Mod+0", [this] { setFontSize(16); });
     add("tab.next", "Next tab", "Tabs", "Mod+Tab", [this] { cycleTabs(1); }, [this] { return workspace.documents().size() + settings.open > 1; }, "Only one tab is open");
     add("tab.previous", "Previous tab", "Tabs", "Mod+Shift+Tab", [this] { cycleTabs(-1); }, [this] { return workspace.documents().size() + settings.open > 1; }, "Only one tab is open");
