@@ -414,6 +414,59 @@ TEST_CASE_FIXTURE(EditorTest, "note_preview_wrapping_preserves_utf8_and_word_bou
 
 TEST_SUITE_END();
 
+TEST_CASE_FIXTURE(EditorTest, "editor_zoom_accelerates_only_while_the_shortcut_is_held")
+{
+    auto& tab = document("sample");
+    draw();
+#ifdef __APPLE__
+    constexpr auto primary = SDL_KMOD_GUI;
+#else
+    constexpr auto primary = SDL_KMOD_CTRL;
+#endif
+    auto press = [&](SDL_Keycode key, uint64_t ms, bool repeat = false) {
+        SDL_KeyboardEvent event{};
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key = key;
+        event.mod = primary;
+        event.timestamp = SDL_MS_TO_NS(ms);
+        event.repeat = repeat;
+        REQUIRE(app->nativeKeyDown(event));
+        return tab.editor.options().fontSize;
+    };
+    CHECK(press(SDLK_EQUALS, 100) == 17);
+    CHECK(press(SDLK_EQUALS, 400, true) == 19);
+    CHECK(press(SDLK_EQUALS, 1000, true) == 23);
+    CHECK(press(SDLK_EQUALS, 1800, true) == 29);
+    REQUIRE(run("editor.font.decrease"));
+    CHECK(tab.editor.options().fontSize == 28);
+
+    SDL_Event release{};
+    release.type = SDL_EVENT_KEY_UP;
+    release.key.key = SDLK_EQUALS;
+    release.key.mod = primary;
+    app->event(release, 1, 1);
+    CHECK(press(SDLK_EQUALS, 2000, true) == 29);
+    CHECK(press(SDLK_MINUS, 2100) == 28);
+    CHECK(press(SDLK_MINUS, 3000, true) == 24);
+    CHECK(press(SDLK_MINUS, 4000, true) == 18);
+    CHECK(press(SDLK_MINUS, 4100, true) == 12);
+    CHECK(press(SDLK_MINUS, 4200, true) == 12);
+    CHECK_FALSE(enabled("editor.font.decrease"));
+    CHECK_FALSE(run("editor.font.decrease"));
+    CHECK(press(SDLK_PLUS, 4300) == 13);
+    CHECK(press(SDLK_0, 4400) == 16);
+    CHECK(press(SDLK_KP_PLUS, 4500) == 17);
+    CHECK(press(SDLK_KP_MINUS, 4600) == 16);
+}
+
+TEST_CASE("legacy_font_sizes_below_the_zoom_limit_keep_other_preferences")
+{
+    tn::Preferences decoded;
+    REQUIRE(decodePreferences("thornote-settings 1\nfont-size 0.125\ndark 1\n", decoded));
+    CHECK(decoded.fontSize == tn::Preferences::minFontSize);
+    CHECK(decoded.dark);
+}
+
 TEST_CASE_FIXTURE(EditorTest, "find_field_undo_and_redo_do_not_change_the_document")
 {
     auto& tab = document("Original document");

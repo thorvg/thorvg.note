@@ -94,6 +94,9 @@ private:
     void finishPrompt(bool discard);
     void cancelPrompt();
     void applyAppearance();
+    void applyEditorOptions();
+    void setFontSize(float size);
+    void zoom(int direction, const SDL_KeyboardEvent&);
     void advanceAppearance(double seconds);
     void editTheme();
     void configure(DocumentTab&);
@@ -175,6 +178,8 @@ private:
     storage::Path findDirectory;  // Folder shown by the pending open dialog.
     std::unique_ptr<tvg::Picture> titleBarIcon;
     ui::TextEditorOptions options{.markdown = true};
+    SDL_Keycode zoomKey = SDLK_UNKNOWN;
+    uint64_t zoomStarted = 0;
     ui::TabOptions tabOptions{ui::TabStyle::Connected, 7, 6};
     ui::FontId editorFont = 0, lineNumberFont = 0;
     std::array<ui::FontId, 2> bundledFonts{};

@@ -261,6 +261,21 @@ void EditorApp::applyAppearance()
     options.lineNumbers = layout().lineNumbers;
     options.padding = 16;
     settings.preview.theme(theme);
+    for (const auto& tab : workspace.documents())
+        tab->editor.theme(theme);
+    applyEditorOptions();
+}
+
+void EditorApp::setFontSize(float size)
+{
+    size = std::clamp(size, Preferences::minFontSize, ui::TextEditorOptions::maxFontSize);
+    if (size == options.fontSize) return;
+    options.fontSize = size;
+    applyEditorOptions();
+}
+
+void EditorApp::applyEditorOptions()
+{
     auto preview = options;
     preview.padding = 8;
     preview.lineNumbers = preview.readOnly = true;
@@ -274,7 +289,6 @@ void EditorApp::applyAppearance()
         auto& editor = tab->editor;
         bool zoom = editor.options().fontSize != options.fontSize;
         auto anchor = zoom ? editor.caretRect() : ui::Rect{};
-        editor.theme(theme);
         editor.options(options);
         if (zoom) {
             auto caret = editor.caretRect();
@@ -459,9 +473,9 @@ void EditorApp::registerCommands()
     add("tabs.connected", "Use connected tabs", "Appearance", "", [this] { tabOptions.style = ui::TabStyle::Connected; });
     add("tabs.segmented", "Use segmented tabs", "Appearance", "", [this] { tabOptions.style = ui::TabStyle::Segmented; });
     add("tabs.underline", "Use underlined tabs", "Appearance", "", [this] { tabOptions.style = ui::TabStyle::Underline; });
-    add("editor.font.increase", "Increase editor font size", "Appearance", "Mod++", [this] { options.fontSize += std::min(1.0f, options.fontSize); applyAppearance(); });
-    add("editor.font.decrease", "Decrease editor font size", "Appearance", "Mod+-", [this] { options.fontSize -= std::min(1.0f, options.fontSize / 2); applyAppearance(); });
-    add("editor.font.reset", "Reset editor font size", "Appearance", "Mod+0", [this] { options.fontSize = 16; applyAppearance(); });
+    add("editor.font.increase", "Increase editor font size", "Appearance", "Mod++", [this] { setFontSize(options.fontSize + 1); }, [this] { return options.fontSize < ui::TextEditorOptions::maxFontSize; });
+    add("editor.font.decrease", "Decrease editor font size", "Appearance", "Mod+-", [this] { setFontSize(options.fontSize - 1); }, [this] { return options.fontSize > Preferences::minFontSize; });
+    add("editor.font.reset", "Reset editor font size", "Appearance", "Mod+0", [this] { setFontSize(16); });
     add("tab.next", "Next tab", "Tabs", "Mod+Tab", [this] { cycleTabs(1); }, [this] { return workspace.documents().size() + settings.open > 1; }, "Only one tab is open");
     add("tab.previous", "Previous tab", "Tabs", "Mod+Shift+Tab", [this] { cycleTabs(-1); }, [this] { return workspace.documents().size() + settings.open > 1; }, "Only one tab is open");
     add("file.lineEndings.lf", "Convert output line endings to LF", "File", "", [this] { if (auto tab = target()) tab->format.ending = storage::LineEnding::Lf; }, ready, "No document is ready");

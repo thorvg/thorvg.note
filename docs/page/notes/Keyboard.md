@@ -12,6 +12,10 @@ Mod is Command on macOS and Ctrl everywhere else, in the browser too.
   Mod+Shift+Z   Redo
   Mod+A         Select all
   Mod++ Mod+-   Editor font size
+  Mod+0         Reset editor font size
+
+Tap the zoom shortcuts for 1 px steps, or hold to zoom faster.
+The editor stops at 12 px when zooming out.
 
 Click inside the app first: it only hears the keyboard while it has focus.
 A browser keeps a few keys for itself, such as new window and close tab.

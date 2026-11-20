@@ -285,11 +285,11 @@ void EditorApp::drawSettings(ui::Rect r)
             context.text({body.x, y, 120, 32}, "Font size", theme.text, 12, true);
             if (body.w < 390) y += 32;
             float x = body.x + (body.w < 390 ? 0 : std::min(150.0f, body.w - 260));
-            ui::button(context, "settings/size/decrease", {x, y, 32, 32}, "", [this] { commands.execute("editor.font.decrease"); }, {.icon = "minus"});
+            ui::button(context, "settings/size/decrease", {x, y, 32, 32}, "", [this] { commands.execute("editor.font.decrease"); }, {.icon = "minus", .enabled = options.fontSize > Preferences::minFontSize});
             std::ostringstream sizeLabel;
             sizeLabel << options.fontSize << " px";
             context.text({x + 40, y, 64, 32}, sizeLabel.str(), theme.text, 12, false, ui::Align::Center);
-            ui::button(context, "settings/size/increase", {x + 112, y, 32, 32}, "", [this] { commands.execute("editor.font.increase"); }, {.icon = "plus"});
+            ui::button(context, "settings/size/increase", {x + 112, y, 32, 32}, "", [this] { commands.execute("editor.font.increase"); }, {.icon = "plus", .enabled = options.fontSize < ui::TextEditorOptions::maxFontSize});
             ui::button(context, "settings/size/reset", {x + 156, y, 82, 32}, "Reset", [this] { commands.execute("editor.font.reset"); }, {.style = ui::ButtonStyle::Quiet});
             y += 48;
             auto adjust = [&](const char* id, const char* label, float ui::TextEditorOptions::*member, float step, float initial, bool percent) {

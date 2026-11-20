@@ -85,6 +85,17 @@ bool EditorApp::searchFocused() const
     return palette || findFocused() || (settings.active && (context.focused() == "settings/search" || context.focused() == "settings/fonts/search")) || ((composition == Layout::Note || commandList) && (!active || !editorFocus) && ((commandList && context.focused() == "sidebar/commands/search") || (composition == Layout::Note && !commandList && context.focused() == "notes/search")));
 }
 
+void EditorApp::zoom(int direction, const SDL_KeyboardEvent& event)
+{
+    const auto now = event.timestamp ? SDL_NS_TO_MS(event.timestamp) : SDL_GetTicks();
+    if (!event.repeat || zoomKey != event.key || now < zoomStarted) {
+        zoomStarted = now;
+        zoomKey = event.key;
+    }
+    auto step = 1 + std::min<uint64_t>((now - zoomStarted) / 300, 5);
+    setFontSize(options.fontSize + direction * static_cast<float>(step));
+}
+
 bool EditorApp::key(const SDL_KeyboardEvent& event)
 {
     suppressedInputText.clear();
@@ -189,8 +200,10 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
             case SDLK_G: command = mods.shift ? "edit.find.previous" : "edit.find.next"; break;
             case SDLK_TAB: command = mods.shift ? "tab.previous" : "tab.next"; break;
             case SDLK_EQUALS:
-            case SDLK_PLUS: command = "editor.font.increase"; break;
-            case SDLK_MINUS: command = "editor.font.decrease"; break;
+            case SDLK_KP_PLUS:
+            case SDLK_PLUS: zoom(1, event); return true;
+            case SDLK_KP_MINUS:
+            case SDLK_MINUS: zoom(-1, event); return true;
             case SDLK_0: command = "editor.font.reset"; break;
         }
         if (command) {
@@ -309,6 +322,7 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
         case SDL_EVENT_QUIT:
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED: requestQuit(); break;
         case SDL_EVENT_WINDOW_FOCUS_LOST:
+            zoomKey = SDLK_UNKNOWN;
             if (auto input = context.input()) input->composition("", 0);
             windowFocused = false;
             suppressedInputText.clear();
@@ -331,6 +345,7 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
             key(event.key);
             break;
         case SDL_EVENT_KEY_UP:
+            if (event.key.key == zoomKey || !ui::platform::modifiers(modifiers(event.key.mod)).primary) zoomKey = SDLK_UNKNOWN;
             suppressedInputText.clear();
             suppressKeyText = false;
             textInputShift = false;
