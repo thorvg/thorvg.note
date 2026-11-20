@@ -121,7 +121,6 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
 .emoji-card:focus-visible { outline: 2px solid #7377e0; outline-offset: -3px; }
 .motion-glyph { position: static; display: block; width: 64px; height: 64px; pointer-events: none; }
 .motion-label { color: var(--muted); font-size: 12px; line-height: 1.4; text-align: center; }
-.motion-description a { color: var(--ink); text-underline-offset: 3px; }
 .emoji-card[data-loaded="failed"] .motion-label { color: #a44545; }
 .emoji-demo { margin: 0 0 32px; }
 .emoji-demo img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 10px; }
@@ -333,10 +332,7 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
             <h2 id="motion-title">Motion emoji</h2>
             <p class="motion-hint">Select an emoji to pause or play.</p>
         </div>
-        <p class="motion-description">881 Lottie-powered emoji, animated inline as you write with ThorVG. Explore a few from the collection below.<br>
-            Animation assets: <a href="https://googlefonts.github.io/noto-emoji-animation/">Animated Noto Emoji</a>,
-            copyright Google LLC, used unmodified under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.
-            <a href="AnimatedEmoji.LICENSE">Asset credits</a>.</p>
+        <p class="motion-description">881 Lottie-powered emoji, animated inline as you write with ThorVG. Explore a few from the collection below.</p>
         <figure class="emoji-demo">
             <picture>
                 <source media="(prefers-reduced-motion: reduce)" srcset="media/emoji-writing.png">
@@ -344,8 +340,7 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
                     alt="Write Copy and paste before selecting the Lottie in action sentence, right-click and choose Copy, paste once from the menu, and use the keyboard shortcut for two more copies. The editor and camera remain fixed throughout pasting.">
             </picture>
             <figcaption>Type <kbd>:</kbd> to open up to five suggestions. Keep typing a name to filter the matches, then select an emoji to insert it.
-                Emoji animate inline and copy as standard Unicode for compatibility with other apps. Select a whole line, right-click and choose Copy, then choose Paste once. Use the keyboard shortcut for the next two copies.
-                Browse the examples below, rendered with ThorVG WebCanvas.</figcaption>
+                Emoji animate inline and copy as standard Unicode for compatibility with other apps.</figcaption>
         </figure>
         <div class="emoji-sheet">
             <canvas class="emoji-layer" aria-hidden="true"></canvas>
