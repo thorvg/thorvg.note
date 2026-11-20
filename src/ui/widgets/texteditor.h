@@ -78,6 +78,14 @@ struct TextEditor::Impl
     std::map<float, size_t> lineWidths;
     size_t cachedFirst = 0, cachedEnd = 0, drawnFirst = 0, drawnEnd = 0;
     std::vector<tn::MarkdownBlock> markdownBlocks;
+    // Empty delimiters have no inline span until the user types between them.
+    struct EmptyMarkup
+    {
+        uint64_t revision;
+        size_t caret;
+        MarkdownFormat format;
+    };
+    std::optional<EmptyMarkup> emptyMarkup;
     std::map<size_t, std::vector<Format>> markdownFormats;
     bool referenceMarkdown = false;
     double renderOrigin = 0, preeditOrigin = 0;
@@ -159,6 +167,7 @@ struct TextEditor::Impl
     void ensureCaret();
     void clampScroll();
     void edited(bool changed, bool revealCaret = true);
+    bool formatLines(MarkdownFormat format, unsigned level);
     bool commitEdits(const tn::EditBatch& batch, std::string& error, bool collapseUnchanged = false);
     bool update(double now);
 

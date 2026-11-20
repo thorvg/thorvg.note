@@ -2434,6 +2434,21 @@ public:
 namespace ui
 {
 
+/** @brief Markdown source edits available to editor hosts. */
+enum class MarkdownFormat
+{
+    Bold,
+    Italic,
+    Code,
+    Strike,
+    Link,
+    Heading,
+    Quote,
+    BulletList,
+    OrderedList,
+    TaskList
+};
+
 /**
  * @brief Editor display dimensions and edit policy.
  *
@@ -2697,6 +2712,9 @@ public:
      * @return Whether accepted; read-only mode and active composition reject edits.
      */
     bool applyEdits(const tn::EditBatch& batch, std::string& error);
+
+    /** @brief Formats the primary selection or its lines. Heading levels range from 1 to 6. */
+    bool formatMarkdown(MarkdownFormat format, unsigned level = 1);
 
     /**
      * @brief Replaces the primary selection with validated text through the common editing path.

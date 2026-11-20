@@ -238,7 +238,7 @@ void TextEditor::Impl::parseMarkdown(size_t& start, size_t& end, bool incrementa
             for (size_t i = 0; i < a.spans.size(); ++i) {
                 const auto& x = a.spans[i];
                 const auto& y = b.spans[i];
-                if (x.start != y.start || x.end != y.end || x.kind != y.kind || x.level != y.level || x.element != y.element) return false;
+                if (x.start != y.start || x.end != y.end || x.kind != y.kind || x.level != y.level || x.element != y.element || x.markerWidth != y.markerWidth) return false;
             }
             return true;
         };

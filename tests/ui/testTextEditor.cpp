@@ -70,6 +70,130 @@ struct Editor : ui::test::Frame
 
 TEST_SUITE_BEGIN("editor");
 
+TEST_CASE_FIXTURE(Editor, "markdown_shortcuts_edit_source_and_restore_selection")
+{
+    using Kind = ui::MarkdownFormat;
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    SUBCASE("empty markers, continued typing and exit")
+    {
+        for (auto [kind, marker] : {std::pair{Kind::Bold, "**"}, {Kind::Italic, "*"}, {Kind::Code, "`"}, {Kind::Strike, "~~"}}) {
+            REQUIRE(document.text(""));
+            editor.select(0, 0);
+            REQUIRE(editor.formatMarkdown(kind));
+            CHECK(document.text() == std::string(marker) + marker);
+            CHECK(editor.session().selection().caret == std::string_view(marker).size());
+            REQUIRE(editor.formatMarkdown(kind));
+            CHECK(document.text().empty());
+            REQUIRE(editor.formatMarkdown(kind));
+            std::string error;
+            REQUIRE(editor.insert("word", error));
+            REQUIRE(editor.formatMarkdown(kind));
+            CHECK(editor.session().selection().caret == document.text().size());
+            REQUIRE(editor.insert(".", error));
+            CHECK(document.text() == std::string(marker) + "word" + marker + ".");
+        }
+    }
+    SUBCASE("existing delimiters and undo")
+    {
+        REQUIRE(document.text("__bold__ and _italic_"));
+        editor.select(6, 2);
+        REQUIRE(editor.formatMarkdown(Kind::Bold));
+        CHECK(document.text() == "bold and _italic_");
+        REQUIRE(editor.undo());
+        CHECK(document.text() == "__bold__ and _italic_");
+        CHECK(editor.session().selection().anchor == 6);
+        CHECK(editor.session().selection().caret == 2);
+        REQUIRE(editor.redo());
+        editor.select(9, 17);
+        REQUIRE(editor.formatMarkdown(Kind::Italic));
+        CHECK(document.text() == "bold and italic");
+    }
+    SUBCASE("inline code containing backticks")
+    {
+        REQUIRE(document.text("Use ` or `` here"));
+        editor.select(4, 11);
+        REQUIRE(editor.formatMarkdown(Kind::Code));
+        CHECK(document.text() == "Use ``` ` or `` ``` here");
+        CHECK(editor.session().selectedText() == "` or ``");
+        REQUIRE(editor.formatMarkdown(Kind::Code));
+        CHECK(document.text() == "Use ` or `` here");
+    }
+    SUBCASE("unformat a word without changing surrounding bold text")
+    {
+        REQUIRE(document.text("**one two three**"));
+        editor.select(9, 6);
+        REQUIRE(editor.formatMarkdown(Kind::Bold));
+        CHECK(document.text() == "**one** two **three**");
+        CHECK(editor.session().selectedText() == "two");
+        REQUIRE(document.text("**word**"));
+        editor.select(2, 6);
+        REQUIRE(editor.formatMarkdown(Kind::Italic));
+        CHECK(document.text() == "***word***");
+        REQUIRE(editor.formatMarkdown(Kind::Italic));
+        CHECK(document.text() == "**word**");
+        REQUIRE(document.text("a ~word~ here"));
+        editor.select(3, 7);
+        REQUIRE(editor.formatMarkdown(Kind::Strike));
+        CHECK(document.text() == "a word here");
+    }
+    SUBCASE("literal code and an existing thematic break")
+    {
+        REQUIRE(document.text("```\ncode\n```\n\n****"));
+        editor.select(4, 8);
+        CHECK_FALSE(editor.formatMarkdown(Kind::Bold));
+        CHECK_FALSE(editor.formatMarkdown(Kind::Code));
+        editor.select(15, 15);
+        REQUIRE(editor.formatMarkdown(Kind::Bold));
+        CHECK(document.text().ends_with("********"));
+    }
+    SUBCASE("links select the destination for editing")
+    {
+        REQUIRE(document.text("See [example](url)"));
+        editor.select(7, 7);
+        REQUIRE(editor.formatMarkdown(Kind::Link));
+        CHECK(editor.session().selectedText() == "url");
+        editor.select(0, 0);
+        REQUIRE(editor.formatMarkdown(Kind::Link));
+        CHECK(document.text().starts_with("[]()See"));
+        CHECK(editor.session().selection().caret == 1);
+    }
+    SUBCASE("line formats preserve indentation, checked items and the next line")
+    {
+        REQUIRE(document.text("> - [x] done\n>   next\nlast"));
+        auto end = document.text().find("last");
+        editor.select(end, 0);
+        REQUIRE(editor.formatMarkdown(Kind::TaskList));
+        CHECK(document.text() == "> - [x] done\n>   - [ ] next\nlast");
+        REQUIRE(editor.formatMarkdown(Kind::OrderedList));
+        CHECK(document.text() == "> 1. done\n>   2. next\nlast");
+        REQUIRE(editor.formatMarkdown(Kind::OrderedList));
+        CHECK(document.text() == "> done\n>   next\nlast");
+        REQUIRE(editor.undo());
+        CHECK(document.text() == "> 1. done\n>   2. next\nlast");
+    }
+    SUBCASE("disabled outside editable Markdown or during composition")
+    {
+        REQUIRE(document.text("original"));
+        editor.select(0, 8);
+        options.markdown = false;
+        editor.options(options);
+        CHECK_FALSE(editor.formatMarkdown(Kind::Bold));
+        options.markdown = options.readOnly = true;
+        editor.options(options);
+        CHECK_FALSE(editor.formatMarkdown(Kind::Bold));
+        options.readOnly = false;
+        editor.options(options);
+        context.focus("editor");
+        draw();
+        editor.composition("한", 3);
+        REQUIRE(editor.composing());
+        CHECK_FALSE(editor.formatMarkdown(Kind::Bold));
+        CHECK(document.text() == "original");
+    }
+}
+
 TEST_CASE_FIXTURE(Editor, "checked_task_styles_follow_edits_and_undo")
 {
     REQUIRE(document.text("- [ ] Finish **the note**\n- [ ] Keep editing\n"));

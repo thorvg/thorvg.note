@@ -28,6 +28,7 @@ struct MarkdownSpan
     MarkdownKind kind;
     uint8_t level = 0;
     MarkdownKind element = MarkdownKind::Marker;  ///< Owning element for a Marker range.
+    uint8_t markerWidth = 0;                      ///< Bytes on each side of paired inline content, including code span padding.
 };
 
 struct MarkdownBlock

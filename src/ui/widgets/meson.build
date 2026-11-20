@@ -6,6 +6,7 @@ ui_sources += files(
   'textview.cpp',
   'texteditor.cpp',
   'texteditor_api.cpp',
+  'texteditor_format.cpp',
   'texteditor_decorations.cpp',
   'texteditor_widgets.cpp',
   'texteditor_layout.cpp',

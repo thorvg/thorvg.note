@@ -82,9 +82,9 @@ struct Parser
         return previous == std::string_view::npos ? 0 : previous + 1;
     }
     size_t lineEnd(size_t offset) const { return std::min(source.find('\n', offset), source.size()); }
-    void add(size_t first, size_t end, MarkdownKind kind, unsigned level = 0)
+    void add(size_t first, size_t end, MarkdownKind kind, unsigned level = 0, uint8_t markerWidth = 0)
     {
-        if (first < end && end <= source.size()) result.push_back({uint32_t(first), uint32_t(end), kind, uint8_t(level)});
+        if (first < end && end <= source.size()) result.push_back({uint32_t(first), uint32_t(end), kind, uint8_t(level), MarkdownKind::Marker, markerWidth});
     }
     void addMarker(size_t first, size_t end, MarkdownKind element)
     {
@@ -263,22 +263,30 @@ struct Parser
         }
         if (first == std::string_view::npos) return;
         auto contentStart = first, contentEnd = end;
-        if (delimiter && first >= delimiter) {
+        // MD4C excludes a single padding space on either side of nonblank code.
+        if (kind == MarkdownKind::Code && first >= 2 && source.substr(first - 2, 2) == "` " && source.substr(end, 2) == " `") {
+            --first;
+            ++end;
+        }
+        if (kind == MarkdownKind::Code) {
+            auto openEnd = first, closeStart = end;
+            while (first && source[first - 1] == '`')
+                --first;
+            while (end < source.size() && end - closeStart < openEnd - first && source[end] == '`')
+                ++end;
+        } else if (first && end < source.size()) {
             auto marker = source[first - 1];
-            if (marker == '*' || marker == '_' || marker == '`' || marker == '~') {
-                if (kind == MarkdownKind::Code) {
-                    while (first && source[first - 1] == '`')
-                        --first;
-                    auto count = contentStart - first;
-                    while (end < source.size() && end - contentEnd < count && source[end] == '`')
-                        ++end;
-                } else {
+            if (kind == MarkdownKind::Strike && (first < 2 || source[first - 2] != '~')) delimiter = 1;
+            if ((kind == MarkdownKind::Strike ? marker == '~' : marker == '*' || marker == '_') && first >= delimiter) {
+                auto opening = source.substr(first - delimiter, delimiter);
+                if (opening.find_first_not_of(marker) == source.npos && opening == source.substr(end, delimiter)) {
                     first -= delimiter;
-                    if (source.size() - end >= delimiter) end += delimiter;
+                    end += delimiter;
                 }
             }
         }
-        add(first, end, kind);
+        auto width = contentStart - first;
+        add(first, end, kind, 0, width == end - contentEnd && width <= UINT8_MAX ? uint8_t(width) : 0);
         addMarker(first, contentStart, kind);
         addMarker(contentEnd, end, kind);
         complete(first, end);
