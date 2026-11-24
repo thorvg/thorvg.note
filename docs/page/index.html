@@ -58,21 +58,16 @@ a:focus-visible { outline: 2px solid #7377e0; outline-offset: 5px; border-radius
 .brand { display: inline-flex; align-items: center; gap: 9px; color: #17181a; text-decoration: none; }
 .brand img { display: block; width: 32px; height: 32px; }
 .brand span { font-size: 22px; font-weight: 600; letter-spacing: -0.7px; }
-.header nav { display: flex; align-items: center; gap: 30px; margin-left: auto; }
-.header nav a { color: #64666a; font-size: 14px; text-decoration: none; }
-.header nav a:hover { color: #17181a; }
+.header nav { margin-left: auto; }
+.site-link { display: flex; align-items: center; gap: 6px; min-height: 30px; color: var(--muted); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.site-link:hover { color: var(--ink); }
+.site-link img { display: block; width: auto; height: 21px; }
 .source { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: #27292c; }
 .source:hover { opacity: 0.65; }
 .source svg { width: 21px; height: 21px; }
 
-.masthead { position: relative; isolation: isolate; overflow: hidden; padding: 70px 40px 56px; background: #25292e; }
-.vector-scene { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; mask-image: linear-gradient(90deg, #000, transparent 35%, transparent 65%, #000); }
-.vector-scene svg { position: absolute; top: -12px; width: clamp(280px, 28vw, 420px); height: auto; overflow: visible; }
-.scene-left { left: -28px; }
-.scene-right { right: -32px; }
-.scene-caret { animation: caret-blink 1.6s step-end infinite; }
-@keyframes caret-blink { 0%, 65%, 100% { opacity: 0.85; } 66%, 99% { opacity: 0.15; } }
-.headline { max-width: 1120px; margin: 48px auto 0; color: #fff; text-align: center; }
+.masthead { padding: 70px 40px 56px; background: #000; }
+.headline { max-width: 1120px; margin: 0 auto 48px; color: #fff; text-align: center; }
 h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 4.2vw, 56px); font-weight: 500; line-height: 1.2857; letter-spacing: -1.3px; text-wrap: balance; }
 .headline p { max-width: 960px; margin: 12px auto 0; color: #edebe8; font-size: 23px; font-weight: 400; line-height: 1.45; text-wrap: balance; }
 .try-button { display: inline-flex; align-items: center; justify-content: center; min-width: 112px; min-height: 44px; margin-top: 24px; padding: 10px 28px; border-radius: 6px; background: #f3cd91; color: #25292e; font-size: 16px; font-weight: 600; text-decoration: none; transition: background 0.15s; }
@@ -91,19 +86,14 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
 .stage[data-state="failed"] .stage-status::before { display: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Decorative keycaps stay behind the editor and never capture input. */
-.shortcut-scene { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.shortcut-ghost { position: absolute; left: var(--x); top: var(--y); display: inline-flex; gap: 6px; transform: translateX(-50%) rotate(var(--turn)); opacity: 0.25; white-space: nowrap; }
-.shortcut-ghost kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding-inline: 8px; color: #c5d1e2; background: rgb(255 255 255 / 3%); border: 1px solid rgb(184 204 228 / 45%); border-bottom-width: 2px; border-radius: 6px; font-family: var(--mono); font-size: 13px; font-weight: 400; line-height: 1; }
-
-.shortcuts { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-block: 48px 64px; }
+.shortcuts { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-block: 48px 64px; border-top: 1px solid var(--rule); }
 .shortcuts h2 { margin: 0 0 20px; font-size: 19px; font-weight: 600; letter-spacing: -0.4px; }
 .keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 44px; margin: 0; padding: 0; list-style: none; }
 .keys li { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; color: var(--muted); font-size: 14px; }
 .keys .combo { display: inline-flex; gap: 4px; white-space: nowrap; }
 .keys kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 23px; height: 24px; padding-inline: 6px; color: #55585d; background: #fafafa; border: 1px solid #e3e4e6; border-radius: 4px; font-family: var(--mono); font-size: 11px; font-weight: 400; line-height: 1; }
-.features { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-block: 0 64px; }
-.features h2 { margin: 0 0 32px; padding-top: 40px; border-top: 1px solid var(--rule); font-size: clamp(36px, 4vw, 48px); font-weight: 600; letter-spacing: -1.2px; }
+.features { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-block: 40px 48px; }
+.features h2 { margin: 0 0 24px; font-size: clamp(26px, 3vw, 32px); font-weight: 600; letter-spacing: -0.6px; }
 .feature-label { margin: 0 0 20px; font-size: 21px; font-weight: 600; letter-spacing: -0.4px; }
 .feature-card { overflow: hidden; background: #fff; border: 1px solid #e1e2e4; border-radius: 10px; }
 .feature-demo { margin: 0 0 48px; }
@@ -111,11 +101,16 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
 .feature-demo figcaption { padding: 12px 16px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; line-height: 1.6; }
 .demo-playback { margin-inline-end: 8px; padding: 2px 10px; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); font: inherit; cursor: pointer; }
 .demo-playback:focus-visible { outline: 2px solid #7377e0; outline-offset: 2px; }
-.motion-emoji { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-bottom: 64px; }
-.motion-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; padding-top: 40px; border-top: 1px solid var(--rule); }
-.motion-heading h2 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px; }
+.motion-emoji { margin-bottom: 48px; }
+.motion-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+.motion-heading .feature-label { margin: 0; }
 .motion-hint { margin: 0; color: var(--muted); font-size: 12px; }
-.feature-description, .motion-description { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
+.feature-list { margin: 8px 0 0; padding-inline-start: 20px; }
+.additional-features { color: var(--muted); font-size: 14px; }
+.license { width: min(1128px, calc(100% - 64px)); margin-inline: auto; padding-block: 32px 48px; border-top: 1px solid var(--rule); }
+.license h2 { margin: 0 0 16px; font-size: 24px; font-weight: 600; }
+.license h3 { margin: 20px 0 8px; font-size: 16px; font-weight: 600; }
+.license p { margin: 0; color: var(--muted); font-size: 14px; }
 .emoji-sheet { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; overflow: hidden; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; }
 .emoji-layer { position: absolute; inset: 0; pointer-events: none; }
 .emoji-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-width: 0; min-height: 140px; margin: 0; padding: 20px 8px; border: 0; background: #fff; font: inherit; cursor: pointer; }
@@ -127,11 +122,10 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
 .emoji-demo { margin: 0 0 32px; }
 .emoji-demo img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 10px; }
 .emoji-demo figcaption { margin-top: 12px; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.feature-demo kbd, .emoji-demo kbd { padding: 1px 5px; border: 1px solid var(--rule); border-radius: 4px; color: var(--ink); font: inherit; }
 
 @media (max-width: 1000px) {
     .masthead { padding: 56px 24px 40px; }
-    .headline { margin-top: 36px; }
+    .headline { margin-bottom: 36px; }
     .headline p { font-size: 20px; }
     .keys { column-gap: 24px; }
 }
@@ -140,32 +134,21 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
     .header-inner { width: calc(100% - 32px); gap: 18px; }
     .brand span { font-size: 20px; }
     .brand img { width: 28px; height: 28px; }
-    .header nav { gap: 16px; }
-    .header nav a { font-size: 13px; }
-    .site-link { display: none; }
+    .site-link img { display: none; }
     .masthead { padding: 44px 16px 32px; }
-    .vector-scene { opacity: 0.65; }
-    .vector-scene svg { top: 10px; width: 240px; }
-    .scene-left { left: -112px; }
-    .scene-right { right: -112px; }
     h1 { font-size: clamp(31px, 8.5vw, 38px); line-height: 1.2; letter-spacing: -0.8px; }
-    .headline { margin-top: 30px; }
+    .headline { margin-bottom: 30px; }
     .headline p { margin-top: 16px; font-size: 17px; line-height: 1.5; }
     .stage { height: 520px; aspect-ratio: auto; min-height: 0; border-radius: 9px; }
     .stage-status { white-space: normal; }
-    .shortcut-ghost { opacity: 0.18; }
-    .shortcut-ghost kbd { min-width: 26px; height: 27px; padding-inline: 5px; font-size: 11px; }
     .shortcuts { width: calc(100% - 32px); padding-block: 32px 40px; }
     .shortcuts h2 { font-size: 17px; margin-bottom: 14px; }
     .keys { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
     .keys li { gap: 6px; font-size: 13px; }
     .keys kbd { min-width: 20px; padding-inline: 4px; font-size: 10px; }
-    .features { width: calc(100% - 32px); padding-bottom: 40px; }
-    .features h2 { padding-top: 32px; }
+    .features { width: calc(100% - 32px); padding-block: 32px; }
     .feature-label { font-size: 19px; }
-    .motion-emoji { width: calc(100% - 32px); padding-bottom: 40px; }
-    .motion-heading { padding-top: 32px; margin-bottom: 20px; }
-    .motion-heading h2 { font-size: 23px; }
+    .license { width: calc(100% - 32px); padding-bottom: 32px; }
     .emoji-sheet { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .motion-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
     .emoji-card { min-height: 128px; padding: 16px 4px; gap: 8px; }
@@ -183,7 +166,7 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
     <div class="header-inner">
         <a class="brand" href="#top" aria-label="ThorNote"><img src="logo.svg" alt=""><span>ThorNote</span></a>
         <nav aria-label="Links">
-            <a class="site-link" href="https://www.thorvg.org/">ThorVG</a>
+            <a class="site-link" href="https://www.thorvg.org/" aria-label="ThorVG homepage" title="ThorVG homepage"><img src="thorvg-symbol.svg" alt="">ThorVG <span aria-hidden="true">↗</span></a>
         </nav>
         <a class="source" href="https://github.com/thorvg/thorvg.note" aria-label="View source on GitHub" title="GitHub">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
@@ -192,59 +175,10 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
 </header>
 <main>
     <section class="masthead" aria-labelledby="page-title">
-        <div class="vector-scene" aria-hidden="true">
-            <svg class="scene-left" viewBox="0 0 400 640" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <linearGradient id="pen-stroke" x1="30" y1="140" x2="330" y2="470" gradientUnits="userSpaceOnUse">
-                        <stop stop-color="#F3CD91" stop-opacity="0.75"/>
-                        <stop offset="1" stop-color="#ED9D86" stop-opacity="0.15"/>
-                    </linearGradient>
-                </defs>
-                <g transform="rotate(-12 150 150)">
-                    <rect x="48" y="58" width="224" height="156" stroke="#B9C3D8" stroke-opacity="0.22" stroke-dasharray="4 5"/>
-                    <path d="M24 192H308M68 32V242" stroke="#B9C3D8" stroke-opacity="0.14"/>
-                    <text x="70" y="184" font-family="Fraunces, Georgia, serif" font-size="130" font-weight="500" stroke="#DCE3F1" stroke-opacity="0.4" stroke-width="1">Aa</text>
-                    <g fill="#25292E" stroke="#AABCD8" stroke-opacity="0.5">
-                        <rect x="44" y="54" width="8" height="8"/>
-                        <rect x="268" y="54" width="8" height="8"/>
-                        <rect x="44" y="210" width="8" height="8"/>
-                        <rect x="268" y="210" width="8" height="8"/>
-                    </g>
-                </g>
-                <path d="M-50 340C122 420 38 236 188 282S258 428 340 486" stroke="url(#pen-stroke)" stroke-width="2"/>
-                <path d="M-50 340L122 420M188 282L38 236M188 282L258 428M340 486L258 428" stroke="#F3CD91" stroke-opacity="0.18" stroke-dasharray="3 5"/>
-                <g fill="#25292E" stroke="#F3CD91" stroke-opacity="0.6" stroke-width="1.5">
-                    <rect x="183" y="277" width="10" height="10"/>
-                    <circle cx="38" cy="236" r="4"/>
-                    <circle cx="122" cy="420" r="4"/>
-                    <circle cx="258" cy="428" r="4"/>
-                    <rect x="335" y="481" width="10" height="10"/>
-                </g>
-                <path d="M-60 580C42 444 180 590 222 632" stroke="#9BC7DF" stroke-opacity="0.2" stroke-width="1.5"/>
-            </svg>
-            <svg class="scene-right" viewBox="0 0 400 640" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <g transform="rotate(9 230 124)">
-                    <rect x="70" y="58" width="290" height="78" rx="9" fill="#FFFFFF" fill-opacity="0.025" stroke="#9BC7DF" stroke-opacity="0.3"/>
-                    <rect x="88" y="81" width="58" height="34" rx="2" fill="#91BAF0" fill-opacity="0.16"/>
-                    <text x="91" y="105" fill="#E1E9F4" fill-opacity="0.6" font-family="Pretendard, sans-serif" font-size="22">Hello, vectors.</text>
-                    <path class="scene-caret" d="M232 80V116" stroke="#A8D7F2" stroke-width="2"/>
-                    <rect x="42" y="31" width="30" height="30" rx="5" fill="#25292E" stroke="#9BC7DF" stroke-opacity="0.4"/>
-                    <path d="M49 39H65M57 39V53M53 53H61" stroke="#C2D3E6" stroke-opacity="0.65" stroke-width="1.4"/>
-                </g>
-                <path d="M308 184C115 170 164 366 312 380S410 564 244 590" stroke="#91BAD4" stroke-opacity="0.4" stroke-width="2"/>
-                <path d="M308 184L115 170M312 380L164 366M312 380L410 564M244 590L410 564" stroke="#91BAD4" stroke-opacity="0.18" stroke-dasharray="3 5"/>
-                <g fill="#25292E" stroke="#9BC7DF" stroke-opacity="0.6" stroke-width="1.5">
-                    <rect x="303" y="179" width="10" height="10"/>
-                    <circle cx="115" cy="170" r="4"/>
-                    <circle cx="164" cy="366" r="4"/>
-                    <rect x="307" y="375" width="10" height="10"/>
-                    <rect x="239" y="585" width="10" height="10"/>
-                </g>
-                <g transform="rotate(24 366 308)" stroke="#EDBD92" stroke-opacity="0.2">
-                    <rect x="310" y="252" width="112" height="112" rx="24"/>
-                    <rect x="326" y="268" width="80" height="80" rx="16"/>
-                </g>
-            </svg>
+        <div class="headline">
+            <h1 id="page-title">ThorNote</h1>
+            <p>A lightweight, native text editor powered by ThorVG.</p>
+            <a class="try-button" href="note.html">Open web editor</a>
         </div>
         <div class="demo" id="demo">
             <div class="stage" id="stage" data-sample="7. README.md">
@@ -253,28 +187,147 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
                 <div class="stage-status" id="status" role="status">Starting the app</div>
             </div>
         </div>
-        <div class="shortcut-scene" aria-hidden="true">
-            <span class="shortcut-ghost" style="--x: 15%; --y: 22px; --turn: -8deg"><kbd>F1</kbd></span>
-            <span class="shortcut-ghost" style="--x: 40%; --y: 14px; --turn: 7deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>P</kbd></span>
-            <span class="shortcut-ghost" style="--x: 65%; --y: 24px; --turn: -5deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>O</kbd></span>
-            <span class="shortcut-ghost" style="--x: 87%; --y: 18px; --turn: 9deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>S</kbd></span>
-            <span class="shortcut-ghost" style="--x: 2%; --y: 24%; --turn: -12deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>B</kbd></span>
-            <span class="shortcut-ghost" style="--x: 97%; --y: 33%; --turn: 12deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>,</kbd></span>
-            <span class="shortcut-ghost" style="--x: 2%; --y: 56%; --turn: -8deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>Z</kbd></span>
-            <span class="shortcut-ghost" style="--x: 97%; --y: 66%; --turn: 9deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>Shift</kbd> <kbd>Z</kbd></span>
-            <span class="shortcut-ghost" style="--x: 7%; --y: 84%; --turn: -10deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>A</kbd></span>
-            <span class="shortcut-ghost" style="--x: 92%; --y: 84%; --turn: 8deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>C</kbd></span>
-            <span class="shortcut-ghost" style="--x: 4%; --y: calc(100% - 44px); --turn: -6deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>X</kbd></span>
-            <span class="shortcut-ghost" style="--x: 26%; --y: calc(100% - 40px); --turn: 7deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>V</kbd></span>
-            <span class="shortcut-ghost" style="--x: 50%; --y: calc(100% - 42px); --turn: -4deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>+</kbd></span>
-            <span class="shortcut-ghost" style="--x: 75%; --y: calc(100% - 40px); --turn: 6deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>-</kbd></span>
-            <span class="shortcut-ghost" style="--x: 96%; --y: calc(100% - 46px); --turn: -9deg"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd> <kbd>0</kbd></span>
-        </div>
-        <div class="headline">
-            <h1 id="page-title">Note application powered by ThorVG</h1>
-            <p>A plain-text editor rendered entirely as vectors. Try it in your browser.</p>
-            <a class="try-button" href="note.html">Try</a>
-        </div>
+    </section>
+    <section class="features" aria-labelledby="features-title">
+        <h2 id="features-title">Features</h2>
+        <h3 class="feature-label" id="markdown-title">Markdown Editing</h3>
+        <figure class="feature-card feature-demo" aria-labelledby="markdown-title">
+            <picture>
+                <source media="(prefers-reduced-motion: reduce)" srcset="media/markdown-writing.png">
+                <img src="media/markdown-writing.gif" width="2112" height="660" loading="lazy"
+                    alt="Writing Markdown headings, emphasis, links and code, then clicking a task checkbox to add and remove strikethrough.">
+            </picture>
+            <figcaption>Write and edit Markdown directly, with support for headings, emphasis, links, code, and interactive task lists.</figcaption>
+        </figure>
+        <section class="motion-emoji" id="motion-emoji" aria-labelledby="motion-title">
+            <div class="motion-heading">
+                <h3 class="feature-label" id="motion-title">Motion Emoji</h3>
+                <p class="motion-hint">Select an emoji to pause or play.</p>
+            </div>
+            <figure class="emoji-demo">
+                <picture>
+                    <source media="(prefers-reduced-motion: reduce)" srcset="media/emoji-writing.png">
+                    <img src="media/emoji-writing.gif" width="2112" height="660" loading="lazy"
+                        alt="Write Copy and paste before selecting the Lottie in action sentence, right-click and choose Copy, paste once from the menu, and use the keyboard shortcut for two more copies. The editor and camera remain fixed throughout pasting.">
+                </picture>
+                <figcaption>Bring your text to life with animated emoji. Type <code>:</code> followed by part of an emoji name and select a match.<br>
+                    Emoji animate inline while remaining compatible with standard Unicode text.</figcaption>
+            </figure>
+            <div class="emoji-sheet">
+                <canvas class="emoji-layer" aria-hidden="true"></canvas>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause grinning face animation">
+                    <span class="motion-glyph" data-emoji="1f600" aria-hidden="true"></span>
+                    <span class="motion-label">Grinning face</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause tears of joy animation">
+                    <span class="motion-glyph" data-emoji="1f602" aria-hidden="true"></span>
+                    <span class="motion-label">Tears of joy</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause heart eyes animation">
+                    <span class="motion-glyph" data-emoji="1f60d" aria-hidden="true"></span>
+                    <span class="motion-label">Heart eyes</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause feeling loved animation">
+                    <span class="motion-glyph" data-emoji="1f970" aria-hidden="true"></span>
+                    <span class="motion-label">Feeling loved</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause sunglasses animation">
+                    <span class="motion-glyph" data-emoji="1f60e" aria-hidden="true"></span>
+                    <span class="motion-label">Sunglasses</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause party face animation">
+                    <span class="motion-glyph" data-emoji="1f973" aria-hidden="true"></span>
+                    <span class="motion-label">Party face</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause thinking animation">
+                    <span class="motion-glyph" data-emoji="1f914" aria-hidden="true"></span>
+                    <span class="motion-label">Thinking</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause surprised animation">
+                    <span class="motion-glyph" data-emoji="1f62e" aria-hidden="true"></span>
+                    <span class="motion-label">Surprised</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause sleeping animation">
+                    <span class="motion-glyph" data-emoji="1f634" aria-hidden="true"></span>
+                    <span class="motion-label">Sleeping</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause crying animation">
+                    <span class="motion-glyph" data-emoji="1f62d" aria-hidden="true"></span>
+                    <span class="motion-label">Crying</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause ghost animation">
+                    <span class="motion-glyph" data-emoji="1f47b" aria-hidden="true"></span>
+                    <span class="motion-label">Ghost</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause robot animation">
+                    <span class="motion-glyph" data-emoji="1f916" aria-hidden="true"></span>
+                    <span class="motion-label">Robot</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause heart animation">
+                    <span class="motion-glyph" data-emoji="2764_fe0f" aria-hidden="true"></span>
+                    <span class="motion-label">Heart</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause fire animation">
+                    <span class="motion-glyph" data-emoji="1f525" aria-hidden="true"></span>
+                    <span class="motion-label">Fire</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause sparkles animation">
+                    <span class="motion-glyph" data-emoji="2728" aria-hidden="true"></span>
+                    <span class="motion-label">Sparkles</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause party popper animation">
+                    <span class="motion-glyph" data-emoji="1f389" aria-hidden="true"></span>
+                    <span class="motion-label">Party popper</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause rocket animation">
+                    <span class="motion-glyph" data-emoji="1f680" aria-hidden="true"></span>
+                    <span class="motion-label">Rocket</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause seedling animation">
+                    <span class="motion-glyph" data-emoji="1f331" aria-hidden="true"></span>
+                    <span class="motion-label">Seedling</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause waving hand animation">
+                    <span class="motion-glyph" data-emoji="1f44b" aria-hidden="true"></span>
+                    <span class="motion-label">Waving hand</span>
+                </button>
+                <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause clapping hands animation">
+                    <span class="motion-glyph" data-emoji="1f44f" aria-hidden="true"></span>
+                    <span class="motion-label">Clapping hands</span>
+                </button>
+            </div>
+        </section>
+        <h3 class="feature-label" id="layout-title">Layout Modes</h3>
+        <figure class="feature-card feature-demo" aria-labelledby="layout-title">
+            <picture>
+                <source media="(prefers-reduced-motion: reduce)" srcset="media/layout-switching.png">
+                <img src="media/layout-switching.gif" width="2112" height="660" loading="lazy"
+                    alt="Writing a guide to Memo and Note layouts, switching to Note, using Favorites, and returning to Memo.">
+            </picture>
+            <figcaption>
+                Choose between two layouts to suit your workflow:
+                <ul class="feature-list">
+                    <li><strong>Memo</strong> — Keep multiple documents organized in tabs.</li>
+                    <li><strong>Note</strong> — Browse and organize documents using sidebars.</li>
+                </ul>
+            </figcaption>
+        </figure>
+        <h3 class="feature-label" id="appearance-title">Light &amp; Dark Themes</h3>
+        <figure class="feature-card feature-demo" aria-labelledby="appearance-title">
+            <picture>
+                <source media="(prefers-reduced-motion: reduce)" srcset="media/theme-switching.png">
+                <img src="media/theme-switching.gif" width="2112" height="660" loading="lazy"
+                    alt="Writing a guide to appearance settings, opening the command palette, and switching smoothly from light to dark and back.">
+            </picture>
+            <figcaption>Switch seamlessly between light and dark themes through the command palette.</figcaption>
+        </figure>
+        <h3 class="feature-label">Additional Features</h3>
+        <ul class="feature-list additional-features">
+            <li><strong>Multi-document Editing</strong> — Work with multiple documents within a single application.</li>
+            <li><strong>Command Palette</strong> — Quickly access commands, themes, and layout settings.</li>
+            <li><strong>International Text Input</strong> — Write in multiple languages with IME support.</li>
+            <li><strong>Session Recovery</strong> — Recover unsaved work.</li>
+        </ul>
     </section>
     <section class="shortcuts" aria-labelledby="shortcuts-title">
         <h2 id="shortcuts-title">Keyboard shortcuts</h2>
@@ -299,136 +352,13 @@ h1 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: clamp(38px, 
             <li>Reset text size<span class="combo"><kbd class="mod"><span class="mod-control">Ctrl</span><span class="mod-command">⌘</span></kbd><kbd>0</kbd></span></li>
         </ul>
     </section>
-    <section class="features" aria-labelledby="features-title">
-        <h2 id="features-title">Features</h2>
-        <h3 class="feature-label" id="markdown-title">Markdown Base</h3>
-        <figure class="feature-card feature-demo" aria-labelledby="markdown-title">
-            <picture>
-                <source media="(prefers-reduced-motion: reduce)" srcset="media/markdown-writing.png">
-                <img src="media/markdown-writing.gif" width="2112" height="660" loading="lazy"
-                    alt="Writing Markdown headings, emphasis, links and code, then clicking a task checkbox to add and remove strikethrough.">
-            </picture>
-            <figcaption>Write headings, emphasis, links and code while keeping the source editable. Click a task checkbox to toggle completion and strikethrough.</figcaption>
-        </figure>
-        <h3 class="feature-label" id="appearance-title">Dark / Light mode</h3>
-        <figure class="feature-card feature-demo" aria-labelledby="appearance-title">
-            <picture>
-                <source media="(prefers-reduced-motion: reduce)" srcset="media/theme-switching.png">
-                <img src="media/theme-switching.gif" width="2112" height="660" loading="lazy"
-                    alt="Writing a guide to appearance settings, opening the command palette, and switching smoothly from light to dark and back.">
-            </picture>
-            <figcaption>Press <kbd>F1</kbd> to open the command palette. Search for <code>dark</code>, <code>light</code>, or <code>switch</code>, then press <kbd>Enter</kbd> to change appearance.</figcaption>
-        </figure>
-        <h3 class="feature-label" id="layout-title">Layout</h3>
-        <figure class="feature-card feature-demo" aria-labelledby="layout-title">
-            <picture>
-                <source media="(prefers-reduced-motion: reduce)" srcset="media/layout-switching.png">
-                <img src="media/layout-switching.gif" width="2112" height="660" loading="lazy"
-                    alt="Writing a guide to Memo and Note layouts, switching to Note, using Favorites, and returning to Memo.">
-            </picture>
-            <figcaption>Keep files in tabs with Memo, or browse two sidebars with Note. Press <kbd>F1</kbd> and search for <code>Use Note layout</code> or <code>Use Memo layout</code> to switch.</figcaption>
-        </figure>
-    </section>
-    <section class="motion-emoji" id="motion-emoji" aria-labelledby="motion-title">
-        <div class="motion-heading">
-            <h2 id="motion-title">Motion emoji</h2>
-            <p class="motion-hint">Select an emoji to pause or play.</p>
-        </div>
-        <p class="motion-description">881 Lottie-powered emoji, animated inline as you write with ThorVG. Explore a few from the collection below.</p>
-        <figure class="emoji-demo">
-            <picture>
-                <source media="(prefers-reduced-motion: reduce)" srcset="media/emoji-writing.png">
-                <img src="media/emoji-writing.gif" width="2112" height="660" loading="lazy"
-                    alt="Write Copy and paste before selecting the Lottie in action sentence, right-click and choose Copy, paste once from the menu, and use the keyboard shortcut for two more copies. The editor and camera remain fixed throughout pasting.">
-            </picture>
-            <figcaption>Type <kbd>:</kbd> to open up to five suggestions. Keep typing a name to filter the matches, then select an emoji to insert it.
-                Emoji animate inline and copy as standard Unicode for compatibility with other apps.</figcaption>
-        </figure>
-        <div class="emoji-sheet">
-            <canvas class="emoji-layer" aria-hidden="true"></canvas>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause grinning face animation">
-                <span class="motion-glyph" data-emoji="1f600" aria-hidden="true"></span>
-                <span class="motion-label">Grinning face</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause tears of joy animation">
-                <span class="motion-glyph" data-emoji="1f602" aria-hidden="true"></span>
-                <span class="motion-label">Tears of joy</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause heart eyes animation">
-                <span class="motion-glyph" data-emoji="1f60d" aria-hidden="true"></span>
-                <span class="motion-label">Heart eyes</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause feeling loved animation">
-                <span class="motion-glyph" data-emoji="1f970" aria-hidden="true"></span>
-                <span class="motion-label">Feeling loved</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause sunglasses animation">
-                <span class="motion-glyph" data-emoji="1f60e" aria-hidden="true"></span>
-                <span class="motion-label">Sunglasses</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause party face animation">
-                <span class="motion-glyph" data-emoji="1f973" aria-hidden="true"></span>
-                <span class="motion-label">Party face</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause thinking animation">
-                <span class="motion-glyph" data-emoji="1f914" aria-hidden="true"></span>
-                <span class="motion-label">Thinking</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause surprised animation">
-                <span class="motion-glyph" data-emoji="1f62e" aria-hidden="true"></span>
-                <span class="motion-label">Surprised</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause sleeping animation">
-                <span class="motion-glyph" data-emoji="1f634" aria-hidden="true"></span>
-                <span class="motion-label">Sleeping</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause crying animation">
-                <span class="motion-glyph" data-emoji="1f62d" aria-hidden="true"></span>
-                <span class="motion-label">Crying</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause ghost animation">
-                <span class="motion-glyph" data-emoji="1f47b" aria-hidden="true"></span>
-                <span class="motion-label">Ghost</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause robot animation">
-                <span class="motion-glyph" data-emoji="1f916" aria-hidden="true"></span>
-                <span class="motion-label">Robot</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause heart animation">
-                <span class="motion-glyph" data-emoji="2764_fe0f" aria-hidden="true"></span>
-                <span class="motion-label">Heart</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause fire animation">
-                <span class="motion-glyph" data-emoji="1f525" aria-hidden="true"></span>
-                <span class="motion-label">Fire</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause sparkles animation">
-                <span class="motion-glyph" data-emoji="2728" aria-hidden="true"></span>
-                <span class="motion-label">Sparkles</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause party popper animation">
-                <span class="motion-glyph" data-emoji="1f389" aria-hidden="true"></span>
-                <span class="motion-label">Party popper</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause rocket animation">
-                <span class="motion-glyph" data-emoji="1f680" aria-hidden="true"></span>
-                <span class="motion-label">Rocket</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause seedling animation">
-                <span class="motion-glyph" data-emoji="1f331" aria-hidden="true"></span>
-                <span class="motion-label">Seedling</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause waving hand animation">
-                <span class="motion-glyph" data-emoji="1f44b" aria-hidden="true"></span>
-                <span class="motion-label">Waving hand</span>
-            </button>
-            <button class="emoji-card" type="button" aria-pressed="false" aria-label="Pause clapping hands animation">
-                <span class="motion-glyph" data-emoji="1f44f" aria-hidden="true"></span>
-                <span class="motion-label">Clapping hands</span>
-            </button>
-        </div>
-    </section>
 </main>
+<footer class="license" aria-labelledby="license-title">
+    <h2 id="license-title">License</h2>
+    <p>ThorNote is released under the <a href="https://github.com/thorvg/thorvg.note/blob/main/LICENSE">MIT License</a>.</p>
+    <h3>Third-party Assets</h3>
+    <p>The <a href="https://googlefonts.github.io/noto-emoji-animation/">Animated Noto Emoji</a> assets are copyright Google LLC and licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p>
+</footer>
 
 <script>
 for (const source of document.querySelectorAll('figure picture source[media="(prefers-reduced-motion: reduce)"]')) {
