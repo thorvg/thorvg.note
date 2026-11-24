@@ -19,6 +19,8 @@ ThorNote is designed for everyday writing and note-taking, combining a minimal i
 
 Built on [ThorVG](https://github.com/thorvg/thorvg), ThorNote demonstrates how ThorVG can power a complete native desktop application.
 
+> ThorNote was developed with the assistance of [OpenAI Codex](https://chatgpt.com/codex/?utm_source=google&utm_medium=paid_search&c_id=24184441561&c_agid=203310201807&c_crid=822144559836&c_kwid=kwd-111182835&c_ims=&c_pms=9197166&c_nw=g&c_dvc=c&utm_campaign=24184441561&gad_source=1&gad_campaignid=24184441561&gbraid=0AAAAA-I0E5esuec5GCIlRYOF0N_x2kGQj&gclid=CjwKCAiA5Y_YBhBbEiwAK5Dl7Tt7hJy6tifgsZmEsSv_hNtQrMs6m9GKrckLQw_PN8HvkDEszUb0vBoCiwIQAvD_BwE).
+
 ## Features
 
 ### Markdown Editing
