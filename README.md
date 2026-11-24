@@ -1,57 +1,93 @@
+[![LFX Active Contributors](https://insights.linuxfoundation.org/api/badge/active-contributors?project=thorvg&repos=https://github.com/thorvg/thorvg.note)](https://insights.linuxfoundation.org/project/thorvg/repository/thorvg_thorvg.note)
+[![License](https://img.shields.io/badge/licence-MIT-green.svg?style=flat)](LICENSE)
+[![Wikipedia](https://img.shields.io/badge/Wikipedia-000000?style=flat&logo=wikipedia&logoColor=white)](https://en.wikipedia.org/wiki/Thor_Vector_Graphics)
+[![Discord](https://img.shields.io/badge/Community-5865f2?style=flat&logo=discord&logoColor=white)](https://discord.gg/n25xj6J6HM)
+[![OpenCollective](https://img.shields.io/badge/OpenCollective-84B5FC?style=flat&logo=opencollective&logoColor=white)](https://opencollective.com/thorvg)
+
 # ThorNote
 
 <p align="center">
   <img width="550" height="auto" src="https://raw.githubusercontent.com/thorvg/thorvg.site/main/readme/logo/animated_brand.svg">
 </p>
 
-A native plain-text editor rendered with ThorVG. Includes multiple documents, configurable layouts, IME input and recovery of unsaved work.
+<h3 align="center">A lightweight, native text editor powered by ThorVG</h3>
 
-## Feature
+ThorNote is designed for everyday writing and note-taking, combining a minimal interface with Markdown editing, flexible layouts, and animated emoji. It supports multiple documents, international text input (IME), and automatic recovery of unsaved work.
 
-### Markdown
+Built on [ThorVG](https://github.com/thorvg/thorvg), ThorNote demonstrates how ThorVG can power a complete native desktop application.
 
-![Writing Markdown and checking off a task](docs/page/media/markdown-writing.gif)
+## Features
 
-Edit headings, emphasis, links and code directly in the Markdown source.
+### Markdown Editing
 
-### Dark and light modes
+Write and edit Markdown directly, with support for headings, emphasis, links, code, and interactive task lists.
 
+<img width="700" src="docs/page/media/markdown-writing.gif" alt="Markdown editing">
 
-![Switching from light to dark mode and back](docs/page/media/theme-switching.gif)
+### Motion Emoji
 
-Open the command palette, then choose a dark or light theme.
+Bring your text to life with animated emoji. Type `:` followed by part of an emoji name and select a match.</br>
+Emoji animate inline while remaining compatible with standard Unicode text.
 
-### Layouts
+<img width="700" src="docs/page/media/emoji-writing.gif" alt="Motion emoji">
 
-![Switching from Memo tabs to Note sidebars and browsing Favorites](docs/page/media/layout-switching.gif)
+### Layout Modes
 
-Use Memo to keep documents in tabs or Note to browse them in two sidebars.
-Switch layouts from the command palette.
+Choose between two layouts to suit your workflow:
 
-### Motion emoji
+- **Memo** — Keep multiple documents organized in tabs.
+- **Note** — Browse and organize documents using sidebars.
 
-![Finding an animated emoji by name and pasting the line that contains it](docs/page/media/emoji-writing.gif)
+<img width="700" src="docs/page/media/layout-switching.gif" alt="Flexible layouts">
 
-Type `:` and part of an emoji name, then select a match. The emoji animates inline and copies as standard Unicode.
+### Light & Dark Themes
 
+Switch seamlessly between light and dark themes through the command palette.
 
-## Build and run
+<img width="700" src="docs/page/media/theme-switching.gif" alt="Light and dark themes">
 
-Requires a C/C++20 toolchain, Meson 1.2+, Ninja, pkg-config, Python 3, ThorVG 1.2+ (GL and CPU renderers and the TTF loader) and SDL3 3.2+. ThorVG and SDL3 must be installed. Lua 5.4+ is used when available; otherwise Meson downloads it.
+### Additional Features
+
+- **Multi-document Editing** — Work with multiple documents within a single application.
+- **Command Palette** — Quickly access commands, themes, and layout settings.
+- **International Text Input** — Write in multiple languages with IME support.
+- **Session Recovery** — Recover unsaved work.
+
+## Build & Installation
+
+### Requirements
+
+- C/C++ toolchain with C++20 support
+- Meson 1.2+
+- Ninja
+- pkg-config
+- Python 3
+- [ThorVG](https://github.com/thorvg/thorvg) 1.2+ (CPU and GL renderers, and TTF loader)
+- [SDL3](https://github.com/libsdl-org/SDL) 3.2+
+- Lua 5.4+ (automatically downloaded if unavailable)
+
+ThorVG and SDL3 must be installed before building ThorNote.
+
+### Build and Run
 
 ```sh
 meson setup build
 meson compile -C build
-meson test -C build --print-errorlogs
 build/src/thornote/ThorNote notes.txt
 ```
 
-Use `build/` for all builds. ThorNote, its libraries and Lua support are always included. Desktop builds also include tests.
+#### Linux
 
-On Linux, `meson install -C build` installs ThorNote with its desktop launcher and icon.
+Installs ThorNote along with its desktop launcher and application icon.
 
-On macOS, `meson install -C build` also installs `/Applications/ThorNote.app`, including its icon, fonts and layouts. The bundle is signed locally for running on the build machine; ThorVG and SDL3 must remain installed. The `ThorNote` and `tnote` commands are installed into the configured prefix as well.
+#### macOS
+
+Installs `/Applications/ThorNote.app`, including its application icon, fonts, and layouts. The application bundle is locally signed for execution on the build machine.
+
+ThorVG and SDL3 must remain installed. The `ThorNote` and `tnote` commands are also installed into the configured prefix.
 
 ## License
 
-The [Animated Noto Emoji](https://googlefonts.github.io/noto-emoji-animation/) assets are copyright Google LLC and licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). ThorNote uses them unmodified. [Asset credits](src/thornote/data/assets/AnimatedEmoji.LICENSE).
+### Third-party Assets
+
+The [Animated Noto Emoji](https://googlefonts.github.io/noto-emoji-animation/) assets are copyright Google LLC and licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
