@@ -12,6 +12,9 @@
 
 <h3 align="center">A lightweight, native text editor powered by ThorVG</h3>
 
+</br>
+</br>
+
 ThorNote is designed for everyday writing and note-taking, combining a minimal interface with Markdown editing, flexible layouts, and animated emoji. It supports multiple documents, international text input (IME), and automatic recovery of unsaved work.
 
 Built on [ThorVG](https://github.com/thorvg/thorvg), ThorNote demonstrates how ThorVG can power a complete native desktop application.
