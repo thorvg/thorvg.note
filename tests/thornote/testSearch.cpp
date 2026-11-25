@@ -33,6 +33,7 @@ public:
     bool run(std::string_view command) { return app->commands.execute(command); }
     bool enabled(std::string_view command) { return app->commands.find(command)->enabled(); }
     void draw(float width = 800) { app->render(width, 600); }
+    ui::Rect editorBounds() const { return app->editorBounds; }
     auto preview(std::string_view text, float width) { return app->previewLines(text, width); }
 
     void query(std::string value)
@@ -457,6 +458,48 @@ TEST_CASE_FIXTURE(EditorTest, "editor_zoom_accelerates_only_while_the_shortcut_i
     CHECK(press(SDLK_0, 4400) == 16);
     CHECK(press(SDLK_KP_PLUS, 4500) == 17);
     CHECK(press(SDLK_KP_MINUS, 4600) == 16);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "control_wheel_changes_editor_font_size")
+{
+    auto& tab = document(std::string(120, '\n'));
+    draw();
+    auto area = editorBounds();
+    auto x = area.x + area.w / 2;
+    auto y = area.y + area.h / 2;
+    REQUIRE(app->editorAt(x, y));
+
+    SDL_Event motion{};
+    motion.type = SDL_EVENT_MOUSE_MOTION;
+    motion.motion.x = x;
+    motion.motion.y = y;
+    app->event(motion, 1, 1);
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_MOUSE_WHEEL;
+    event.wheel.mouse_x = x;
+    event.wheel.mouse_y = y;
+    auto wheel = [&](float delta, SDL_Keymod modifiers, SDL_MouseWheelDirection direction = SDL_MOUSEWHEEL_NORMAL) {
+        event.wheel.y = delta;
+        event.wheel.direction = direction;
+        auto previous = SDL_GetModState();
+        SDL_SetModState(modifiers);
+        app->event(event, 1, 1);
+        SDL_SetModState(previous);
+        return tab.editor.options().fontSize;
+    };
+
+    auto size = tab.editor.options().fontSize;
+    CHECK(wheel(1, SDL_KMOD_LCTRL) == size + 1);
+    CHECK(wheel(-0.5f, SDL_KMOD_RCTRL) == size + 0.5f);
+    CHECK(wheel(0.5f, SDL_KMOD_LCTRL, SDL_MOUSEWHEEL_FLIPPED) == size);
+
+    auto scroll = tab.editor.scrollY();
+    CHECK(wheel(-1, SDL_KMOD_NONE) == size);
+    CHECK(tab.editor.scrollY() > scroll);
+
+    event.wheel.mouse_x = -1;
+    CHECK(wheel(1, SDL_KMOD_LCTRL) == size);
 }
 
 TEST_CASE("fractional_font_sizes_survive_loading_preferences")

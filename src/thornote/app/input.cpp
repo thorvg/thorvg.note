@@ -3,6 +3,7 @@
 #include <ui/ui.h>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 namespace tn
 {
@@ -419,7 +420,10 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
             break;
         case SDL_EVENT_MOUSE_WHEEL: {
             float direction = event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1;
-            context.wheel(event.wheel.y * direction, event.wheel.x * direction);
+            auto vertical = event.wheel.y * direction;
+            if (vertical != 0 && std::isfinite(vertical) && (SDL_GetModState() & SDL_KMOD_CTRL) && editorAt(event.wheel.mouse_x * sx, event.wheel.mouse_y * sy))
+                setFontSize(std::max(options.fontSize / 2, options.fontSize + vertical));
+            else context.wheel(vertical, event.wheel.x * direction);
             break;
         }
     }
