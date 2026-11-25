@@ -32,7 +32,7 @@ class EditorApp
 
 public:
     using WindowAction = tn::WindowAction;
-    explicit EditorApp(std::function<void()> wake = {}, storage::Path settingsDirectory = {});
+    explicit EditorApp(std::function<void()> wake = {}, const storage::Path& settingsDirectory = {});
     ~EditorApp();
     void openPath(const storage::Path&);
     void openSettings();

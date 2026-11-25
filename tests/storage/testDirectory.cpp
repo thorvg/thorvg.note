@@ -90,7 +90,7 @@ TEST_CASE("cache_invalidation")
     FileService service;
     auto scan = [&](size_t expected) {
         bool done = false;
-        service.list(directory.path, [&](auto result) {
+        service.list(directory.path, [&](const auto& result) {
             REQUIRE(result);
             CHECK_EQ(result.value.size(), expected);
             done = true;

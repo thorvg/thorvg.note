@@ -36,7 +36,7 @@ public:
     ui::Rect editorBounds() const { return app->editorBounds; }
     auto preview(std::string_view text, float width) { return app->previewLines(text, width); }
 
-    void query(std::string value)
+    void query(std::string_view value)
     {
         state().query = {value, value.size()};
         app->updateFind();

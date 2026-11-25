@@ -5,7 +5,7 @@
 namespace ui
 {
 
-void commandList(Context& context, std::string_view id, Rect bounds, const CommandRegistry& registry, CommandListState& state, std::function<void()> executed, CommandListOptions options)
+void commandList(Context& context, std::string_view id, Rect bounds, const CommandRegistry& registry, CommandListState& state, const std::function<void()>& executed, CommandListOptions options)
 {
     const auto& t = context.theme();
     auto matches = registry.matching(state.query.value());
@@ -14,7 +14,7 @@ void commandList(Context& context, std::string_view id, Rect bounds, const Comma
     context.control(prefix + "/scroll", bounds, [&registry, &state](const Event& event) {
         auto matches = registry.matching(state.query.value());
         if (event.type == EventType::Scroll && event.y != 0 && !matches.empty()) state.selected = size_t(std::clamp(int(state.selected) - (event.y > 0 ? 1 : -1), 0, int(matches.size()) - 1)); }, true, ControlFlag::Scrollable);
-    textField(context, prefix + "/search", {bounds.x, bounds.y, bounds.w, 34}, state.query, options.placeholder, true, [&registry, &state, executed](Key key) {
+    textField(context, prefix + "/search", {bounds.x, bounds.y, bounds.w, 34}, state.query, options.placeholder, true, [&registry, &state, executed = executed](Key key) {
         auto matches = registry.matching(state.query.value());
         if (matches.empty()) return key == Key::Enter || key == Key::Up || key == Key::Down;
         state.selected = std::min(state.selected, matches.size() - 1);
@@ -33,7 +33,7 @@ void commandList(Context& context, std::string_view id, Rect bounds, const Comma
         const auto& command = registry.commands()[matches[i]];
         Rect row{bounds.x, bounds.y + 43 + (i - first) * rowHeight, bounds.w, rowHeight - 2};
         auto stateId = prefix + "/" + command.id;
-        auto interaction = context.control(stateId, row, [&registry, &state, commandId = command.id, i, executed](const Event& event) {
+        auto interaction = context.control(stateId, row, [&registry, &state, commandId = command.id, i, executed = executed](const Event& event) {
             if (event.activated(false)) {
                 state.selected = i;
                 if (registry.execute(commandId) && executed) executed();
@@ -47,12 +47,12 @@ void commandList(Context& context, std::string_view id, Rect bounds, const Comma
     }
 }
 
-void commandPalette(Context& context, Rect viewport, const CommandRegistry& registry, CommandListState& state, std::function<void()> close, CommandListOptions options)
+void commandPalette(Context& context, Rect viewport, const CommandRegistry& registry, CommandListState& state, const std::function<void()>& close, CommandListOptions options)
 {
     const auto& t = context.theme();
     context.modal("palette/search", close);
     context.rect(viewport, {0, 0, 0, 125});
-    context.control("palette/backdrop", viewport, [close](const Event& event) { if (event.type == EventType::Activate) close(); }, true, ControlFlag::None);
+    context.control("palette/backdrop", viewport, [close = close](const Event& event) { if (event.type == EventType::Activate) close(); }, true, ControlFlag::None);
     float width = std::min(550.0f, viewport.w - 32);
     float top = options.title.empty() ? 12 : 43;
     Rect panel{viewport.x + (viewport.w - width) / 2, viewport.y + std::min(90.0f, viewport.h / 8), width, std::min(top + 356, viewport.h - 40)};

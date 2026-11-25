@@ -90,7 +90,7 @@ bool EditorApp::pollSession()
     if (!sessionStore.error().empty()) workspace.error = sessionStore.error();
     else if (workspace.persist) {
         syncingSession = true;
-        workspace.persist([this, signature = submittedSession](std::string error) {
+        workspace.persist([this, signature = submittedSession](const std::string& error) {
             syncingSession = false;
             if (error.empty()) sessionSave.saved = signature;
             else workspace.error = "Recovery could not be saved: " + error;

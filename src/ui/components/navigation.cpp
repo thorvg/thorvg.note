@@ -87,7 +87,7 @@ void tabSurface(Context& context, Rect bounds, bool selected, bool hovered, cons
 void splitter(Context& context, std::string_view id, Rect bounds, Axis axis, float value, float minimum, float maximum, std::function<void(float)> change, ResizeEdge edge)
 {
     // Rebuild after each input; the next drag delta uses the divider's updated position.
-    auto state = context.control(id, bounds, [=](const Event& event) {
+    auto state = context.control(id, bounds, [=, change = std::move(change)](const Event& event) {
         float direction = edge == ResizeEdge::Leading ? -1.0f : 1.0f;
         if (event.type == EventType::Drag) {
             float delta = axis == Axis::Horizontal ? event.x - (bounds.x + bounds.w / 2) : event.y - (bounds.y + bounds.h / 2);

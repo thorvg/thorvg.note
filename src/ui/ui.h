@@ -1788,7 +1788,7 @@ struct CommandListOptions
  *
  * @note Borrowed registry and state must survive input dispatch; executed runs after successful execution.
  */
-void commandList(Context& context, std::string_view id, Rect bounds, const CommandRegistry& registry, CommandListState& state, std::function<void()> executed = {}, CommandListOptions options = {});
+void commandList(Context& context, std::string_view id, Rect bounds, const CommandRegistry& registry, CommandListState& state, const std::function<void()>& executed = {}, CommandListOptions options = {});
 
 /**
  * @brief Builds a modal command list with backdrop and close handling.
@@ -1803,7 +1803,7 @@ void commandList(Context& context, std::string_view id, Rect bounds, const Comma
  *
  * @note The host controls visibility and must supply a valid close callback.
  */
-void commandPalette(Context& context, Rect viewport, const CommandRegistry& registry, CommandListState& state, std::function<void()> close, CommandListOptions options = {});
+void commandPalette(Context& context, Rect viewport, const CommandRegistry& registry, CommandListState& state, const std::function<void()>& close, CommandListOptions options = {});
 
 /** @} */
 }  // namespace ui
@@ -1906,7 +1906,7 @@ struct MenuDefinition
  * Back navigates to the parent menu; close dismisses the whole menu. Constrain vertical placement for context menus.
  */
 void menu(Context& context, std::string_view id, Rect viewport, Rect anchor, const MenuDefinition& definition, size_t& selection,
-          const CommandRegistry& commands, std::function<void(size_t)> activate, std::function<void()> back, std::function<void()> close, bool constrainVertical = false);
+          const CommandRegistry& commands, const std::function<void(size_t)>& activate, const std::function<void()>& back, std::function<void()> close, bool constrainVertical = false);
 
 /**
  * @brief One node of a declarative component tree: layout request plus content.

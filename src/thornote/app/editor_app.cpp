@@ -69,7 +69,7 @@ bool EditorApp::markdownShortcut(const SDL_KeyboardEvent& event, ui::platform::K
     return false;
 }
 
-EditorApp::EditorApp(std::function<void()> wake, storage::Path settingsDirectory) :
+EditorApp::EditorApp(std::function<void()> wake, const storage::Path& settingsDirectory) :
     workspace(wake), noteBrowser(wake), sessionStore(std::move(wake))
 {
     customChrome = nativeWindowChromeAvailable();

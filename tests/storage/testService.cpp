@@ -38,7 +38,7 @@ TEST_CASE("callback_thread")
     auto owner = std::this_thread::get_id();
     bool completed = false;
 
-    service.open(directory.file(), {}, [&](Result<LoadedFile> result) {
+    service.open(directory.file(), {}, [&](const Result<LoadedFile>& result) {
         REQUIRE(result);
         CHECK(std::this_thread::get_id() == owner);
         CHECK_EQ(result.value.text, "text");
@@ -58,12 +58,12 @@ TEST_CASE("save_order")
     std::vector<std::string> order;
     std::string snapshot = "snapshot";
 
-    service.save(directory.file(), snapshot, {}, [&](SaveResult result) {
+    service.save(directory.file(), snapshot, {}, [&](const SaveResult& result) {
         REQUIRE(result);
         order.push_back("save");
     });
     snapshot = "edited after submission";
-    service.open(directory.file(), {}, [&](Result<LoadedFile> result) {
+    service.open(directory.file(), {}, [&](const Result<LoadedFile>& result) {
         REQUIRE(result);
         CHECK_EQ(result.value.text, "snapshot");
         order.push_back("open");
@@ -78,10 +78,10 @@ TEST_CASE("followup_save")
     FileService service;
     bool completed = false;
 
-    service.save(directory.file(), "first", {}, [&](SaveResult first) {
+    service.save(directory.file(), "first", {}, [&](const SaveResult& first) {
         REQUIRE(first);
         CHECK_EQ(service.poll(), 0);
-        service.save(directory.file(), "second", {{}, first.stamp}, [&](SaveResult second) {
+        service.save(directory.file(), "second", {{}, first.stamp}, [&](const SaveResult& second) {
             REQUIRE(second);
             completed = true;
         });
@@ -102,7 +102,7 @@ TEST_CASE("concurrent_requests")
     callers.reserve(callerCount);
     for (size_t i = 0; i < callerCount; ++i)
         callers.emplace_back([&] {
-            service.open(directory.file(), {}, [&](Result<LoadedFile> result) {
+            service.open(directory.file(), {}, [&](const Result<LoadedFile>& result) {
                 REQUIRE(result);
                 ++completed;
             });
@@ -120,11 +120,11 @@ TEST_CASE("callback_destruction")
     auto service = std::make_unique<FileService>([&] { wake.signal(); });
     bool stale = false;
 
-    service->open(directory.file(), {}, [&](Result<LoadedFile> result) {
+    service->open(directory.file(), {}, [&](const Result<LoadedFile>& result) {
         REQUIRE(result);
         service.reset();
     });
-    service->open(directory.file(), {}, [&](Result<LoadedFile>) { stale = true; });
+    service->open(directory.file(), {}, [&](const Result<LoadedFile>&) { stale = true; });
     REQUIRE(wake.wait(2));
     CHECK_EQ(service->poll(), 1);
     CHECK_FALSE(service);

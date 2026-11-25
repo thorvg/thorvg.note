@@ -108,9 +108,9 @@ uint64_t Workspace::open(const storage::Path& path, bool allowMissing)
             erase(id);
             return;
         }
-        tab->path = result.value.path;
+        tab->path = std::move(result.value.path);
         tab->format = tab->savedFormat = result.value.format;
-        tab->stamp = result.value.stamp;
+        tab->stamp = std::move(result.value.stamp);
         tab->savedText = tab->document.text();
         tab->checkedRevision = uint64_t(-1);
         tab->loading = false;
@@ -146,7 +146,7 @@ void Workspace::restore(SessionDocument state)
             return;
         }
         auto& file = loaded.value;
-        tab->path = file.path;
+        tab->path = std::move(file.path);
         tab->stamp = file.stamp;
         tn::Document baseline;
         if (!baseline.text(file.text)) {
@@ -173,11 +173,11 @@ void Workspace::restore(SessionDocument state)
     });
 }
 
-void Workspace::write(uint64_t id, storage::Path path, storage::DiskStamp expected, std::string text, storage::FileFormat format)
+void Workspace::write(uint64_t id, const storage::Path& path, storage::DiskStamp expected, std::string text, storage::FileFormat format)
 {
     auto snapshot = std::make_shared<std::string>(std::move(text));
     files.save(path, *snapshot, {format, std::move(expected), fileLimit},
-               [this, id, path, snapshot, format](storage::SaveResult result) {
+               [this, id, path = path, snapshot, format](storage::SaveResult result) {
                    auto tab = find(id);
                    if (!tab) return;
                    if (!result) {
@@ -190,8 +190,8 @@ void Workspace::write(uint64_t id, storage::Path path, storage::DiskStamp expect
                    }
                    tab->path = key(path);
                    tab->title = displayName(path);
-                   tab->stamp = result.stamp;
-                   auto complete = [this, id, snapshot, format](std::string failure) {
+                   tab->stamp = std::move(result.stamp);
+                   auto complete = [this, id, snapshot, format](const std::string& failure) {
                        auto tab = find(id);
                        if (!tab) return;
                        tab->saving = false;
@@ -243,7 +243,7 @@ bool Workspace::saveAs(uint64_t id, const storage::Path& path)
     error.clear();
     tab->saving = true;
     // The native Save dialog confirms replacement; the writer still checks a disk baseline.
-    files.open(path, {true, fileLimit}, [this, id, path, snapshot = std::move(snapshot), format](storage::Result<storage::LoadedFile> result) {
+    files.open(path, {true, fileLimit}, [this, id, path = path, snapshot = std::move(snapshot), format](storage::Result<storage::LoadedFile> result) mutable {
         auto tab = find(id);
         if (!tab) return;
         if (!result) {
@@ -251,7 +251,7 @@ bool Workspace::saveAs(uint64_t id, const storage::Path& path)
             error = "Save As failed: " + result.error.message;
             return;
         }
-        write(id, path, result.value.stamp, snapshot, format);
+        write(id, path, std::move(result.value.stamp), std::move(snapshot), format);
     });
     return true;
 }
@@ -280,7 +280,7 @@ bool Workspace::rename(uint64_t id, const storage::Path& filename)
     tab->stamp = std::move(result.value);
     if (persist) {
         tab->saving = true;
-        persist([this, id](std::string failure) {
+        persist([this, id](const std::string& failure) {
             auto tab = find(id);
             tab->saving = false;
             tab->persistenceFailed = !failure.empty();
@@ -300,7 +300,7 @@ bool Workspace::remove(uint64_t id)
         return false;
     }
     error.clear();
-    auto complete = [this, id](std::string failure) {
+    auto complete = [this, id](const std::string& failure) {
         auto tab = find(id);
         tab->saving = false;
         if (!failure.empty()) {

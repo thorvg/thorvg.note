@@ -15,12 +15,17 @@ Checks: >-
   modernize-use-auto,
   modernize-use-default-member-init,
   modernize-use-nullptr,
+  performance-faster-string-find,
   performance-for-range-copy,
   performance-implicit-conversion-in-loop,
+  performance-inefficient-algorithm,
   performance-inefficient-string-concatenation,
   performance-inefficient-vector-operation,
   performance-move-const-arg,
   performance-move-constructor-init,
+  performance-no-automatic-move,
+  performance-unnecessary-copy-initialization,
+  performance-unnecessary-value-param,
   readability-container-size-empty,
   readability-delete-null-pointer,
   readability-identifier-naming,
@@ -29,7 +34,11 @@ Checks: >-
   readability-redundant-smartptr-get,
   readability-simplify-boolean-expr,
   readability-simplify-subscript-expr
-WarningsAsErrors: '*'
+WarningsAsErrors: >-
+  *,
+  -performance-no-automatic-move,
+  -performance-unnecessary-copy-initialization,
+  -performance-unnecessary-value-param
 HeaderFilterRegex: '(^|/)(src|tests)/'
 ExcludeHeaderFilterRegex: '(^|/)(subprojects/|src/thornote/platform/linux/include/|tests/common/doctest/)'
 CheckOptions:

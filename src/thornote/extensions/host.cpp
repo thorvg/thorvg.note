@@ -263,7 +263,7 @@ struct InputExtensions::Impl
         return true;
     }
 
-    Result binding(Module& module, uint64_t editor, const ui::KeyStroke& key, std::vector<size_t> candidates, size_t depth)
+    Result binding(Module& module, uint64_t editor, const ui::KeyStroke& key, const std::vector<size_t>& candidates, size_t depth)
     {
         std::vector<size_t> pending;
         for (auto i : candidates) {
@@ -293,7 +293,7 @@ struct InputExtensions::Impl
             auto previous = std::move(prefix);
             prefix = {};
             if (key.key == "escape") return Result::Handled;
-            auto result = binding(*previous.owner, editor, key, std::move(previous.candidates), previous.depth);
+            auto result = binding(*previous.owner, editor, key, previous.candidates, previous.depth);
             return result == Result::Pass ? Result::Handled : result;
         }
         for (auto& module : modules) {
@@ -302,7 +302,7 @@ struct InputExtensions::Impl
                 std::vector<size_t> candidates(module->bindings.size());
                 for (size_t i = 0; i < candidates.size(); ++i)
                     candidates[i] = i;
-                auto result = binding(*module, editor, key, std::move(candidates), 0);
+                auto result = binding(*module, editor, key, candidates, 0);
                 if (result != Result::Pass) return result;
             }
             if (hooks) {

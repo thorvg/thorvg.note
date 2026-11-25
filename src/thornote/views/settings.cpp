@@ -148,7 +148,7 @@ bool EditorApp::flushPreferences(bool force)
         preferencesStamp = result.stamp;
         if (workspace.persist) {
             syncingPreferences = true;
-            workspace.persist([this, text](std::string error) {
+            workspace.persist([this, text](const std::string& error) {
                 syncingPreferences = false;
                 if (error.empty()) {
                     preferenceSave.saved = text;
@@ -226,11 +226,11 @@ void EditorApp::drawSettings(ui::Rect r)
             context.text({body.x, y + 32, body.w, 24}, description, theme.muted, 11);
             y += 68;
         };
-        auto choices = [&](const char* id, const std::vector<std::string>& labels, int selected, std::function<void(int)> choose) {
+        auto choices = [&](const char* id, const std::vector<std::string>& labels, int selected, const std::function<void(int)>& choose) {
             auto columns = choiceColumns(labels.size());
             float cell = std::min(152.0f, (body.w - (columns - 1) * 8) / columns);
             for (size_t i = 0; i < labels.size(); ++i)
-                ui::button(context, std::string(id) + "/" + std::to_string(i), {body.x + (i % columns) * (cell + 8), y + (i / columns) * 48, cell, 32}, labels[i], [choose, i] { choose(int(i)); }, {.style = int(i) == selected ? ui::ButtonStyle::Primary : ui::ButtonStyle::Default});
+                ui::button(context, std::string(id) + "/" + std::to_string(i), {body.x + (i % columns) * (cell + 8), y + (i / columns) * 48, cell, 32}, labels[i], [choose = choose, i] { choose(int(i)); }, {.style = int(i) == selected ? ui::ButtonStyle::Primary : ui::ButtonStyle::Default});
             y += choiceRows(labels.size()) * 48;
         };
         if (sections[0]) {

@@ -195,7 +195,8 @@ ui::FontId SystemFonts::load(const FontChoice& choice, std::string& error)
 {
     bool automatic = choice.path.empty();
     auto id = automatic ? defaultFont() : ui::loadFont(utf8(choice.path).c_str(), choice.index);
-    auto loadError = ui::fontError();
+    std::string loadError;
+    if (!id) loadError = ui::fontError();
     if (!automatic && !choice.name.empty()) {
         auto matches = [&](ui::FontId font) {
             if (!font || font > ui::fonts().size()) return false;

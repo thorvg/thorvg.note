@@ -5,7 +5,7 @@ namespace ui
 {
 
 void menu(Context& context, std::string_view id, Rect viewport, Rect anchor, const MenuDefinition& definition, size_t& selection,
-          const CommandRegistry& commands, std::function<void(size_t)> activate, std::function<void()> back, std::function<void()> close, bool constrainVertical)
+          const CommandRegistry& commands, const std::function<void(size_t)>& activate, const std::function<void()>& back, std::function<void()> close, bool constrainVertical)
 {
     auto prefix = std::string(id);
     const auto& theme = context.theme();
@@ -18,7 +18,7 @@ void menu(Context& context, std::string_view id, Rect viewport, Rect anchor, con
         auto command = commands.find(item.command);
         return !item.title.empty() && item.enabled && (!item.items.empty() || (command && command->enabled()));
     };
-    auto keyboard = [&items, &selection, available, activate, back](const Event& event) {
+    auto keyboard = [&items, &selection, available, activate = activate, back = back](const Event& event) {
         if (event.type != EventType::Key) return;
         auto key = event.key;
         if (key == Key::Escape || key == Key::Left) back();
@@ -43,7 +43,7 @@ void menu(Context& context, std::string_view id, Rect viewport, Rect anchor, con
     Rect menuBounds = {std::clamp(anchor.x, viewport.x + 8, std::max(viewport.x + 8, viewport.x + viewport.w - menuWidth - 8)), anchor.y + anchor.h + 9, menuWidth, panelHeight};
     if (constrainVertical) menuBounds.y = std::clamp(menuBounds.y, viewport.y + 8, std::max(viewport.y + 8, viewport.y + viewport.h - panelHeight - 8));
     context.modal(prefix + "/panel", back);
-    context.control(prefix + "/backdrop", viewport, [close](const Event& event) { if (event.type == EventType::Activate) close(); }, true, ControlFlag::None);
+    context.control(prefix + "/backdrop", viewport, [close = std::move(close)](const Event& event) { if (event.type == EventType::Activate) close(); }, true, ControlFlag::None);
     float shadow = compact ? 1 : 2;
     context.rect({menuBounds.x - shadow, menuBounds.y + shadow + 1, menuBounds.w + shadow * 2, menuBounds.h + shadow}, {0, 0, 0, 25}, radius + 1);
     context.rect(menuBounds, theme.surface, radius, theme.border);
@@ -69,7 +69,7 @@ void menu(Context& context, std::string_view id, Rect viewport, Rect anchor, con
         bool enabled = available(i);
         auto command = commands.find(item.command);
         auto detail = item.detail.empty() && command ? platform::shortcutLabel(command->shortcut) : item.detail;
-        auto state = context.control(prefix + "/item/" + std::to_string(i), row, [&selection, keyboard, activate, i](const Event& event) {
+        auto state = context.control(prefix + "/item/" + std::to_string(i), row, [&selection, keyboard, activate = activate, i](const Event& event) {
             if (event.type == EventType::Hover || event.type == EventType::Press) selection = i;
             else if (event.type == EventType::Key) keyboard(event);
             else if (event.activated()) activate(i); }, enabled, ControlFlag::Focusable | ControlFlag::TabInput | ControlFlag::Hover);

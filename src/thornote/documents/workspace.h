@@ -68,7 +68,7 @@ public:
     std::function<void(std::function<void(std::string)>)> persist;
 
 private:
-    void write(uint64_t id, storage::Path, storage::DiskStamp, std::string, storage::FileFormat);
+    void write(uint64_t id, const storage::Path&, storage::DiskStamp, std::string, storage::FileFormat);
     void erase(uint64_t id);
     std::vector<std::unique_ptr<DocumentTab>> tabs;
     uint64_t nextId = 1, selected = 0, pendingSelection = 0;

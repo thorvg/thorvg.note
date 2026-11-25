@@ -91,7 +91,7 @@ void EditorApp::drawCollections(ui::Rect r)
             folderItems.push_back({utf8(path), name.empty() ? displayPath(path) : name, {}, "folder", 0, !dialog});
         }
         auto selected = collection.compare(0, 7, "folder:") == 0 ? utf8(recent.rootDirectory(utf8Path(collection.substr(7)))) : std::string{};
-        ui::list(context, "folders", body, folderItems, selected, folderList, [this](std::string path) { selectNoteFolder(utf8Path(path)); }, 36, [this](std::string path, ui::Rect anchor) { openFolderMenu(utf8Path(path), anchor); });
+        ui::list(context, "folders", body, folderItems, selected, folderList, [this](const std::string& path) { selectNoteFolder(utf8Path(path)); }, 36, [this](const std::string& path, ui::Rect anchor) { openFolderMenu(utf8Path(path), anchor); });
     } else context.text(body, "Open a file to add\nits folder here", theme.muted, 11);
     context.line(r.x + r.w - 1, r.y, r.x + r.w - 1, r.y + r.h, theme.border);
 }

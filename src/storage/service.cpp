@@ -46,7 +46,7 @@ void FileService::open(Path path, LoadOptions options, OpenCallback done)
 
 void FileService::save(Path path, std::string text, SaveOptions options, SaveCallback done)
 {
-    post<SaveResult>(impl->queue, std::move(done), [path = std::move(path), text = std::move(text), options](detail::Control& control) {
+    post<SaveResult>(impl->queue, std::move(done), [path = std::move(path), text = std::move(text), options = std::move(options)](detail::Control& control) {
         return detail::save(path, text, options, &control);
     });
 }

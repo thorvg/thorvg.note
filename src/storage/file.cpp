@@ -256,7 +256,7 @@ Result<LoadedFile> load(const Path& path, LoadOptions options)
 
 SaveResult save(const Path& path, std::string_view text, SaveOptions options)
 {
-    return detail::save(path, text, options, nullptr);
+    return detail::save(path, text, std::move(options), nullptr);
 }
 
 Result<DiskStamp> rename(const Path& path, const Path& filename, const DiskStamp& expected)
