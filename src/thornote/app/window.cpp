@@ -253,19 +253,21 @@ public:
             if (auto next = app->context.nextFrame(); next && drawable()) delay = std::min(delay, int(std::ceil(std::max(0.0, *next - ui::frameTime()) * 1000)));
         }
         if (SDL_WaitEventTimeout(&event, delay)) {
+            // Rebuild between events so callbacks and input bounds reflect the latest state, then draw once.
+            bool stale = false;
             do {
 #ifdef __EMSCRIPTEN__
+                // Wheel input can share a frame.
                 if (event.type == SDL_EVENT_MOUSE_WHEEL) {
-                    if (!dispatch(event, false)) return 1;
-                    dirty = true;
+                    dispatch(event);
+                    dirty = stale = true;
                     continue;
                 }
-                if (dirty) {
-                    if (!draw()) return 1;
-                    dirty = false;
-                }
 #endif
-                if (!dispatch(event)) return 1;
+                if (stale && !build()) return 1;
+                dispatch(event);
+                stale = liveResize.needsDraw(event);
+                dirty |= stale;
             } while (SDL_PollEvent(&event));
         }
         if (auto next = app->context.nextFrame(); next && drawable()) dirty |= *next <= ui::frameTime();
@@ -276,8 +278,7 @@ public:
     }
 
 private:
-    // Wheel input can share a frame; other input needs current controls between events.
-    bool dispatch(SDL_Event& event, bool redraw = true)
+    void dispatch(SDL_Event& event)
     {
         if ((event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT) || event.type == SDL_EVENT_WINDOW_FOCUS_LOST) SDL_CaptureMouse(false);
         bool handled = titleBarInput.event(event);
@@ -286,8 +287,6 @@ private:
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) SDL_CaptureMouse(true);
             app->event(event, inputX, inputY);
         }
-        // Rebuild between events so callbacks and input bounds reflect the latest state.
-        return !redraw || !liveResize.needsDraw(event) || draw();
     }
 
     static SDL_HitTestResult SDLCALL hitTest(SDL_Window* window, const SDL_Point* point, void* data)
@@ -303,7 +302,13 @@ private:
         return liveResize.draw();
     }
 
-    bool drawFrame()
+    // Updates the controls and the input state without drawing the frame.
+    bool build()
+    {
+        return liveResize.draw([this] { return drawFrame(false); }, false);
+    }
+
+    bool drawFrame(bool present = true)
     {
         if (pendingWindowAction) {
             auto action = *pendingWindowAction;
@@ -322,18 +327,20 @@ private:
         if (scale <= 0) scale = 1;
         inputX = float(width) / ww / scale;
         inputY = float(height) / wh / scale;
-        if (width != targetWidth || height != targetHeight) {
+        if (present && (width != targetWidth || height != targetHeight)) {
             if (canvas->target(nullptr, nullptr, gl, 0, width, height, tvg::ColorSpace::ABGR8888S) != tvg::Result::Success) return SDL_SetError("Cannot set the GL render target");
             targetWidth = width;
             targetHeight = height;
         }
         app->render(width / scale, height / scale);
-        ui::transform(app->context.scene(), {scale, 0, 0, 0, scale, 0, 0, 0, 1});
-        if (!attached) {
-            if (canvas->add(app->context.scene()) != tvg::Result::Success) return false;
-            attached = true;
+        if (present) {
+            ui::transform(app->context.scene(), {scale, 0, 0, 0, scale, 0, 0, 0, 1});
+            if (!attached) {
+                if (canvas->add(app->context.scene()) != tvg::Result::Success) return false;
+                attached = true;
+            }
+            if (canvas->update() != tvg::Result::Success || canvas->draw(true) != tvg::Result::Success || canvas->sync() != tvg::Result::Success) return SDL_SetError("Cannot draw the GL frame");
         }
-        if (canvas->update() != tvg::Result::Success || canvas->draw(true) != tvg::Result::Success || canvas->sync() != tvg::Result::Success) return SDL_SetError("Cannot draw the GL frame");
         SDL_SetWindowTitle(window, app->windowTitle().c_str());
         updateTextInput();
         float mx = 0, my = 0;
@@ -342,7 +349,7 @@ private:
             auto hit = app->customTitleBarVisible() ? nativeWindowHitTest(window, {int(mx), int(my)}, false) : SDL_HITTEST_NORMAL;
             if (hit < SDL_HITTEST_RESIZE_TOPLEFT) cursors.set(app->context.cursor());
         }
-        return snapshotMode || SDL_GL_SwapWindow(window);
+        return !present || snapshotMode || SDL_GL_SwapWindow(window);
     }
 
     void updateTextInput()

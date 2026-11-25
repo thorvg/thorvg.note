@@ -19,7 +19,7 @@ public:
     bool enabled() const;
     bool hasView(Layout, std::string_view source) const;
     void render(ui::Context&, ui::Rect, const std::vector<ui::ViewType>&, const ui::CommandRegistry&);
-    bool refreshTitlebar(const ui::lua::Values&, bool checkFile = false, bool force = false);
+    bool refreshTitlebar(const ui::lua::Values&);
     std::filesystem::path editTitlebar(std::string& error);
     ui::Composition& titlebar() { return titlebarConfiguration.view(); }
     std::optional<ui::MenuDefinition> menu(std::string_view id) const;
@@ -28,6 +28,7 @@ public:
 
 private:
     bool updateIcons(size_t source, std::vector<ui::IconAsset>, std::string& error);
+    bool loadTitlebar(const ui::lua::Values&, bool checkFile, bool force);
     std::array<std::vector<ui::IconAsset>, 2> registeredIcons;
     std::function<bool(std::vector<ui::IconAsset>, std::string&)> applyIconAssets;
     std::string message;

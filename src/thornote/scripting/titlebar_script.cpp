@@ -13,7 +13,7 @@ std::filesystem::path bundledTitlebar()
 }
 }  // namespace
 
-bool LayoutScript::refreshTitlebar(const ui::lua::Values& state, bool checkFile, bool force)
+bool LayoutScript::loadTitlebar(const ui::lua::Values& state, bool checkFile, bool force)
 {
     auto previous = titlebarMessage;
     bool changed = false;
@@ -44,6 +44,13 @@ bool LayoutScript::refreshTitlebar(const ui::lua::Values& state, bool checkFile,
         titlebarFailed = !titlebarConfiguration.error().empty();
         titlebarMessage = titlebarConfiguration.error();
     }
+    return changed || titlebarMessage != previous;
+}
+
+bool LayoutScript::refreshTitlebar(const ui::lua::Values& state)
+{
+    auto previous = titlebarMessage;
+    bool changed = loadTitlebar(state, false, false);
     bool rebuilt = titlebarConfiguration.refresh(state, types);
     if (!rebuilt || !titlebarFailed) titlebarMessage = titlebarConfiguration.error();
     return changed || titlebarMessage != previous;

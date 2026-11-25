@@ -56,7 +56,8 @@ public:
     {
         return draw(drawFrame);
     }
-    bool draw(const std::function<bool()>& render)
+    // A render that does not present keeps the presented geometry.
+    bool draw(const std::function<bool()>& render, bool present = true)
     {
         if (failed || !render) return false;
         if (drawing) return true;
@@ -65,7 +66,7 @@ public:
         bool result = render();
         drawing = false;
         failed |= !result;
-        if (result) {
+        if (result && present) {
             frameSize = currentSize;
             hasFrame = true;
         }

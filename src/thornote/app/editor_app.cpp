@@ -660,11 +660,13 @@ bool EditorApp::poll()
 {
     bool changed = workspace.poll() != 0;
     changed |= noteBrowser.poll();
-    changed |= flushPreferences();
-    changed |= pollSession();
-    checkpointSession();
     auto now = SDL_GetTicks();
-    if (now >= nextLayoutPoll) {
+    bool polling = now >= nextLayoutPoll;
+    // Finding changes encodes the settings and the session, so look with the other polls unless a save is due.
+    if (polling || now >= preferenceSave.deadline()) changed |= flushPreferences();
+    changed |= pollSession();
+    if (polling || now >= sessionSave.deadline()) checkpointSession();
+    if (polling) {
         if (themeProfiles.refresh(dark)) {
             applyAppearance();
             changed = true;

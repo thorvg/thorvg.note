@@ -300,7 +300,8 @@ bool LayoutScript::refresh(Layout profile, const ui::lua::Values& state, bool ch
             if (!error.empty()) message = std::move(error);
         }
     }
-    changed |= refreshTitlebar(state, checkFile, force);
+    // The title bar view rebuilds from its own width when drawn, so only load and watch its file here.
+    changed |= loadTitlebar(state, checkFile, force);
     return changed || message != previousError;
 }
 
