@@ -41,7 +41,8 @@ public:
     void setLayout(Layout);
     void setLayoutDirectory(storage::Path path);
     void render(float width, float height, double seconds = -1);
-    void event(const SDL_Event&, float windowToLogicalX, float windowToLogicalY);
+    // Returns whether the event may change the frame.
+    bool event(const SDL_Event&, float windowToLogicalX, float windowToLogicalY);
     void nativeTextInput(const NativeTextEdit&);
     bool nativeKeyDown(const SDL_KeyboardEvent&);
     bool poll();

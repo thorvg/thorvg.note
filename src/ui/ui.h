@@ -1096,8 +1096,10 @@ public:
 
     /**
      * @brief Updates hover and dispatches captured drag in logical coordinates.
+     *
+     * @return Whether the move may change the frame: it dispatched an event, or entered or left a control.
      */
-    void pointerMove(float x, float y);
+    bool pointerMove(float x, float y);
 
     /**
      * @brief Begins pointer interaction at a logical position and updates focus/capture.

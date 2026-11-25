@@ -321,8 +321,9 @@ void EditorApp::commitText(uint64_t id, std::string_view text)
     if (result == ui::InputResult::Pass && textInputTarget() == tab) context.textInput(text);
 }
 
-void EditorApp::event(const SDL_Event& event, float sx, float sy)
+bool EditorApp::event(const SDL_Event& event, float sx, float sy)
 {
+    bool changed = true;
     switch (event.type) {
         case SDL_EVENT_QUIT:
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED: requestQuit(); break;
@@ -354,9 +355,13 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
             suppressedInputText.clear();
             suppressKeyText = false;
             textInputShift = false;
+            // A release reaches the frame only through an input extension.
+            changed = false;
             if (!dialog && !palette && prompt == Prompt::None && menu.empty() && !composing && !settings.active) {
-                if (auto tab = visibleDocument(); tab && editorFocus && (!tab->editor.inputState().text || !printable(event.key) || event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI)))
+                if (auto tab = visibleDocument(); tab && editorFocus && (!tab->editor.inputState().text || !printable(event.key) || event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI))) {
                     inputExtensions.key(tab->id, stroke(event.key));
+                    changed = true;
+                }
             }
             break;
         case SDL_EVENT_TEXT_INPUT:
@@ -389,7 +394,7 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
         case SDL_EVENT_MOUSE_MOTION:
             pointerX = event.motion.x * sx;
             pointerY = event.motion.y * sy;
-            context.pointerMove(pointerX, pointerY);
+            changed = context.pointerMove(pointerX, pointerY);
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             if (event.button.button == SDL_BUTTON_RIGHT) {
@@ -427,8 +432,9 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
             break;
         }
     }
-    syncInputExtensions();
+    changed |= syncInputExtensions();
     updateFind();
+    return changed;
 }
 
 DocumentTab* EditorApp::textInputTarget() const

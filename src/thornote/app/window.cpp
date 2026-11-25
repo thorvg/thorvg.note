@@ -14,6 +14,8 @@
 #include <optional>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/eventloop.h>
+#include <emscripten/html5.h>
 #include <GLES3/gl3.h>
 #include <thornote/platform/emscripten/browser_files.h>
 #else
@@ -227,7 +229,7 @@ public:
     }
 
     // One pass over finished work and queued events; returns the exit status once the app is done.
-    std::optional<int> step(const RunOptions& options, bool wait)
+    std::optional<int> step(const RunOptions& options)
     {
         if (app->done()) return 0;
         bool dirty = app->poll();
@@ -245,30 +247,15 @@ public:
             if (!draw()) return 1;
             dirty = false;
         }
-        SDL_Event event;
-        int delay = 0;
-        if (!options.snapshot.empty()) delay = 1;
-        else if (wait) {
-            delay = app->nextPollDelay(SDL_GetTicks());
-            if (auto next = app->context.nextFrame(); next && drawable()) delay = std::min(delay, int(std::ceil(std::max(0.0, *next - ui::frameTime()) * 1000)));
-        }
-        if (SDL_WaitEventTimeout(&event, delay)) {
-            // Rebuild between events so callbacks and input bounds reflect the latest state, then draw once.
-            bool stale = false;
-            do {
-#ifdef __EMSCRIPTEN__
-                // Wheel input can share a frame.
-                if (event.type == SDL_EVENT_MOUSE_WHEEL) {
-                    dispatch(event);
-                    dirty = stale = true;
-                    continue;
-                }
-#endif
-                if (stale && !build()) return 1;
-                dispatch(event);
-                stale = liveResize.needsDraw(event);
-                dirty |= stale;
-            } while (SDL_PollEvent(&event));
+        // Rebuild between events so callbacks and input bounds reflect the latest state, then draw once.
+        bool stale = false;
+        for (SDL_Event event; SDL_PollEvent(&event);) {
+            // Wheel input can share a frame.
+            if (stale && event.type != SDL_EVENT_MOUSE_WHEEL) {
+                if (!build()) return 1;
+                stale = false;
+            }
+            if (dispatch(event) && liveResize.needsDraw(event)) dirty = stale = true;
         }
         if (auto next = app->context.nextFrame(); next && drawable()) dirty |= *next <= ui::frameTime();
         if (dirty || !options.snapshot.empty())
@@ -277,16 +264,27 @@ public:
         return std::nullopt;
     }
 
+    // Milliseconds until the next step is due without input.
+    int delay(const RunOptions& options) const
+    {
+        if (!options.snapshot.empty()) return 1;
+        auto delay = app->nextPollDelay(SDL_GetTicks());
+        if (auto next = app->context.nextFrame(); next && drawable()) delay = std::min(delay, int(std::ceil(std::max(0.0, *next - ui::frameTime()) * 1000)));
+        return delay;
+    }
+
 private:
-    void dispatch(SDL_Event& event)
+    // Returns whether the event may change the frame.
+    bool dispatch(SDL_Event& event)
     {
         if ((event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT) || event.type == SDL_EVENT_WINDOW_FOCUS_LOST) SDL_CaptureMouse(false);
         bool handled = titleBarInput.event(event);
         if (!handled && nativeInputReady) handled = nativeInput.event(event);
         if (!handled) {
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) SDL_CaptureMouse(true);
-            app->event(event, inputX, inputY);
+            return app->event(event, inputX, inputY);
         }
+        return true;
     }
 
     static SDL_HitTestResult SDLCALL hitTest(SDL_Window* window, const SDL_Point* point, void* data)
@@ -417,17 +415,49 @@ private:
     size_t passes = 0;
     tn::LiveResize liveResize;
 };
+
+#ifdef __EMSCRIPTEN__
+// The browser runs each pass after main returns, so the window and its options are never released.
+struct Session
+{
+    RunOptions options;
+    Window window;
+    int frame = 0, timer = 0;
+};
+
+void step(void* data);
+
+// A step due within a frame waits for the frame, which also takes the input queued until then. A hidden page draws no frames.
+void schedule(Session& session, int delay)
+{
+    // Context::requestAnimationFrame() asks for 1/60 s, which rounds up to 17 ms.
+    if (delay <= 17 && session.window.drawable()) {
+        if (!session.frame) session.frame = emscripten_request_animation_frame([](double, void* data) { step(data); return false; }, &session);
+    } else if (!session.timer) session.timer = emscripten_set_timeout(step, delay, &session);
+}
+
+bool SDLCALL wake(void* data, SDL_Event*)
+{
+    schedule(*static_cast<Session*>(data), 0);
+    return true;
+}
+
+// Like the native loop, waits for input or until the next step is due.
+void step(void* data)
+{
+    auto& session = *static_cast<Session*>(data);
+    if (session.frame) emscripten_cancel_animation_frame(session.frame);
+    if (session.timer) emscripten_clear_timeout(session.timer);
+    session.frame = session.timer = 0;
+    if (session.window.step(session.options)) SDL_RemoveEventWatch(wake, data);
+    else schedule(session, session.window.delay(session.options));
+}
+#endif
 }  // namespace
 
 int run(const RunOptions& options)
 {
 #ifdef __EMSCRIPTEN__
-    // The browser runs each pass after main returns, so the window and its options are never released.
-    struct Session
-    {
-        RunOptions options;
-        Window window;
-    };
     auto session = new Session{options, {}};
     if (!session->window.initialize(session->options)) {
         std::cerr << "ThorNote: initialization failed: " << SDL_GetError() << '\n';
@@ -435,12 +465,8 @@ int run(const RunOptions& options)
         delete session;
         return 1;
     }
-    emscripten_set_main_loop_arg(
-        [](void* data) {
-            auto& session = *static_cast<Session*>(data);
-            if (session.window.step(session.options, false)) emscripten_cancel_main_loop();
-        },
-        session, 0, false);
+    SDL_AddEventWatch(wake, session);
+    schedule(*session, 0);
     return 0;
 #else
     Window window;
@@ -448,8 +474,10 @@ int run(const RunOptions& options)
         std::cerr << "ThorNote: initialization failed: " << SDL_GetError() << '\n';
         return 1;
     }
-    for (;;)
-        if (auto status = window.step(options, true)) return *status;
+    for (;;) {
+        if (auto status = window.step(options)) return *status;
+        SDL_WaitEventTimeout(nullptr, window.delay(options));
+    }
 #endif
 }
 

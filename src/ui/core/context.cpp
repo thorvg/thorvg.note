@@ -312,12 +312,21 @@ void Context::pointerPosition(float x, float y)
     impl->pointerY = y;
 }
 
-void Context::pointerMove(float x, float y)
+bool Context::pointerMove(float x, float y)
 {
+    // Hover and the cursor follow control bounds only.
+    bool changed = std::any_of(impl->controls.begin(), impl->controls.end(), [&](const Control& control) { return control.bounds.contains(x, y) != control.bounds.contains(impl->pointerX, impl->pointerY); });
     pointerPosition(x, y);
-    if (!impl->pressedId.empty()) impl->send(impl->pressedId, {.type = EventType::Drag, .x = x, .y = y});
+    if (!impl->pressedId.empty()) {
+        impl->send(impl->pressedId, {.type = EventType::Drag, .x = x, .y = y});
+        changed = true;
+    }
     auto target = impl->hit(x, y);
-    if (target && target->enabled && has(target->flags, ControlFlag::Hover)) impl->send(target->id, {.type = EventType::Hover, .x = x, .y = y});
+    if (target && target->enabled && has(target->flags, ControlFlag::Hover)) {
+        impl->send(target->id, {.type = EventType::Hover, .x = x, .y = y});
+        changed = true;
+    }
+    return changed;
 }
 
 void Context::pointerDown(float x, float y, Modifiers modifiers, int clicks)
