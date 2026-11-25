@@ -857,8 +857,8 @@ TEST_CASE_FIXTURE(Editor, "markdown_uses_theme_colors_and_keeps_line_number_size
         const auto& image = raster();
         int top = 300, bottom = -1;
         auto gutter = editor.textViewport().x;
-        for (int y = int(bounds.y + row.y); y < std::min(300, int(bounds.y + row.y + row.h)); ++y)
-            for (int x = int(bounds.x); x < int(bounds.x + gutter); ++x) {
+        for (auto y = static_cast<int>(bounds.y + row.y); y < std::min(300, int(bounds.y + row.y + row.h)); ++y)
+            for (auto x = static_cast<int>(bounds.x); x < int(bounds.x + gutter); ++x) {
                 auto pixel = image[size_t(y) * 400 + x];
                 auto r = (pixel >> 16) & 255, g = (pixel >> 8) & 255, b = pixel & 255;
                 if (r == theme.muted.r && g == theme.muted.g && b == theme.muted.b) {

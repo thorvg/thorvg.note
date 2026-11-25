@@ -70,7 +70,7 @@ Error Decoder::consume(std::string_view bytes)
             auto size = utf8Length(byte);
             if (!size) return invalidUtf8();
             if (size == 1) {
-                char ch = char(byte);
+                auto ch = static_cast<char>(byte);
                 if (auto error = character({&ch, 1})) return error;
                 continue;
             }

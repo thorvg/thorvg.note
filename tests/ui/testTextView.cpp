@@ -457,6 +457,7 @@ TEST_CASE_FIXTURE(View, "metadata_access_does_not_measure_and_reentrant_measurem
     constexpr double origin = 1000000000.25;
     REQUIRE(document.text(std::string(count * 4, 'x')));
     std::vector<ui::TextLine> lines;
+    lines.reserve(count);
     for (size_t index = 0; index < count; ++index)
         lines.push_back(row(index, origin));
     REQUIRE(view.layout(std::move(lines)));
@@ -500,12 +501,15 @@ TEST_CASE_FIXTURE(View, "chunk_boundaries_keep_precise_geometry_and_signed_sourc
     constexpr size_t count = 4097;
     constexpr double origin = 1000000000.25;
     std::vector<ui::TextLine> lines;
+    lines.reserve(count);
     for (size_t index = 0; index < count; ++index)
         lines.push_back(row(index, origin, true));
     auto retained = lines[3000].offsets.data();
     REQUIRE(view.layout(std::move(lines)));
+    constexpr size_t replacementCount = 3;
     std::vector<ui::TextLine> replacement;
-    for (size_t index = 0; index < 3; ++index)
+    replacement.reserve(replacementCount);
+    for (size_t index = 0; index < replacementCount; ++index)
         replacement.push_back(row(1023 + index, origin, true));
     REQUIRE(view.layout(1023, 2, std::move(replacement), 4, 20));
     REQUIRE(view.lineCount() == count + 1);
@@ -533,9 +537,11 @@ TEST_CASE_FIXTURE(View, "chunk_boundaries_keep_precise_geometry_and_signed_sourc
 
 TEST_CASE_FIXTURE(View, "partial_layout_changes_match_a_flat_reference")
 {
+    constexpr size_t count = 4097;
     constexpr double origin = 1000000000.25;
     std::vector<ui::TextLine> reference;
-    for (size_t index = 0; index < 4097; ++index)
+    reference.reserve(count);
+    for (size_t index = 0; index < count; ++index)
         reference.push_back(row(index, origin, index % 17 == 0));
     REQUIRE(view.layout(reference));
     std::mt19937 random(43);
@@ -547,6 +553,7 @@ TEST_CASE_FIXTURE(View, "partial_layout_changes_match_a_flat_reference")
         if (step == 40) first = 0, removed = reference.size(), inserted = 1300;
         if (step == 80) first = 0, removed = reference.size(), inserted = 0;
         std::vector<ui::TextLine> replacement;
+        replacement.reserve(inserted);
         for (size_t index = 0; index < inserted; ++index)
             replacement.push_back(row(first + index, origin, index % 13 == 0));
         auto offset = (ptrdiff_t(inserted) - ptrdiff_t(removed)) * 4;

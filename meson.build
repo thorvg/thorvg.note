@@ -47,3 +47,22 @@ subdir('src')
 if target_platform != 'emscripten'
   subdir('tests')
 endif
+
+clang_tidy = find_program('clang-tidy', native: true, version: '>=19', required: false)
+run_clang_tidy = find_program('run-clang-tidy', 'run-clang-tidy.py', native: true, required: false)
+if clang_tidy.found() and run_clang_tidy.found()
+  tidy_command = [run_clang_tidy]
+  if target_platform == 'macos' and not meson.is_cross_build()
+    tidy_command = [find_program('xcrun', native: true), run_clang_tidy.full_path()]
+  endif
+
+  run_target('clang-tidy', command: [
+    find_program('python3', native: true),
+    files('tools/run_clang_tidy.py'),
+    meson.project_source_root(),
+  ] + tidy_command + [
+    '-clang-tidy-binary', clang_tidy.full_path(),
+    '-p', meson.project_build_root(),
+    '-quiet',
+  ])
+endif

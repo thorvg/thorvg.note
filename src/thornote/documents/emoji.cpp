@@ -147,7 +147,7 @@ struct EmojiAssets::Impl
         };
         emscripten_fetch(&attributes, url.c_str());
 #else
-        queue.submit([entry, name = std::move(name), url = std::move(url)](task::TaskContext& context) {
+        queue.submit([entry, name = std::move(name), url = std::move(url)](task::TaskContext& context) mutable {
             std::string data;
             auto handle = curl_easy_init();
             if (handle) {

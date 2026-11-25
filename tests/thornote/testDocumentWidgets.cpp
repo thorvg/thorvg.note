@@ -233,8 +233,8 @@ TEST_CASE("document_emojis_keep_playing_during_text_edits_and_composition")
     auto rect = editor.rangeRects(0, 4).front();
     auto crop = [&] {
         std::vector<uint32_t> result;
-        for (int y = int(rect.y); y < int(rect.y + rect.h); ++y)
-            for (int x = int(rect.x); x < int(rect.x + rect.w); ++x)
+        for (auto y = static_cast<int>(rect.y); y < int(rect.y + rect.h); ++y)
+            for (auto x = static_cast<int>(rect.x); x < int(rect.x + rect.w); ++x)
                 result.push_back(pixels[y * 400 + x] == 0xffff0000u);
         return result;
     };

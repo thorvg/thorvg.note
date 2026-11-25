@@ -266,6 +266,7 @@ TEST_CASE("parallel_queues")
 
 TEST_CASE("concurrent_submit")
 {
+    constexpr int callerCount = 4;
     task::TaskScheduler scheduler(2);
     task::TaskQueue queue({}, scheduler);
     std::atomic<int> ran{0};
@@ -273,7 +274,8 @@ TEST_CASE("concurrent_submit")
     auto owner = std::this_thread::get_id();
     std::vector<std::thread> callers;
 
-    for (int i = 0; i < 4; ++i)
+    callers.reserve(callerCount);
+    for (int i = 0; i < callerCount; ++i)
         callers.emplace_back([&] {
             for (int j = 0; j < 20; ++j)
                 queue.submit([&](task::TaskContext&) {

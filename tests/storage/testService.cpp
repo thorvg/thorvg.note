@@ -92,13 +92,15 @@ TEST_CASE("followup_save")
 
 TEST_CASE("concurrent_requests")
 {
+    constexpr size_t callerCount = 8;
     test::Directory directory;
     test::write(directory.file(), "text");
     FileService service;
     std::vector<std::thread> callers;
     size_t completed = 0;
 
-    for (unsigned i = 0; i < 8; ++i)
+    callers.reserve(callerCount);
+    for (size_t i = 0; i < callerCount; ++i)
         callers.emplace_back([&] {
             service.open(directory.file(), {}, [&](Result<LoadedFile> result) {
                 REQUIRE(result);
@@ -107,7 +109,7 @@ TEST_CASE("concurrent_requests")
         });
     for (auto& thread : callers)
         thread.join();
-    REQUIRE(test::drain(service, [&] { return completed == 8; }));
+    REQUIRE(test::drain(service, [&] { return completed == callerCount; }));
 }
 
 TEST_CASE("callback_destruction")

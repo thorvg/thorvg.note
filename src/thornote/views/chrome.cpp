@@ -226,7 +226,7 @@ void EditorApp::drawTabs(ui::Context& context, ui::Rect r, bool titlebar)
             else openSettings();
         }
     };
-    size_t first = size_t(tabScroll.x / cellWidth);
+    auto first = static_cast<size_t>(tabScroll.x / cellWidth);
     size_t end = std::min(total, size_t(std::ceil((tabScroll.x + visible) / cellWidth)));
     auto flags = ui::ControlFlag::Focusable | ui::ControlFlag::Capture;
     if (tabScroll.grab && (pressed < first || pressed >= end)) {

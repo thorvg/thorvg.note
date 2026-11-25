@@ -370,7 +370,7 @@ size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_vie
                     item.range.start = size_t(ptrdiff_t(begin - base) + shift);
                     item.range.end = size_t(ptrdiff_t(end - base) + shift);
                 } else continue;
-                widgets.push_back(std::move(item));
+                widgets.push_back(item);
             }
         };
         collect(firstRow);
@@ -409,10 +409,10 @@ size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_vie
             cached->display = std::move(display[i]);
             cached->styles = std::move(runs[i]);
             while (widget != widgets.end() && base + widget->range.start < row.end()) {
-                auto item = std::move(*widget++);
+                auto item = *widget++;
                 item.range.start -= row.start() - base;
                 item.range.end -= row.start() - base;
-                cached->widgets.push_back(std::move(item));
+                cached->widgets.push_back(item);
             }
             cached->measured = true;
         }

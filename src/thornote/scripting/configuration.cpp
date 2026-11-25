@@ -108,6 +108,7 @@ bool Configuration::readIcons(const std::string& path, const std::vector<ui::lua
         return false;
     }
     std::vector<FileRequest> requests;
+    requests.reserve(definitions.size());
     for (const auto& definition : definitions)
         requests.push_back({definition.asset.name, definition.file});
     std::vector<std::string> data;
@@ -132,6 +133,7 @@ bool Configuration::readIcons(const std::string& path, const std::vector<ui::lua
 bool Configuration::readImages(const std::string& path, const std::vector<ui::lua::ImageFile>& definitions, std::vector<ui::ImageAsset>& assets, std::vector<AssetFile>& files)
 {
     std::vector<FileRequest> requests;
+    requests.reserve(definitions.size());
     for (const auto& definition : definitions)
         requests.push_back({definition.name, definition.file});
     std::vector<std::string> data;
@@ -252,7 +254,7 @@ bool Configuration::load(const std::string& path, const ui::lua::Values& state, 
     auto staged = composition;
     if (!staged.images(std::move(images), message) || !staged.apply(std::move(root), message)) return false;
     if (applyIcons && !applyIcons(std::move(assets), message)) return false;
-    composition = std::move(staged);
+    composition = staged;
     iconRegistry = std::move(candidate);
     assetFiles = std::move(files);
     iconSettingsChanged = false;

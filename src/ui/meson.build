@@ -11,6 +11,7 @@ lua_dep = dependency(
   version: '>=5.4',
   required: true,
   fallback: ['lua', 'lua_dep'],
+  include_type: 'system',
   default_options: [
     'interpreter=false',
     'loadlib=disabled',

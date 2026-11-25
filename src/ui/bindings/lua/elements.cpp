@@ -35,7 +35,7 @@ bool length(lua_State* state, int table, const char* name, Length& output, std::
     field(state, table, name);
     if (lua_isnil(state, -1)) return true;
     if (lua_type(state, -1) == LUA_TNUMBER) {
-        float value = float(lua_tonumber(state, -1));
+        auto value = static_cast<float>(lua_tonumber(state, -1));
         if (!std::isfinite(value) || value < 0) {
             error = std::string(name) + " must be finite nonnegative pixels";
             return false;

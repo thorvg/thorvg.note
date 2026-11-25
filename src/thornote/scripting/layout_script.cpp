@@ -256,9 +256,9 @@ bool LayoutScript::refresh(Layout profile, const ui::lua::Values& state, bool ch
     bool changed = false;
     auto previousError = message;
     if (!initialized || current != profile) {
-        if (initialized) compositions[size_t(current)] = std::move(configuration.view());
+        if (initialized) compositions[size_t(current)] = configuration.view();
         configuration.clear();
-        configuration.view() = std::move(compositions[size_t(profile)]);
+        configuration.view() = compositions[size_t(profile)];
         current = profile;
         initialized = true;
         watched.clear();

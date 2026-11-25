@@ -110,7 +110,7 @@ EditorApp::EditorApp(std::function<void()> wake, storage::Path settingsDirectory
         if (id == "collections") layout().sidebarWidth = value;
         else if (id == "documents") (composition == Layout::Note && !commandList ? layout().notesWidth : layout().sidebarWidth) = value;
     };
-    if (!settingsDirectory.empty()) preferencesPath = std::move(settingsDirectory) / "settings.conf";
+    if (!settingsDirectory.empty()) preferencesPath = settingsDirectory / "settings.conf";
     loadPreferences();
     themeProfiles.setDirectory(preferencesPath.empty() ? storage::Path{} : preferencesPath.parent_path() / "themes");
     applyAppearance();

@@ -1,0 +1,45 @@
+Checks: >-
+  -*,
+  bugprone-dangling-handle,
+  bugprone-sizeof-expression,
+  bugprone-stringview-nullptr,
+  bugprone-suspicious-memset-usage,
+  bugprone-suspicious-realloc-usage,
+  bugprone-undefined-memory-manipulation,
+  bugprone-unique-ptr-array-mismatch,
+  bugprone-unused-raii,
+  bugprone-use-after-move,
+  bugprone-virtual-near-miss,
+  cppcoreguidelines-pro-type-cstyle-cast,
+  modernize-loop-convert,
+  modernize-use-auto,
+  modernize-use-default-member-init,
+  modernize-use-nullptr,
+  performance-for-range-copy,
+  performance-implicit-conversion-in-loop,
+  performance-inefficient-string-concatenation,
+  performance-inefficient-vector-operation,
+  performance-move-const-arg,
+  performance-move-constructor-init,
+  readability-container-size-empty,
+  readability-delete-null-pointer,
+  readability-identifier-naming,
+  readability-redundant-access-specifiers,
+  readability-redundant-control-flow,
+  readability-redundant-smartptr-get,
+  readability-simplify-boolean-expr,
+  readability-simplify-subscript-expr
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(^|/)(src|tests)/'
+ExcludeHeaderFilterRegex: '(^|/)(subprojects/|src/thornote/platform/linux/include/|tests/common/doctest/)'
+CheckOptions:
+  modernize-loop-convert.MinConfidence: safe
+  modernize-use-auto.MinTypeNameLength: '0'
+  modernize-use-auto.RemoveStars: 'true'
+  modernize-use-default-member-init.UseAssignment: 'true'
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.StructCase: CamelCase
+  # External C declarations retain their original names.
+  readability-identifier-naming.StructIgnoredRegexp: '^(lua_State|wl_[a-z0-9_]+|xdg_[a-z0-9_]+)$'
+  readability-simplify-boolean-expr.IgnoreMacros: 'true'
+  readability-simplify-boolean-expr.SimplifyDeMorgan: 'false'
