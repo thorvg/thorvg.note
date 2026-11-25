@@ -3,6 +3,10 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <cstdio>
+#if defined(__linux__) && !defined(__EMSCRIPTEN__)
+#include <sys/syscall.h>
+#endif
 #include <storage/internal.h>
 #include "metadata.h"
 
@@ -194,5 +198,36 @@ Error commit(StagingFile& staging, const Path& target, bool existing)
 Error syncDirectory(const StagingFile& staging)
 {
     return syncFile(staging.directory);
+}
+
+Error changeName(const Path& source, const Path& filename, const FileInfo& expected)
+{
+    NativeFile parent(::open(source.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+    if (parent.handle == -1) return systemError("cannot open source directory");
+    auto name = source.filename();
+    auto directory = fd(parent);
+    struct stat current;
+    if (fstatat(directory, name.c_str(), &current, AT_SYMLINK_NOFOLLOW))
+        return systemError("cannot inspect source file", errno == ENOENT ? ErrorCode::Conflict : ErrorCode::Io);
+    if (!S_ISREG(current.st_mode) || uint64_t(current.st_dev) != expected.device || uint64_t(current.st_ino) != expected.id || uint64_t(current.st_size) != expected.size)
+        return failure(ErrorCode::Conflict, "source file changed");
+    if (filename.empty()) {
+        if (unlinkat(directory, name.c_str(), 0)) return systemError("cannot delete file");
+        return {};
+    }
+    if (name == filename) return {};
+#if defined(__APPLE__)
+    if (!renameatx_np(directory, name.c_str(), directory, filename.c_str(), RENAME_EXCL)) return {};
+#elif defined(__EMSCRIPTEN__)
+    // The browser filesystem is private to this process.
+    if (!fstatat(directory, filename.c_str(), &current, AT_SYMLINK_NOFOLLOW)) errno = EEXIST;
+    else if (errno == ENOENT && !renameat(directory, name.c_str(), directory, filename.c_str())) return {};
+#elif defined(SYS_renameat2)
+    constexpr unsigned noReplace = 1;
+    if (!syscall(SYS_renameat2, directory, name.c_str(), directory, filename.c_str(), noReplace)) return {};
+#else
+    errno = ENOTSUP;
+#endif
+    return systemError(errno == EEXIST ? "destination already exists" : "cannot rename file", errno == EEXIST ? ErrorCode::Conflict : ErrorCode::Io);
 }
 }  // namespace storage::detail

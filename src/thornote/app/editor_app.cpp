@@ -347,6 +347,10 @@ void EditorApp::registerCommands()
     auto writable = [this] {
         return target() && !target()->busy() && !dialog;
     };
+    auto onDisk = [this] {
+        auto tab = target();
+        return tab && tab->stamp.exists() && !tab->uncertain && !tab->persistenceFailed && !workspace.busy() && !dialog && prompt == Prompt::None;
+    };
     add("file.new", "New document", "File", "Mod+N", [this] {
         auto& tab = workspace.create();
         settings.active = false;
@@ -365,6 +369,8 @@ void EditorApp::registerCommands()
 #endif
     add("file.save", "Save document", "File", "Mod+S", [this] { if (auto tab = target()) save(tab->id); }, writable, "No document is ready, or a file operation is pending");
     add("file.saveAs", "Save document as...", "File", "Mod+Shift+S", [this] { if (auto tab = target()) save(tab->id, true); }, writable, "No document is ready, or a file operation is pending");
+    add("file.rename", "Rename file...", "File", "", [this] { requestFilePrompt(Prompt::Rename); }, onDisk, "A saved file must be open and ready");
+    add("file.delete", "Delete file...", "File", "", [this] { requestFilePrompt(Prompt::Delete); }, onDisk, "A saved file must be open and ready");
     add("file.close", "Close tab", "File", "Mod+W", [this] { if (settings.active) closeSettings(); else if (auto tab = target()) requestClose(tab->id); }, [this, writable] { return settings.active || writable(); }, "No tab is ready to close");
     add("file.quit", "Quit editor", "File", "Mod+Q", [this] { requestQuit(); });
     add("edit.undo", "Undo", "Edit", "Mod+Z", [this] { editorCommand(ui::Key::Z); }, [this, editable] { return editable() && target()->document.canUndo(); }, "Nothing to undo");
@@ -563,6 +569,46 @@ void EditorApp::requestClose(uint64_t id)
     focusEditor(false);
 }
 
+void EditorApp::requestFilePrompt(Prompt action)
+{
+    auto tab = target();
+    if (!tab) return;
+    workspace.error.clear();
+    prompt = action;
+    promptTarget = tab->id;
+    if (action == Prompt::Rename) {
+        renameInput = ui::TextInput(utf8(tab->path.filename()));
+        renameInput.session.select(0, utf8(tab->path.filename().stem()).size());
+    }
+    focusEditor(false);
+    context.focus(action == Prompt::Rename ? "prompt/name" : "prompt/cancel");
+}
+
+void EditorApp::finishFilePrompt()
+{
+    auto tab = workspace.find(promptTarget);
+    if (!tab || waitingSave || workspace.busy()) return;
+    auto id = tab->id;
+    auto before = tab->path;
+    if (prompt == Prompt::Rename) {
+        if (!workspace.rename(id, utf8Path(renameInput.value()))) return;
+        std::erase(recent.files, before);
+        noteBrowser.fileAccessed(before, true);
+        workspace.fileAccessed(tab->path, true);
+    } else if (prompt == Prompt::Delete) {
+        if (!workspace.remove(id)) return;
+        std::erase(recent.files, before);
+        noteBrowser.fileAccessed(before, true);
+        refreshNoteFiles();
+        if (workspace.find(id)) {
+            waitingSave = true;
+            return;
+        }
+        favorites.erase(id);
+    }
+    cancelPrompt();
+}
+
 void EditorApp::requestQuit()
 {
     if (!menu.empty()) closeMenu();
@@ -629,7 +675,11 @@ bool EditorApp::poll()
     }
     if (waitingSave) {
         auto tab = workspace.find(promptTarget);
-        if (tab && !tab->busy()) {
+        if (prompt == Prompt::Delete && (!tab || !tab->busy())) {
+            if (!tab) favorites.erase(promptTarget);
+            cancelPrompt();
+            changed = true;
+        } else if (tab && !tab->busy()) {
             waitingSave = false;
             if (!tab->dirty()) finishPrompt(false);
             changed = true;
@@ -673,11 +723,39 @@ void EditorApp::drawPrompt(ui::Rect viewport)
         cancelPrompt();
         return;
     }
-    context.modal("prompt/save", [this] { if (!waitingSave && !dialog) cancelPrompt(); });
+    auto renaming = prompt == Prompt::Rename;
+    auto deleting = prompt == Prompt::Delete;
+    context.modal(renaming ? "prompt/name" : deleting ? "prompt/cancel"
+                                                      : "prompt/save",
+                  [this] { if (!waitingSave && !dialog) cancelPrompt(); });
     context.rect(viewport, {0, 0, 0, 150});
     context.control("prompt/backdrop", viewport, {}, true, ui::ControlFlag::None);
-    ui::Rect panel{(viewport.w - 540) / 2, (viewport.h - 200) / 2, 540, 200};
+    auto panelWidth = renaming || deleting ? std::min(540.0f, viewport.w - 16) : 540.0f;
+    ui::Rect panel{(viewport.w - panelWidth) / 2, (viewport.h - 200) / 2, panelWidth, 200};
     context.rect(panel, theme.surface, theme.radius, theme.border);
+    if (renaming || deleting) {
+        auto contentWidth = panel.w - 44;
+        auto heading = renaming ? "Rename file" : "Permanently delete file?";
+        context.text({panel.x + 22, panel.y + 16, contentWidth, 28}, heading, deleting ? theme.danger : theme.text, 16, true);
+        context.text({panel.x + 22, panel.y + 45, contentWidth, 22}, context.elideText(displayPath(tab->path), contentWidth, 12), theme.muted, 12);
+        auto enabled = !waitingSave && !workspace.busy();
+        if (renaming) {
+            ui::textField(context, "prompt/name", {panel.x + 22, panel.y + 69, contentWidth, 32}, renameInput, "New filename", enabled, [this](ui::Key key) {
+                if (key != ui::Key::Enter) return false;
+                finishFilePrompt();
+                return true;
+            });
+        } else if (tab->dirty() || waitingSave) {
+            context.text({panel.x + 22, panel.y + 69, contentWidth, 26}, waitingSave ? "Deleting..." : "Unsaved changes will be discarded.", theme.danger, 12);
+        }
+        if (!workspace.error.empty()) context.text({panel.x + 22, panel.y + 103, contentWidth, 26}, workspace.error, theme.danger, 11);
+        auto buttonWidth = std::min(150.0f, (contentWidth - 8) / 2);
+        auto confirmX = panel.x + panel.w - 22 - buttonWidth;
+        ui::button(context, "prompt/cancel", {confirmX - 8 - buttonWidth, panel.y + 145, buttonWidth, 34}, "Cancel", [this] { cancelPrompt(); }, {.enabled = !waitingSave});
+        ui::button(context, "prompt/confirm", {confirmX, panel.y + 145, buttonWidth, 34}, renaming ? "Rename" : "Delete", [this] { finishFilePrompt(); },
+                   {.style = renaming ? ui::ButtonStyle::Primary : ui::ButtonStyle::Default, .enabled = enabled});
+        return;
+    }
     context.text({panel.x + 22, panel.y + 16, 496, 34}, "Save changes to " + tab->displayTitle(composition == Layout::Note) + "?", theme.text, 16, true);
     context.text({panel.x + 22, panel.y + 57, 496, 44}, waitingSave ? "Saving..." : "Keep your changes, discard them, or continue editing.", theme.muted, 12);
     if (!workspace.error.empty()) context.text({panel.x + 22, panel.y + 101, 496, 26}, workspace.error, theme.danger, 10);

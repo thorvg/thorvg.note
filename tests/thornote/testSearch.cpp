@@ -547,6 +547,67 @@ TEST_CASE_FIXTURE(EditorTest, "palette_leaves_printable_native_keys_for_text_int
     CHECK(field->value() == "fin");
 }
 
+TEST_CASE_FIXTURE(EditorTest, "file_commands_keep_the_buffer_on_rename_and_confirm_deletion")
+{
+    storage::test::Directory directory;
+    auto source = directory.file("original.md");
+    auto destination = directory.file("renamed.md");
+    storage::test::write(source, "original\r\n");
+    auto id = app->workspace.open(source, false);
+    auto wait = [&] {
+        auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (app->workspace.busy() && std::chrono::steady_clock::now() < end) {
+            app->poll();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        REQUIRE_FALSE(app->workspace.busy());
+    };
+    wait();
+    auto tab = app->workspace.find(id);
+    REQUIRE(tab);
+    std::string error;
+    REQUIRE(tab->editor.insert("unsaved ", error));
+
+    auto fromPalette = [&](const char* query) {
+        draw();
+        key(SDLK_F1);
+        draw();
+        input(query);
+        draw();
+        key(SDLK_RETURN);
+        draw();
+    };
+    fromPalette("rename file");
+    REQUIRE(app->context.focused() == "prompt/name");
+    input("renamed");
+    key(SDLK_RETURN);
+    CHECK_FALSE(std::filesystem::exists(source));
+    REQUIRE(std::filesystem::exists(destination));
+    REQUIRE(app->workspace.find(id) == tab);
+    CHECK(tab->path == destination);
+    CHECK(tab->document.text() == "unsaved original\n");
+    CHECK(tab->document.canUndo());
+    CHECK(tab->dirty());
+    CHECK(storage::test::read(destination) == "original\r\n");
+    REQUIRE(app->workspace.save(id));
+    wait();
+    CHECK(storage::test::read(destination) == "unsaved original\r\n");
+    CHECK_FALSE(std::filesystem::exists(source));
+
+    REQUIRE(tab->editor.insert("more ", error));
+    fromPalette("delete file");
+    REQUIRE(app->context.focused() == "prompt/cancel");
+    key(SDLK_ESCAPE);
+    CHECK(std::filesystem::exists(destination));
+    CHECK(tab->dirty());
+    fromPalette("delete file");
+    key(SDLK_TAB);
+    REQUIRE(app->context.focused() == "prompt/confirm");
+    key(SDLK_RETURN);
+    CHECK_FALSE(std::filesystem::exists(destination));
+    CHECK_FALSE(app->workspace.find(id));
+}
+
 TEST_CASE_FIXTURE(EditorTest, "settings_search_leaves_printable_native_keys_for_text_interpretation")
 {
     REQUIRE(run("settings.open"));

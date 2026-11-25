@@ -53,6 +53,8 @@ public:
     void restore(SessionDocument);
     bool save(uint64_t id);
     bool saveAs(uint64_t id, const storage::Path&);
+    bool rename(uint64_t id, const storage::Path& filename);
+    bool remove(uint64_t id);
     bool close(uint64_t id, bool discard = false);
     void select(uint64_t id);
     DocumentTab* find(uint64_t id) const;

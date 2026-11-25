@@ -78,7 +78,9 @@ private:
     {
         None,
         Close,
-        Quit
+        Quit,
+        Rename,
+        Delete
     };
     void registerCommands();
     void focusEditor(bool focus);
@@ -92,6 +94,8 @@ private:
     void requestClose(uint64_t id);
     void save(uint64_t id, bool saveAs = false);
     void finishPrompt(bool discard);
+    void requestFilePrompt(Prompt);
+    void finishFilePrompt();
     void cancelPrompt();
     void applyAppearance();
     void applyEditorOptions();
@@ -262,6 +266,7 @@ private:
     ui::Rect headerDragBounds{};
     std::vector<ui::Rect> windowDragBounds;
     ui::Rect promptSave{}, promptDiscard{}, promptCancel{}, hintBounds{};
+    ui::TextInput renameInput;
     float width = 0, height = 0, pointerX = -1, pointerY = -1;
     Layout composition = Layout::Memo;
     std::array<LayoutState, layoutCount> layouts = defaultLayouts;

@@ -77,9 +77,9 @@
                     await refreshShippedText(note, path, old);
                     if (fs.stat(path).size !== new TextEncoder().encode(note.text).length ||
                         fs.readFile(path, {encoding: 'utf8'}) !== note.text) continue;
-                } else {
+                } else if (firstInstall) {
                     fs.writeFile(path, note.text);
-                }
+                } else continue; // A previously installed note may have been renamed or deleted.
                 var modified = installedAt - (parseInt(note.name, 10) - 1) * 1000;
                 fs.utime(path, modified, modified);
             }
@@ -94,7 +94,7 @@
                 var name = renamed[path.slice(slash + 1)];
                 if (typeof name === 'string' && !exists(path) && exists(folder + '/' + name)) return folder + '/' + name;
             };
-            if (session) module.arguments.pop();
+            if (session || !exists(module.arguments[module.arguments.length - 1])) module.arguments.pop();
         }
         function restore(done) {
             try {

@@ -20,6 +20,24 @@ Error conflict(const char* message, std::error_code system = {})
     return failure(ErrorCode::Conflict, message, system);
 }
 
+Result<Path> mutationTarget(const Path& path, const DiskStamp& expected)
+{
+    if (!expected.exists()) return {{}, failure(ErrorCode::NotFound, "a saved file is required")};
+    if (path.empty() || path.native().find(Path::value_type(0)) != Path::string_type::npos)
+        return {{}, failure(ErrorCode::InvalidPath, "invalid source path")};
+    std::error_code ec;
+    auto status = std::filesystem::symlink_status(path, ec);
+    if (ec == std::errc::no_such_file_or_directory) return {{}, conflict("original file disappeared", ec)};
+    if (ec) return {{}, failure(ErrorCode::Io, "cannot inspect source file", ec)};
+    if (!std::filesystem::is_regular_file(status)) return {{}, failure(ErrorCode::InvalidPath, "source must name a regular file")};
+    auto source = resolve(path, false);
+    if (!source) return source;
+    if (source.value != Access::get(expected)->target)
+        return {{}, conflict("source path differs from the supplied baseline")};
+    if (auto error = check(source.value, expected, nullptr)) return {{}, error};
+    return source;
+}
+
 // Stages and installs the output; stamp describes the installed bytes once staging is committed.
 Error stage(const Path& path, std::string_view text, const SaveOptions& options, Control* control, StagingFile& staging, DiskStamp& stamp)
 {
@@ -239,5 +257,31 @@ Result<LoadedFile> load(const Path& path, LoadOptions options)
 SaveResult save(const Path& path, std::string_view text, SaveOptions options)
 {
     return detail::save(path, text, options, nullptr);
+}
+
+Result<DiskStamp> rename(const Path& path, const Path& filename, const DiskStamp& expected)
+{
+    return detail::guarded<Result<DiskStamp>>([&]() -> Result<DiskStamp> {
+        const auto& name = filename.native();
+        if (name.empty() || filename != filename.filename() || filename == "." || filename == ".."
+            || std::any_of(name.begin(), name.end(), [](unsigned char ch) { return ch < 32 || ch == 127 || ch == '\\'; }))
+            return {{}, detail::failure(ErrorCode::InvalidPath, "enter a filename without path separators or control characters")};
+        auto source = detail::mutationTarget(path, expected);
+        if (!source) return {{}, source.error};
+        auto baseline = *detail::Access::get(expected);
+        baseline.target = source.value.parent_path() / filename;
+        auto stamp = detail::Access::stamp(std::move(baseline));
+        if (auto error = detail::changeName(source.value, filename, detail::Access::get(expected)->info)) return {{}, error};
+        return {std::move(stamp), {}};
+    });
+}
+
+Error remove(const Path& path, const DiskStamp& expected)
+{
+    return detail::guarded<Error>([&] {
+        auto source = detail::mutationTarget(path, expected);
+        if (!source) return source.error;
+        return detail::changeName(source.value, {}, detail::Access::get(expected)->info);
+    });
 }
 }  // namespace storage

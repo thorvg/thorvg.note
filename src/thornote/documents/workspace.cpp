@@ -256,6 +256,68 @@ bool Workspace::saveAs(uint64_t id, const storage::Path& path)
     return true;
 }
 
+bool Workspace::rename(uint64_t id, const storage::Path& filename)
+{
+    auto tab = find(id);
+    if (!tab || busy() || !tab->stamp.exists() || tab->uncertain || tab->persistenceFailed) return false;
+    auto destination = tab->path.parent_path() / filename;
+    auto title = displayName(destination);
+    auto destinationKey = key(destination);
+    for (const auto& other : tabs) {
+        if (other->id != id && !other->path.empty() && key(other->path) == destinationKey) {
+            error = "The destination is already open in another tab.";
+            return false;
+        }
+    }
+    auto result = storage::rename(tab->path, filename, tab->stamp);
+    if (!result) {
+        error = "Rename failed: " + result.error.message;
+        return false;
+    }
+    error.clear();
+    tab->path = std::move(destination);
+    tab->title = std::move(title);
+    tab->stamp = std::move(result.value);
+    if (persist) {
+        tab->saving = true;
+        persist([this, id](std::string failure) {
+            auto tab = find(id);
+            tab->saving = false;
+            tab->persistenceFailed = !failure.empty();
+            if (failure.empty()) message = "Renamed to " + tab->title;
+            else error = "File renamed, but storage could not be synchronized: " + failure;
+        });
+    } else message = "Renamed to " + tab->title;
+    return true;
+}
+
+bool Workspace::remove(uint64_t id)
+{
+    auto tab = find(id);
+    if (!tab || busy() || !tab->stamp.exists() || tab->uncertain || tab->persistenceFailed) return false;
+    if (auto failure = storage::remove(tab->path, tab->stamp)) {
+        error = "Delete failed: " + failure.message;
+        return false;
+    }
+    error.clear();
+    auto complete = [this, id](std::string failure) {
+        auto tab = find(id);
+        tab->saving = false;
+        if (!failure.empty()) {
+            tab->uncertain = true;
+            error = "File removed, but storage could not be synchronized: " + failure;
+            return;
+        }
+        message = "Deleted " + tab->title;
+        erase(id);
+    };
+    if (persist) {
+        tab->saving = true;
+        persist(std::move(complete));
+    } else complete({});
+    return true;
+}
+
 void Workspace::erase(uint64_t id)
 {
     auto found = std::find_if(tabs.begin(), tabs.end(), [=](const auto& tab) { return tab->id == id; });

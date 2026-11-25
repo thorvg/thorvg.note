@@ -104,7 +104,7 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
     auto mods = ui::platform::modifiers(keys);
     textInputShift = keys.shift;
     if (dialog) return true;
-    if (prompt != Prompt::None) {
+    if (prompt != Prompt::None && prompt != Prompt::Rename) {
         context.key(uiKey(event.key), {.shift = mods.shift});
         return true;
     }
@@ -158,6 +158,10 @@ bool EditorApp::key(const SDL_KeyboardEvent& event)
             context.key(key, navigation);
             return true;
         }
+    }
+    if (prompt == Prompt::Rename) {
+        context.key(uiKey(event.key), mods);
+        return true;
     }
     if (palette) {
         if (mods.primary && event.key == SDLK_V) {
@@ -356,7 +360,7 @@ void EditorApp::event(const SDL_Event& event, float sx, float sy)
             break;
         case SDL_EVENT_TEXT_INPUT:
             composing = false;
-            if (prompt != Prompt::None || dialog || !menu.empty()) break;
+            if ((prompt != Prompt::None && prompt != Prompt::Rename) || dialog || !menu.empty()) break;
             if (searchFocused()) context.textInput(event.text.text);
             else if (!settings.active) {
                 if (auto tab = visibleDocument()) {
@@ -431,8 +435,9 @@ DocumentTab* EditorApp::textInputTarget() const
 
 std::optional<ui::Rect> EditorApp::textInputArea()
 {
-    if (!windowFocused || dialog || prompt != Prompt::None || !menu.empty()) return {};
+    if (!windowFocused || dialog || (prompt != Prompt::None && prompt != Prompt::Rename) || !menu.empty()) return {};
     if (auto input = context.input()) return input->caretBounds;
+    if (prompt == Prompt::Rename) return {};
     if (palette) return ui::Rect{(width - std::min(550.0f, width - 32)) / 2 + 12, std::min(90.0f, height / 8) + (recentPalette ? 43 : 12), 1, 34};
     if (searchFocused()) {
         if (findFocused()) {

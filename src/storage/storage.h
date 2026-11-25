@@ -391,6 +391,69 @@ Result<LoadedFile> load(const Path& path, LoadOptions options = {});
 SaveResult save(const Path& path, std::string_view lfText, SaveOptions options = {});
 
 /**
+ * @brief Renames a regular file within its directory after verifying its disk baseline.
+ *
+ * The operation preserves the file's contents and identity. A destination occupied by
+ * another entry causes a conflict.
+ *
+ * @param[in] path Source regular file. The final path component must name the file itself.
+ * @param[in] filename New filename in the same directory, including any extension.
+ * @param[in] expected Existing-file baseline from load(), save(), or a previous rename().
+ *
+ * @return The baseline for the renamed path on success, or an error.
+ *
+ * @retval ErrorCode::Conflict If the source differs from the baseline or another entry occupies the destination.
+ * @retval ErrorCode::InvalidPath If the source is invalid or is a symbolic link, or the filename is empty,
+ * contains a separator or control character, or is "." or "..".
+ * @retval ErrorCode::NotFound If the baseline has no existing file or the source disappears during resolution.
+ * @retval ErrorCode::Io If inspecting or renaming the file fails.
+ *
+ * @note The source is checked without locking. A concurrent change can arrive between verification and rename.
+ *
+ * @code
+ *     auto loaded = storage::load("notes/old.md");
+ *     if (loaded) {
+ *         auto renamed = storage::rename(loaded.value.path, "new.md", loaded.value.stamp);
+ *         if (renamed) {
+ *             auto path = loaded.value.path.parent_path() / "new.md";
+ *             storage::save(path, "edited\n", {loaded.value.format, renamed.value});
+ *         }
+ *     }
+ * @endcode
+ *
+ * @see load(), save(), remove()
+ */
+Result<DiskStamp> rename(const Path& path, const Path& filename, const DiskStamp& expected);
+
+/**
+ * @brief Permanently removes a regular file after verifying its disk baseline.
+ *
+ * @param[in] path Regular file to remove. The final path component must name the file itself.
+ * @param[in] expected Existing-file baseline from load(), save(), or rename().
+ *
+ * @return Empty error on success, or details of the failure.
+ *
+ * @retval ErrorCode::Conflict If the file changed, was replaced or removed, or the baseline belongs to another path.
+ * @retval ErrorCode::InvalidPath If the path is invalid or its final component is a symbolic link or another non-regular entry.
+ * @retval ErrorCode::NotFound If the baseline has no existing file or the source disappears during resolution.
+ * @retval ErrorCode::Io If inspecting or removing the file fails.
+ *
+ * @note The source is checked without locking. A concurrent change can arrive between verification and removal.
+ * @warning Removal is permanent. Callers should obtain confirmation before invoking this operation.
+ *
+ * @code
+ *     auto loaded = storage::load("note.txt");
+ *     if (loaded && confirmDelete(loaded.value.path)) {
+ *         auto error = storage::remove(loaded.value.path, loaded.value.stamp);
+ *         if (error) reportError(error);
+ *     }
+ * @endcode
+ *
+ * @see load(), rename()
+ */
+Error remove(const Path& path, const DiskStamp& expected);
+
+/**
  * @brief Discovered regular file and optional timestamps.
  */
 struct DirectoryEntry
