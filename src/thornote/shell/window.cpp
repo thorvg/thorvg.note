@@ -1,13 +1,13 @@
 #include "shell.h"
 #include "input.h"
 #include "cursors.h"
+#include "renderer.h"
 #include <thornote/app/app_identity.h>
 #include <thornote/platform/native_text_input.h>
 #include <thornote/platform/native_window.h>
 #include <algorithm>
 #include <cmath>
 #include <deque>
-#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -15,13 +15,8 @@
 #include <emscripten.h>
 #include <emscripten/eventloop.h>
 #include <emscripten/html5.h>
-#include <GLES3/gl3.h>
 #include <thornote/platform/emscripten/browser_files.h>
-#else
-#include <SDL3/SDL_opengl.h>
-#endif
 
-#ifdef __EMSCRIPTEN__
 extern "C" EMSCRIPTEN_KEEPALIVE void thornoteWindowExposed(SDL_WindowID window)
 {
     SDL_Event event{};
@@ -97,9 +92,9 @@ public:
             box.event = 0;
             box.results.clear();
         }
-        canvas.reset();
+        // Paints the app releases still need the engine, which the canvas keeps until the renderer stops.
         app.reset();
-        if (gl) SDL_GL_DestroyContext(gl);
+        renderer.stop();
         SDL_DestroyWindow(window);
         SDL_Quit();
     }
@@ -108,20 +103,8 @@ public:
     {
         app = std::move(value);
         if (!initializeAppIdentity() || !SDL_Init(SDL_INIT_VIDEO)) return false;
-#ifdef __EMSCRIPTEN__
-        constexpr int profile = SDL_GL_CONTEXT_PROFILE_ES, major = 3, minor = 0;
-#elif defined(__APPLE__)
-        constexpr int profile = SDL_GL_CONTEXT_PROFILE_CORE, major = 4, minor = 1;
-#else
-        constexpr int profile = SDL_GL_CONTEXT_PROFILE_CORE, major = 3, minor = 3;
-#endif
-        if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, profile) || !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, major) || !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor)) return false;
-        window = SDL_CreateWindow("ThorNote", 1080, 720, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
+        window = renderer.createWindow("ThorNote", 1080, 720, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
         if (!window) return false;
-        gl = SDL_GL_CreateContext(window);
-        if (!gl) return false;
-        canvas.reset(tvg::GlCanvas::gen());
-        if (!canvas) return SDL_SetError("ThorVG GL renderer is unavailable");
         snapshotMode = !options.snapshot.empty();
 #ifndef __EMSCRIPTEN__
         if (!applyAppIcon(window)) {
@@ -168,7 +151,7 @@ public:
             if (!updateNativeWindowChrome(window, true)) return false;
             SDL_ClearError();
         }
-        // Apply the window size before creating the first GL frame.
+        // Apply the window size before creating the first frame.
         if (!SDL_SyncWindow(window)) return false;
         if (!SDL_AddEventWatch(exposeWatch, this)) return false;
 #ifdef __EMSCRIPTEN__
@@ -176,7 +159,7 @@ public:
         EM_ASM({ window.addEventListener("resize", function() { _thornoteWindowExposed($0); }); }, SDL_GetWindowID(window));
 #endif
         if (!draw()) return false;
-        std::cout << "ThorNote: render engine gl; native UI + TextEditor\n";
+        std::cout << "ThorNote: render engine " << renderer.engine() << "; native UI + TextEditor\n";
         if (options.snapshot.empty()) SDL_ShowWindow(window);
         return true;
     }
@@ -225,7 +208,7 @@ public:
 
         // 4. Present.
         if ((dirty || snapshotMode) && !draw()) return 1;
-        if (snapshotMode && !app->busy() && ++passes >= 3) return snapshot(options.snapshot) ? 0 : 1;
+        if (snapshotMode && !app->busy() && ++passes >= 3) return renderer.snapshot(options.snapshot) ? 0 : 1;
         return std::nullopt;
     }
 
@@ -267,6 +250,7 @@ private:
     bool dispatch(SDL_Event& event)
     {
         if ((event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT) || event.type == SDL_EVENT_WINDOW_FOCUS_LOST) SDL_CaptureMouse(false);
+        if (event.type >= SDL_EVENT_WINDOW_FIRST && event.type <= SDL_EVENT_WINDOW_LAST) renderer.invalidate();
         bool handled = titleBarInput.event(event);
         if (!handled && nativeInputReady) handled = nativeInput.event(event);
         if (!handled) {
@@ -301,7 +285,9 @@ private:
     {
         if (SDL_IsMainThread() && event->type == SDL_EVENT_WINDOW_EXPOSED) {
             auto& self = *static_cast<Window*>(data);
-            if (event->window.windowID == SDL_GetWindowID(self.window) && !self.drawing && self.draw()) self.exposedAt = event->common.timestamp;
+            if (event->window.windowID != SDL_GetWindowID(self.window) || self.drawing) return true;
+            self.renderer.invalidate();
+            if (self.draw()) self.exposedAt = event->common.timestamp;
         }
         return true;
     }
@@ -365,19 +351,10 @@ private:
         if (scale <= 0) scale = 1;
         inputX = float(width) / ww / scale;
         inputY = float(height) / wh / scale;
-        if (present && (width != targetWidth || height != targetHeight)) {
-            if (canvas->target(nullptr, nullptr, gl, 0, width, height, tvg::ColorSpace::ABGR8888S) != tvg::Result::Success) return SDL_SetError("Cannot set the GL render target");
-            targetWidth = width;
-            targetHeight = height;
-        }
         app->render(width / scale, height / scale, ui::frameTime());
         if (present) {
             ui::transform(app->scene(), {scale, 0, 0, 0, scale, 0, 0, 0, 1});
-            if (!attached) {
-                if (canvas->add(app->scene()) != tvg::Result::Success) return false;
-                attached = true;
-            }
-            if (canvas->update() != tvg::Result::Success || canvas->draw(true) != tvg::Result::Success || canvas->sync() != tvg::Result::Success) return SDL_SetError("Cannot draw the GL frame");
+            if (!renderer.draw(app->scene(), width, height)) return false;
         }
         SDL_SetWindowTitle(window, app->title().c_str());
         updateTextInput();
@@ -387,7 +364,7 @@ private:
             auto hit = custom ? nativeWindowHitTest(window, {int(mx), int(my)}, false) : SDL_HITTEST_NORMAL;
             if (hit < SDL_HITTEST_RESIZE_TOPLEFT) cursors.set(app->cursor());
         }
-        return !present || snapshotMode || SDL_GL_SwapWindow(window);
+        return !present || snapshotMode || renderer.present();
     }
 
     void updateTextInput()
@@ -408,45 +385,16 @@ private:
         }
     }
 
-    bool snapshot(const std::string& path)
-    {
-        if (targetWidth <= 0 || targetHeight <= 0) return false;
-#ifdef __EMSCRIPTEN__
-        auto readPixels = glReadPixels;
-#else
-        auto readPixels = reinterpret_cast<decltype(&glReadPixels)>(SDL_GL_GetProcAddress("glReadPixels"));
-        if (!readPixels) return false;
-#endif
-        std::vector<uint8_t> pixels(size_t(targetWidth) * targetHeight * 4);
-        readPixels(0, 0, targetWidth, targetHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-        std::ofstream output(path, std::ios::binary);
-        output << "P6\n"
-               << targetWidth << ' ' << targetHeight << "\n255\n";
-        for (int y = targetHeight - 1; y >= 0; --y) {
-            auto row = pixels.data() + size_t(y) * targetWidth * 4;
-            for (int x = 1; x < targetWidth; ++x) {
-                row[x * 3] = row[x * 4];
-                row[x * 3 + 1] = row[x * 4 + 1];
-                row[x * 3 + 2] = row[x * 4 + 2];
-            }
-            output.write(reinterpret_cast<const char*>(row), size_t(targetWidth) * 3);
-        }
-        return bool(output);
-    }
-
     SDL_Window* window = nullptr;
-    SDL_GLContext gl = nullptr;
-    int targetWidth = 0, targetHeight = 0;
+    Renderer renderer;
     bool snapshotMode = false, custom = false;
     tn::Cursors cursors;
     NativeTextInput nativeInput;
     NativeTitleBarInput titleBarInput;
     bool nativeInputReady = false;
-    std::unique_ptr<tvg::GlCanvas> canvas;
     std::unique_ptr<App> app;
     std::optional<WindowAction> pendingWindowAction;
     float inputX = 1, inputY = 1;
-    bool attached = false;
     size_t passes = 0;
     std::optional<Geometry> presented;
     Uint64 exposedAt = 0;

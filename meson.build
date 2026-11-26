@@ -18,6 +18,8 @@ target_platform = host_machine.system()
 if target_platform == 'darwin'
   target_platform = 'macos'
 endif
+# 'cpu' rasterizes with partial rendering; 'gl' draws with OpenGL or WebGL 2.
+render_engine = 'cpu'
 
 src_inc = include_directories('src')
 if target_platform == 'emscripten'
@@ -28,7 +30,7 @@ if target_platform == 'emscripten'
       'buildtype=' + get_option('buildtype'),
       'optimization=' + get_option('optimization'),
       'b_ndebug=' + get_option('b_ndebug'),
-      'engines=gl',
+      'engines=' + render_engine,
       'loaders=svg,lottie,ttf,png,jpg,webp,gif',
       'threads=false',
       'extra=',

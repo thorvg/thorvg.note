@@ -17,7 +17,7 @@ if target_platform == 'emscripten'
     'SDL_HIDAPI': false,
     'SDL_SENSOR': false,
     'SDL_OPENGL': false,
-    'SDL_OPENGLES': true,
+    'SDL_OPENGLES': render_engine == 'gl',
     'SDL_PTHREADS': false,
     'CMAKE_C_FLAGS_RELEASE': '-Os -DNDEBUG',
   })
@@ -83,13 +83,14 @@ if target_platform == 'emscripten'
     '-sMAXIMUM_MEMORY=4GB',
     '-sSTACK_SIZE=1048576',
     '-sENVIRONMENT=web',
-    '-sMIN_WEBGL_VERSION=2',
-    '-sMAX_WEBGL_VERSION=2',
     '-sEXPORTED_RUNTIME_METHODS=FS,IDBFS,ENV,addRunDependency,removeRunDependency',
     '-lidbfs.js',
     '--embed-file', meson.current_source_dir() / 'data/layouts@/layouts',
     '--embed-file', meson.current_source_dir() / 'data/themes@/themes',
   ]
+  if render_engine == 'gl'
+    thornote_link_args += ['-sMIN_WEBGL_VERSION=2', '-sMAX_WEBGL_VERSION=2']
+  endif
   thornote_link_depends += files('data/layouts/titlebar.lua', 'data/layouts/workspace.lua')
   thornote_link_depends += files('data/themes/light.lua', 'data/themes/dark.lua')
   # The optimization level also selects the optimized runtime and the post-link passes.
