@@ -172,7 +172,29 @@ void DocumentWidgets::attach(ui::TextEditor& editor)
         return true;
     };
     emojis.popup = [this](ui::Context& context, std::string_view id, ui::Rect bounds, ui::TextEditor& editor, const ui::TextWidgetEvent& event) {
-        emojiPopup(context, id, bounds, editor, event);
+        if (emojiQuery != event.value) {
+            emojiQuery = event.value;
+            emojiMatches(event.value, emojiCandidates);
+            emojiFirst = 0;
+            emojiSelected = 0;
+        }
+        auto count = emojiCandidates.size();
+        emojiColumns = std::clamp(size_t(bounds.w / 44), size_t(1), size_t(5));
+        context.scroll(std::string(id) + "/scroll", bounds, emojiFirst, count > emojiColumns ? count - emojiColumns : 0, {.step = 1, .horizontal = true});
+        if (count) emojiSelected = std::clamp(emojiSelected, emojiFirst, std::min(count, emojiFirst + emojiColumns) - 1);
+        context.clip(bounds, [&] {
+            for (size_t i = emojiFirst; i < std::min(count, emojiFirst + emojiColumns); ++i) {
+                ui::Rect button{bounds.x + (i - emojiFirst) * 44, bounds.y, 40, bounds.h};
+                auto hit = button.intersect(bounds);
+                if (hit.w <= 0) continue;
+                auto index = emojiCandidates[i];
+                auto key = std::string(id) + "/" + std::to_string(index);
+                auto state = context.control(key, hit, [&editor, event, index](const ui::Event& input) {
+                    if (input.activated()) replace(editor, event, emojiCatalog()[index].text); }, !editor.options().readOnly, ui::ControlFlag::None);
+                if (state.hovered || i == emojiSelected) context.rect(button, context.theme().selection, 4);
+                context.icon(key + "/icon", button, "emoji/" + std::string(emojiCatalog()[index].code), {255, 255, 255}, {.hovered = state.hovered, .pressed = state.pressed}, 26);
+            }
+        });
     };
     editor.widgets("emoji", std::move(emojis));
 }
@@ -226,33 +248,6 @@ void DocumentWidgets::colorPopup(ui::Context& context, std::string_view id, ui::
             colorInput->value(literal(value, alpha)); }, !editor.options().readOnly, ui::ControlFlag::Capture);
         context.text({track.x + track.w + 6, track.y - 4, 34, 24}, std::to_string(value.*channel), theme.muted, 10);
     }
-}
-
-void DocumentWidgets::emojiPopup(ui::Context& context, std::string_view id, ui::Rect bounds, ui::TextEditor& editor, const ui::TextWidgetEvent& event)
-{
-    if (emojiQuery != event.value) {
-        emojiQuery = event.value;
-        emojiMatches(event.value, emojiCandidates);
-        emojiFirst = 0;
-        emojiSelected = 0;
-    }
-    auto count = emojiCandidates.size();
-    emojiColumns = std::clamp(size_t(bounds.w / 44), size_t(1), size_t(5));
-    context.scroll(std::string(id) + "/scroll", bounds, emojiFirst, count > emojiColumns ? count - emojiColumns : 0, {.step = 1, .horizontal = true});
-    if (count) emojiSelected = std::clamp(emojiSelected, emojiFirst, std::min(count, emojiFirst + emojiColumns) - 1);
-    context.clip(bounds, [&] {
-        for (size_t i = emojiFirst; i < std::min(count, emojiFirst + emojiColumns); ++i) {
-            ui::Rect button{bounds.x + (i - emojiFirst) * 44, bounds.y, 40, bounds.h};
-            auto hit = button.intersect(bounds);
-            if (hit.w <= 0) continue;
-            auto index = emojiCandidates[i];
-            auto key = std::string(id) + "/" + std::to_string(index);
-            auto state = context.control(key, hit, [&editor, event, index](const ui::Event& input) {
-                if (input.activated()) replace(editor, event, emojiCatalog()[index].text); }, !editor.options().readOnly, ui::ControlFlag::None);
-            if (state.hovered || i == emojiSelected) context.rect(button, context.theme().selection, 4);
-            context.icon(key + "/icon", button, "emoji/" + std::string(emojiCatalog()[index].code), {255, 255, 255}, {.hovered = state.hovered, .pressed = state.pressed}, 26);
-        }
-    });
 }
 
 std::vector<DocumentWidgets::Chunk> DocumentWidgets::scan(std::string_view text, size_t start, size_t end, ScanState state) const

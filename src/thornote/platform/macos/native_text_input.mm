@@ -102,17 +102,6 @@ NSRange clamped(NSRange range, NSUInteger length)
     return range;
 }
 
-const char* textMenuCommand(SEL action)
-{
-    if (action == @selector(cut:)) return "edit.cut";
-    if (action == @selector(copy:)) return "edit.copy";
-    if (action == @selector(paste:) || action == @selector(pasteAsPlainText:)) return "edit.paste";
-    if (action == @selector(selectAll:)) return "edit.selectAll";
-    if (action == @selector(undo:)) return "edit.undo";
-    if (action == @selector(redo:)) return "edit.redo";
-    return nullptr;
-}
-
 bool textFormattingMenu(NSMenu* menu)
 {
     for (NSMenuItem* item in menu.itemArray) {
@@ -451,7 +440,15 @@ bool NativeTextInput::contextMenu(float x, float y, std::string_view selection, 
     NSMutableDictionary* images = [NSMutableDictionary dictionary];
     NSMutableDictionary* titles = [NSMutableDictionary dictionary];
     for (NSMenuItem* item in [menu.itemArray copy]) {
-        if (auto command = textMenuCommand(item.action)) {
+        auto action = item.action;
+        auto command = action == @selector(cut:)                                    ? "edit.cut"
+            : action == @selector(copy:)                                            ? "edit.copy"
+            : action == @selector(paste:) || action == @selector(pasteAsPlainText:) ? "edit.paste"
+            : action == @selector(selectAll:)                                       ? "edit.selectAll"
+            : action == @selector(undo:)                                            ? "edit.undo"
+            : action == @selector(redo:)                                            ? "edit.redo"
+                                                                                    : nullptr;
+        if (command) {
             auto key = string(command);
             if (item.image && !images[key]) images[key] = item.image;
             if (!titles[key]) titles[key] = item.title;

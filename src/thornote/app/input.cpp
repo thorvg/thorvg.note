@@ -58,13 +58,6 @@ std::string clipboardText()
         return {};
     }
 }
-void copyText(std::string_view text)
-{
-    try {
-        writeClipboardText(text);
-    } catch (const std::exception&) {
-    }
-}
 }  // namespace
 
 bool EditorApp::searchFocused() const
@@ -122,7 +115,10 @@ bool EditorApp::key(const KeyEvent& event)
                 if (event.key == Key('x') && mods.shift) return true;
                 auto text = input->session.selectedText();
                 if (!text.empty()) {
-                    copyText(text);
+                    try {
+                        writeClipboardText(text);
+                    } catch (const std::exception&) {
+                    }
                     if (event.key == Key('x')) input->insert("");
                 }
                 return true;
@@ -353,8 +349,20 @@ void EditorApp::pointerDown(const PointerEvent& event)
         if (!dialog && !palette && prompt == Prompt::None && menu.empty()) {
             pointerX = event.x;
             pointerY = event.y;
-            if (editorAt(pointerX, pointerY)) openEditorMenu(pointerX, pointerY);
-            else context.contextMenu(pointerX, pointerY);
+            if (!editorAt(pointerX, pointerY)) context.contextMenu(pointerX, pointerY);
+            else if (auto tab = visibleDocument(); tab && !tab->loading) {
+                context.cancelPointer();
+                // A secondary click on plain text selects the word under it, as a double click does.
+                if (tab->editor.session().selection().empty()) {
+                    context.pointerDown(pointerX, pointerY, {}, 2);
+                    context.cancelPointer();
+                }
+                focusEditor(true);
+                if (!showTextMenu || !showTextMenu(pointerX, pointerY, tab->editor.session().selectedText(), commands)) {
+                    contextMenuAnchor = menuButton = ui::Rect{pointerX, pointerY, 1, 1};
+                    openMenu("editor-menu");
+                }
+            }
         }
     } else if (event.button == Button::Left && !dialog) {
         pointerX = event.x;

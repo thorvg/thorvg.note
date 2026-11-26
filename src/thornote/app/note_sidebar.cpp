@@ -26,26 +26,6 @@ void EditorApp::selectNoteFolder(const storage::Path& path)
     focusEditor(false);
 }
 
-void EditorApp::openFolderMenu(const storage::Path& path, ui::Rect anchor)
-{
-    if (dialog || palette || prompt != Prompt::None || !layoutScript.menu("folder-menu")) return;
-    menuFolder = path;
-    menuRoot = "folder-menu";
-    contextMenuAnchor = menuButton = anchor;
-    openMenu("folder-menu");
-}
-
-void EditorApp::removeNoteFolder(const storage::Path& path)
-{
-    auto selected = collection.compare(0, 7, "folder:") == 0 ? recent.rootDirectory(utf8Path(collection.substr(7))) : storage::Path{};
-    recent.removeDirectory(path);
-    if (recent.directories.empty()) folderWorkspace = false;
-    if (selected == path || collection == "folder:" + utf8(path)) collection = "all";
-    collectionOffset = 0;
-    noteFileScroll = 0;
-    refreshNoteFiles(true);
-}
-
 std::array<std::string, 3> EditorApp::previewLines(std::string_view text, float width)
 {
     auto font = context.fontFor ? context.fontFor(text, false) : ui::findFont(theme.font);

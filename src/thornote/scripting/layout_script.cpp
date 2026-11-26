@@ -342,12 +342,6 @@ bool LayoutScript::hasView(Layout profile, std::string_view source) const
     return find(configuration.view().definition());
 }
 
-bool EditorApp::hasLayoutView(std::string_view source) const
-{
-    if (layoutScript.enabled()) return layoutScript.hasView(composition, source);
-    return true;
-}
-
 void LayoutScript::render(ui::Context& context, ui::Rect bounds, const std::vector<ui::ViewType>& types, const ui::CommandRegistry& commands)
 {
     auto& view = configuration.view();
@@ -410,11 +404,6 @@ void EditorApp::editLayoutScript(bool titlebar)
     settings.active = false;
     workspace.open(path);
     focusEditor(true);
-}
-
-void EditorApp::reloadLayoutScript()
-{
-    layoutScript.refresh(composition, layoutScriptState(), true, true);
 }
 
 }  // namespace tn

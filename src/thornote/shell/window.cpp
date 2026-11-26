@@ -197,7 +197,16 @@ public:
         // 1. Finished work: background loads, saves and file dialogs. These can replace controls,
         //    so rebuild them before the queued input.
         bool dirty = app->update();
-        dirty |= finishDialogs();
+        std::deque<DialogResult> results;
+        {
+            auto& box = mailbox();
+            std::lock_guard<std::mutex> lock(box.mutex);
+            results.swap(box.results);
+        }
+        for (const auto& result : results) {
+            result.done(result.paths, result.error);
+            dirty = true;
+        }
         if (dirty && !liveResize.draw()) return 1;
 
         // 2. Input. Rebuild without presenting between events so callbacks and input bounds reflect
@@ -272,20 +281,6 @@ private:
         auto& self = *static_cast<Window*>(data);
         if (!self.custom || (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN)) return SDL_HITTEST_NORMAL;
         return self.titleBarInput.hitTest(nativeWindowHitTest(window, *point, self.app->draggable(point->x * self.inputX, point->y * self.inputY)));
-    }
-
-    // Returns whether any dialog finished.
-    bool finishDialogs()
-    {
-        std::deque<DialogResult> results;
-        {
-            auto& box = mailbox();
-            std::lock_guard<std::mutex> lock(box.mutex);
-            results.swap(box.results);
-        }
-        for (const auto& result : results)
-            result.done(result.paths, result.error);
-        return !results.empty();
     }
 
     // Without presenting, only updates the controls and the input state.

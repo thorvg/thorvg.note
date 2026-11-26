@@ -64,16 +64,6 @@ namespace
 {
 const char titleBarChromeKey = 0;
 
-ThorNoteTitleBarChrome* titleBarChrome(NSWindow* window)
-{
-    ThorNoteTitleBarChrome* chrome = objc_getAssociatedObject(window, &titleBarChromeKey);
-    if (!chrome) {
-        chrome = [[ThorNoteTitleBarChrome alloc] initWithWindow:window];
-        objc_setAssociatedObject(window, &titleBarChromeKey, chrome, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    return chrome;
-}
-
 void showTitleBarToolbar(NSWindow* window, ThorNoteTitleBarChrome* chrome, bool visible)
 {
     if (@available(macOS 11.0, *)) {
@@ -98,21 +88,6 @@ NSRect titleBarContentRect(NSView* view, SEL)
     // AppKit computes title-bar drag regions before delivering mouse events.
     // Claim custom content here; the input monitor starts caption drags explicitly.
     return view.window.styleMask & NSWindowStyleMaskFullSizeContentView ? view.bounds : NSZeroRect;
-}
-
-Class titleBarContentClass(Class parent)
-{
-    auto name = std::string("ThorNoteTitleBar_") + class_getName(parent);
-    if (auto existing = objc_lookUpClass(name.c_str())) return existing;
-    auto subclass = objc_allocateClassPair(parent, name.c_str(), 0);
-    if (!subclass) return Nil;
-    auto booleanType = std::string(@encode(BOOL)) + "@:";
-    auto rectType = std::string(@encode(NSRect)) + "@:";
-    class_addMethod(subclass, @selector(mouseDownCanMoveWindow), reinterpret_cast<IMP>(mouseDownMovesWindow), booleanType.c_str());
-    // Private AppKit title-bar content hook for macOS 27.
-    class_addMethod(subclass, sel_registerName("_opaqueRectForWindowMoveWhenInTitlebar"), reinterpret_cast<IMP>(titleBarContentRect), rectType.c_str());
-    objc_registerClassPair(subclass);
-    return subclass;
 }
 }  // namespace
 
@@ -246,7 +221,16 @@ bool NativeTitleBarInput::initialize(SDL_Window* window, std::function<bool(floa
     if (!state.window) return false;
     state.contentView = state.window.contentView;
     state.originalViewClass = object_getClass(state.contentView);
-    auto contentClass = titleBarContentClass(state.originalViewClass);
+    auto name = std::string("ThorNoteTitleBar_") + class_getName(state.originalViewClass);
+    Class contentClass = objc_lookUpClass(name.c_str());
+    if (!contentClass && (contentClass = objc_allocateClassPair(state.originalViewClass, name.c_str(), 0))) {
+        auto booleanType = std::string(@encode(BOOL)) + "@:";
+        auto rectType = std::string(@encode(NSRect)) + "@:";
+        class_addMethod(contentClass, @selector(mouseDownCanMoveWindow), reinterpret_cast<IMP>(mouseDownMovesWindow), booleanType.c_str());
+        // Private AppKit title-bar content hook for macOS 27.
+        class_addMethod(contentClass, sel_registerName("_opaqueRectForWindowMoveWhenInTitlebar"), reinterpret_cast<IMP>(titleBarContentRect), rectType.c_str());
+        objc_registerClassPair(contentClass);
+    }
     if (!contentClass) {
         stop();
         return false;
@@ -360,7 +344,11 @@ bool updateNativeWindowChrome(SDL_Window* window, bool nativeTitleBar)
     auto flags = SDL_GetWindowFlags(window);
     bool fullscreen = (flags & SDL_WINDOW_FULLSCREEN) || (native.styleMask & NSWindowStyleMaskFullScreen);
     if (!native) return fullscreen || SDL_SetWindowBordered(window, nativeTitleBar);
-    auto chrome = titleBarChrome(native);
+    ThorNoteTitleBarChrome* chrome = objc_getAssociatedObject(native, &titleBarChromeKey);
+    if (!chrome) {
+        chrome = [[ThorNoteTitleBarChrome alloc] initWithWindow:native];
+        objc_setAssociatedObject(native, &titleBarChromeKey, chrome, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
     // Leave the window style alone while AppKit animates into or out of full screen.
     fullscreen = fullscreen || chrome.transitioning;
 

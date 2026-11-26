@@ -51,18 +51,6 @@ DocumentTab* EditorApp::visibleDocument() const
     return std::find(documents.begin(), documents.end(), active) != documents.end() ? active : nullptr;
 }
 
-void EditorApp::selectCollection(std::string value)
-{
-    settings.active = false;
-    collection = std::move(value);
-    documentScroll = 0;
-    noteFileScroll = 0;
-    refreshNoteFiles();
-    auto documents = filteredDocuments();
-    if (!documents.empty() && std::find(documents.begin(), documents.end(), workspace.active()) == documents.end()) workspace.select(documents.front()->id);
-    focusEditor(true);
-}
-
 void EditorApp::drawCollections(ui::Rect r)
 {
     context.rect(r, theme.surface);
@@ -76,7 +64,15 @@ void EditorApp::drawCollections(ui::Rect r)
         {"favorites", "Favorites", std::to_string(favoriteCount), "star"},
         {"unsaved", "Unsaved", std::to_string(unsaved), "file"},
     };
-    ui::list(context, "collections", {r.x + 6, r.y + 8, r.w - 12, 108}, collectionItems, collection, collectionList, [this](std::string id) { selectCollection(std::move(id)); }, 36);
+    ui::list(context, "collections", {r.x + 6, r.y + 8, r.w - 12, 108}, collectionItems, collection, collectionList, [this](std::string id) {
+        settings.active = false;
+        collection = std::move(id);
+        documentScroll = 0;
+        noteFileScroll = 0;
+        refreshNoteFiles();
+        auto documents = filteredDocuments();
+        if (!documents.empty() && std::find(documents.begin(), documents.end(), workspace.active()) == documents.end()) workspace.select(documents.front()->id);
+        focusEditor(true); }, 36);
     context.text({r.x + 16, r.y + 130, r.w - 32, 24}, "RECENT FOLDERS", theme.muted, 10, true);
     folderItems.clear();
     ui::Rect body{r.x + 6, r.y + 162, r.w - 12, std::max(0.0f, r.h - 174)};
@@ -91,7 +87,12 @@ void EditorApp::drawCollections(ui::Rect r)
             folderItems.push_back({utf8(path), name.empty() ? displayPath(path) : name, {}, "folder", 0, !dialog});
         }
         auto selected = collection.compare(0, 7, "folder:") == 0 ? utf8(recent.rootDirectory(utf8Path(collection.substr(7)))) : std::string{};
-        ui::list(context, "folders", body, folderItems, selected, folderList, [this](const std::string& path) { selectNoteFolder(utf8Path(path)); }, 36, [this](const std::string& path, ui::Rect anchor) { openFolderMenu(utf8Path(path), anchor); });
+        ui::list(context, "folders", body, folderItems, selected, folderList, [this](const std::string& path) { selectNoteFolder(utf8Path(path)); }, 36, [this](const std::string& path, ui::Rect anchor) {
+            if (dialog || palette || prompt != Prompt::None || !layoutScript.menu("folder-menu")) return;
+            menuFolder = utf8Path(path);
+            menuRoot = "folder-menu";
+            contextMenuAnchor = menuButton = anchor;
+            openMenu("folder-menu"); });
     } else context.text(body, "Open a file to add\nits folder here", theme.muted, 11);
     context.line(r.x + r.w - 1, r.y, r.x + r.w - 1, r.y + r.h, theme.border);
 }
@@ -175,14 +176,6 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
     context.line(r.x + r.w - 1, r.y, r.x + r.w - 1, r.y + r.h, theme.border);
 }
 
-void EditorApp::drawSidebar(ui::Rect r)
-{
-    sidebarBounds = r;
-    context.rect(r, theme.surface);
-    context.text({r.x + 14, r.y + 8, r.w - 28, 28}, "Commands", theme.text, 13, true);
-    ui::commandList(context, "sidebar/commands", {r.x + 8, r.y + 42, r.w - 16, r.h - 50}, commands, listState);
-}
-
 void EditorApp::drawNoteHeading(ui::Rect r)
 {
     context.rect(r, theme.surface);
@@ -204,14 +197,9 @@ void EditorApp::drawNoteHeading(ui::Rect r)
                  {state.hovered, state.pressed, options.lineNumbers, enabled, state.focused});
     if (state.focused) context.focusRing(toggle);
     if (state.hovered) hint = {options.lineNumbers ? "Hide line numbers" : "Show line numbers", toggle};
-    drawNoteFavorite({r.x + r.w - 42, r.y + (r.h - 28) / 2, 28, 28});
-}
-
-void EditorApp::drawNoteFavorite(ui::Rect star)
-{
-    auto tab = visibleDocument();
     if (!tab) return;
-    auto state = context.control("note/favorite", star, [this](const ui::Event& e) {
+    ui::Rect star{r.x + r.w - 42, r.y + (r.h - 28) / 2, 28, 28};
+    state = context.control("note/favorite", star, [this](const ui::Event& e) {
         if (e.activated(false)) commands.execute("note.favorite.toggle"); }, !tab->loading);
     if (state.hovered) context.rect(star, theme.raised, 5);
     context.icon("note/favorite/icon", star, "star", favorites.count(tab->id) ? theme.accent : theme.muted,
@@ -259,7 +247,17 @@ void EditorApp::render(float w, float h, double seconds)
     width = w;
     height = h;
     if (!std::isfinite(seconds) || seconds < 0) seconds = ui::frameTime();
-    advanceAppearance(seconds);
+    if (themeTransition) {
+        auto& transition = *themeTransition;
+        if (!transition.started) transition.started = seconds;
+        auto amount = float(std::clamp((seconds - *transition.started) / 1.0, 0.0, 1.0));
+        auto eased = amount * amount * amount * (amount * (6 * amount - 15) + 10);
+        theme = blendTheme(transition.from, transition.to, eased);
+        settings.preview.theme(theme);
+        for (const auto& tab : workspace.documents())
+            tab->editor.theme(theme);
+        if (amount == 1) themeTransition.reset();
+    }
     for (const auto& tab : workspace.documents()) {
         configure(*tab);
     }
@@ -295,7 +293,7 @@ void EditorApp::render(float w, float h, double seconds)
              drawTitleBar(r);
          }},
         {"header", [this](ui::Context&, ui::Rect r, std::string_view) {
-             drawHeader(r);
+             drawTitleBar(r, true);
          }},
         {"tabs", [this](ui::Context& ctx, ui::Rect r, std::string_view) {
              drawTabs(ctx, r);
@@ -304,8 +302,13 @@ void EditorApp::render(float w, float h, double seconds)
              drawCollections(r);
          }},
         {"documents", [this, notes](ui::Context&, ui::Rect r, std::string_view) {
-             if (commandList) drawSidebar(r);
-             else drawDocuments(r, notes);
+             if (!commandList) drawDocuments(r, notes);
+             else {
+                 sidebarBounds = r;
+                 context.rect(r, theme.surface);
+                 context.text({r.x + 14, r.y + 8, r.w - 28, 28}, "Commands", theme.text, 13, true);
+                 ui::commandList(context, "sidebar/commands", {r.x + 8, r.y + 42, r.w - 16, r.h - 50}, commands, listState);
+             }
          }},
         {"note-heading", [this](ui::Context&, ui::Rect r, std::string_view) {
              drawNoteHeading(r);
@@ -320,8 +323,12 @@ void EditorApp::render(float w, float h, double seconds)
              drawStatus(r);
          }},
     };
-    if (welcomeVisible()) drawWelcome({0, 0, w, h});
-    else if (layoutScript.enabled()) {
+    if (welcomeVisible()) {
+        constexpr float titleHeight = 40, statusHeight = 22;
+        welcome.draw(context, {0, titleHeight, w, std::max(0.0f, h - titleHeight - statusHeight)}, recent.files, !dialog, hint);
+        drawTitleBar({0, 0, w, titleHeight});
+        drawStatus({0, h - statusHeight, w, statusHeight});
+    } else if (layoutScript.enabled()) {
         auto window = windowViewTypes();
         types.insert(types.end(), std::make_move_iterator(window.begin()), std::make_move_iterator(window.end()));
         layoutScript.render(context, {0, 0, w, h}, types, commands);
@@ -372,12 +379,33 @@ void EditorApp::render(float w, float h, double seconds)
         if (workbench.apply(std::move(tree), error)) workbench.render(context, "workspace", {0, 0, w, h}, types, commands);
     }
     if (!menu.empty() && (menuButton.w <= 0 || menuButton.h <= 0)) closeMenu();
-    if (!menu.empty()) drawMenu();
+    if (!menu.empty()) {
+        if (auto definition = layoutScript.menu(menu)) {
+            menuDefinition = std::move(*definition);
+            ui::menu(context, "menu", {0, 0, w, h}, menuButton, menuDefinition, menuSelection, commands, [this](size_t index) {
+                if (index >= menuDefinition.items.size()) return;
+                auto item = menuDefinition.items[index];
+                if (!item.enabled) return;
+                if (!item.items.empty()) {
+                    openMenu(item.id);
+                    return;
+                }
+                if (auto command = commands.find(item.command); command && command->enabled()) {
+                    closeMenu(true);
+                    commands.execute(item.command);
+                    menuFolder.clear();
+                } }, [this] { if (menu == menuRoot) closeMenu(); else openMenu(menu.substr(0, menu.rfind('/'))); }, [this] { closeMenu(); }, contextMenuAnchor.has_value());
+        } else closeMenu();
+    }
     if (palette) {
         auto options = recentPalette ? ui::CommandListOptions{"Recent Files", "Find a recent file...",
                                                               recent.files.empty() ? "No recent files yet" : "No matching recent files"}
                                      : ui::CommandListOptions{};
-        ui::commandPalette(context, {0, 0, w, h}, recentPalette ? recentCommands : commands, paletteState, [this, recent = recentPalette] { if (recent == recentPalette) closePalette(); }, options);
+        ui::commandPalette(context, {0, 0, w, h}, recentPalette ? recentCommands : commands, paletteState, [this, recent = recentPalette] {
+            if (recent != recentPalette) return;
+            palette = recentPalette = false;
+            paletteTarget = 0;
+            focusEditor(prompt == Prompt::None && !dialog); }, options);
     }
     if (prompt != Prompt::None) drawPrompt({0, 0, w, h});
     if (!hint.text.empty() && menu.empty() && !palette && prompt == Prompt::None && !dialog) {

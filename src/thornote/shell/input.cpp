@@ -16,18 +16,6 @@ ui::platform::KeyModifiers modifiers(SDL_Keymod mods)
 {
     return {bool(mods & SDL_KMOD_SHIFT), bool(mods & SDL_KMOD_CTRL), bool(mods & SDL_KMOD_ALT), bool(mods & SDL_KMOD_GUI)};
 }
-
-// SDL places the composition cursor in characters.
-size_t byteAt(std::string_view text, int characters)
-{
-    size_t offset = 0;
-    while (characters-- > 0 && offset < text.size()) {
-        ++offset;
-        while (offset < text.size() && (uint8_t(text[offset]) & 0xc0) == 0x80)
-            ++offset;
-    }
-    return offset;
-}
 }  // namespace
 
 KeyEvent keyEvent(const SDL_KeyboardEvent& event)
@@ -60,7 +48,14 @@ bool send(App& app, const SDL_Event& event, float sx, float sy)
         case SDL_EVENT_TEXT_INPUT: app.text(event.text.text ? event.text.text : ""); break;
         case SDL_EVENT_TEXT_EDITING: {
             std::string_view text = event.edit.text ? event.edit.text : "";
-            app.compose(text, byteAt(text, event.edit.start));
+            // SDL places the composition cursor in characters.
+            size_t offset = 0;
+            for (auto characters = event.edit.start; characters-- > 0 && offset < text.size();) {
+                ++offset;
+                while (offset < text.size() && (uint8_t(text[offset]) & 0xc0) == 0x80)
+                    ++offset;
+            }
+            app.compose(text, offset);
             break;
         }
         case SDL_EVENT_MOUSE_MOTION: return app.pointerMove(event.motion.x * sx, event.motion.y * sy);

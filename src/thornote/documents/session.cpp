@@ -14,10 +14,6 @@ namespace tn
 namespace
 {
 constexpr size_t manifestLimit = 1024 * 1024;
-bool recoveryId(std::string_view id)
-{
-    return id.size() == 32 && id.find_first_not_of("0123456789abcdef") == std::string_view::npos;
-}
 bool sameContent(const SessionDocument& a, const SessionDocument& b)
 {
     return a.content.revision == b.content.revision && a.content.originalPath == b.content.originalPath && a.content.title == b.content.title && a.content.format.ending == b.content.format.ending && a.content.format.bom == b.content.format.bom && a.hadFile == b.hadFile && a.diskDigest == b.diskDigest && a.dirty == b.dirty && a.uncertain == b.uncertain;
@@ -88,7 +84,7 @@ bool decodeSession(std::string_view text, SessionState& result)
             bool retiredPreview;  // Reserved field in the existing session format.
             if (!(in >> doc.id >> std::quoted(doc.content.id) >> std::quoted(path) >> std::quoted(doc.content.title) >> doc.content.revision >> ending >> doc.content.format.bom
                   >> doc.hadFile >> doc.dirty >> doc.uncertain >> doc.favorite >> retiredPreview >> doc.anchor >> doc.caret >> doc.scrollX >> doc.scrollY)) return false;
-            if (!doc.id || doc.id >= std::numeric_limits<uint64_t>::max() - 1 || !ids.insert(doc.id).second || !recoveryId(doc.content.id) || !snapshots.insert(doc.content.id).second || ending < 0 || ending > 3 || value.documents.size() >= 2048 || !std::isfinite(doc.scrollX) || !std::isfinite(doc.scrollY) || doc.scrollX < 0 || doc.scrollY < 0) return false;
+            if (!doc.id || doc.id >= std::numeric_limits<uint64_t>::max() - 1 || !ids.insert(doc.id).second || doc.content.id.size() != 32 || doc.content.id.find_first_not_of("0123456789abcdef") != std::string::npos || !snapshots.insert(doc.content.id).second || ending < 0 || ending > 3 || value.documents.size() >= 2048 || !std::isfinite(doc.scrollX) || !std::isfinite(doc.scrollY) || doc.scrollX < 0 || doc.scrollY < 0) return false;
             doc.content.originalPath = utf8Path(path);
             if (!path.empty() && (!doc.content.originalPath.is_absolute() || !paths.insert(doc.content.originalPath.lexically_normal()).second)) return false;
             doc.content.format.ending = storage::LineEnding(ending);

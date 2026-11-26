@@ -12,5 +12,4 @@ thornote_sources += files(
   'layout.cpp',
   'note_sidebar.cpp',
   'settings.cpp',
-  'welcome.cpp',
 )

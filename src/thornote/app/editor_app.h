@@ -87,11 +87,6 @@ private:
     void registerCommands();
     void focusEditor(bool focus);
     void openPalette();
-    void closePalette();
-    void openRecentFiles();
-    void findFile(const storage::Path& directory = {});
-    bool openLatest(const storage::Path& directory);
-    void drawWelcome(ui::Rect);
     bool welcomeVisible() const { return workspace.documents().empty() && !settings.active && (composition != Layout::Note || !folderWorkspace); }
     void requestClose(uint64_t id);
     void requestQuit();
@@ -107,7 +102,6 @@ private:
     void applyEditorOptions();
     void setFontSize(float size);
     void zoom(int direction, const KeyEvent&);
-    void advanceAppearance(double seconds);
     void editTheme();
     void configure(DocumentTab&);
     void prepareFont(DocumentTab&, std::string_view added = {});
@@ -116,41 +110,29 @@ private:
     void drawSettings(ui::Rect);
     bool selectFont(const FontChoice&);
     Preferences preferences() const;
-    void loadPreferences();
     bool flushPreferences(bool force = false);
-    bool hasLayoutView(std::string_view) const;
     SessionState captureSession(bool content) const;
     bool checkpointSession(bool force = false);
     LayoutState& layout() { return layouts[size_t(composition)]; }
     const LayoutState& layout() const { return layouts[size_t(composition)]; }
     bool customTitleBarVisible() const { return chrome.window.customTitleBar; }
     bool nativeTitleBarVisible() const { return !customTitleBarVisible(); }
-    void drawHeader(ui::Rect);
     void drawTitleBar(ui::Rect, bool headerOnly = false);
-    void drawWindowTitle(ui::Rect, bool divider);
     std::vector<ui::ViewType> windowViewTypes(bool divider = true);
     void drawTabs(ui::Context&, ui::Rect, bool titlebar = false);
-    void drawSidebar(ui::Rect);
     void drawCollections(ui::Rect);
     void drawDocuments(ui::Rect, bool notes);
     void drawNoteHeading(ui::Rect);
-    void drawNoteFavorite(ui::Rect);
     void drawStatus(ui::Rect);
     void drawEditor(ui::Rect);
     void openFind(bool replace = false);
     void updateFind() { find.update(visibleDocument()); }
-    void drawMenu();
     void openMenu(std::string_view);
-    void openEditorMenu(float x, float y);
     void closeMenu(bool preserveFolder = false);
-    void activateMenu(size_t);
     std::vector<DocumentTab*> filteredDocuments() const;
-    void selectCollection(std::string);
     bool browsingNoteFiles() const;
     void refreshNoteFiles(bool force = false);
     void selectNoteFolder(const storage::Path&);
-    void openFolderMenu(const storage::Path&, ui::Rect);
-    void removeNoteFolder(const storage::Path&);
     void drawNoteFiles(ui::Rect);
     void drawNoteSearch(ui::Rect, std::string_view placeholder);
     std::array<std::string, 3> previewLines(std::string_view, float width);
@@ -160,15 +142,13 @@ private:
     bool searchFocused() const;
     void editorCommand(ui::Key);
     bool key(const KeyEvent&);
-    bool markdownShortcut(const KeyEvent&);
     void commitText(uint64_t, std::string_view);
     // Extensions and find results follow every input; returns whether the frame may change.
     bool sync(bool changed = true);
     bool syncInputExtensions();
-    void editInputExtensions();
     ui::lua::Values layoutScriptState() const;
+    bool markdownShortcut(const KeyEvent&);
     void editLayoutScript(bool titlebar = false);
-    void reloadLayoutScript();
     // Milliseconds on the frame clock.
     static uint64_t now() { return uint64_t(ui::frameTime() * 1000); }
 

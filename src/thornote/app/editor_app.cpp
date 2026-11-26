@@ -114,7 +114,19 @@ EditorApp::EditorApp(const std::function<void()>& wake, const storage::Path& set
         if (id == "collections") layout().sidebarWidth = value;
         else if (id == "documents") (composition == Layout::Note && !commandList ? layout().notesWidth : layout().sidebarWidth) = value;
     };
-    loadPreferences();
+    Preferences saved;
+    if (preferenceFile.load(settingsDirectory.empty() ? storage::Path{} : settingsDirectory / "settings.conf", saved)) {
+        selectFont(saved.font);
+        options.fontSize = saved.fontSize;
+        options.lineNumberScale = saved.lineNumberScale;
+        options.lineNumberOffset = saved.lineNumberOffset;
+        dark = saved.dark;
+        tabs.options.style = ui::TabStyle(saved.tabStyle);
+        layouts = saved.layouts;
+        composition = saved.composition;
+        recent = std::move(saved.recent);
+    }
+    preferenceFile.track(preferences());
     themeProfiles.setDirectory(settingsDirectory.empty() ? storage::Path{} : settingsDirectory / "themes");
     applyAppearance();
     registerCommands();
@@ -324,20 +336,6 @@ void EditorApp::applyEditorOptions()
     }
 }
 
-void EditorApp::advanceAppearance(double seconds)
-{
-    if (!themeTransition) return;
-    auto& transition = *themeTransition;
-    if (!transition.started) transition.started = seconds;
-    auto amount = float(std::clamp((seconds - *transition.started) / 1.0, 0.0, 1.0));
-    auto eased = amount * amount * amount * (amount * (6 * amount - 15) + 10);
-    theme = blendTheme(transition.from, transition.to, eased);
-    settings.preview.theme(theme);
-    for (const auto& tab : workspace.documents())
-        tab->editor.theme(theme);
-    if (amount == 1) themeTransition.reset();
-}
-
 void EditorApp::editorCommand(ui::Key key)
 {
     auto tab = target();
@@ -389,8 +387,25 @@ void EditorApp::registerCommands()
         }
         focusEditor(true);
     });
-    add("file.open", "Open files...", "File", "Mod+O", [this] { findFile(); }, [this] { return !dialog; });
-    add("file.recent", "Open recent file", "File", "Mod+P", [this] { openRecentFiles(); }, [this] { return !dialog; });
+    add("file.open", "Open files...", "File", "Mod+O", [this] {
+        if (dialog || !chooseFile) return;
+        findDirectory = recent.directories.empty() ? storage::Path{} : recent.directories.front();
+        dialog = true;
+        focusEditor(false);
+        chooseFile(false, findDirectory, [this](const std::vector<std::string>& paths, const std::string& error) { dialogResult(false, 0, paths, error); }); }, [this] { return !dialog; });
+    add("file.recent", "Open recent file", "File", "Mod+P", [this] {
+        if (prompt != Prompt::None || dialog) return;
+        if (!menu.empty()) closeMenu();
+        paletteTarget = visibleDocument() ? visibleDocument()->id : 0;
+        paletteState = {};
+        recentCommands.release("recent");
+        for (size_t i = 0; i < recent.files.size(); ++i) {
+            auto path = recent.files[i];
+            recentCommands.add({.id = "recent/" + std::to_string(i), .title = displayName(path), .category = displayPath(path.parent_path()), .run = [this, path] { activateDocument(workspace.open(path, false)); }, .owner = "recent"});
+        }
+        palette = recentPalette = true;
+        focusEditor(false);
+        context.focus("palette/search"); }, [this] { return !dialog; });
 #ifdef __EMSCRIPTEN__
     add("file.export", "Export document...", "File", "", [this] { exportFile(target()->id); }, [this, ready] { return ready() && bool(exportFile); }, "No document is ready");
 #endif
@@ -474,15 +489,26 @@ void EditorApp::registerCommands()
     add("view.commands.toggle", "Toggle Command List", "Commands", "", [this] {
         layout().sidebar = true; commandList = !commandList;
         if (commandList) { focusEditor(false); context.focus("sidebar/commands/search"); }
-        else focusEditor(true); }, [this] { return hasLayoutView("documents"); }, "This layout has no navigation view; use the Command Palette or edit the layout script");
-    add("folder.remove", "Remove folder from Note", "Folders", "", [this] { removeNoteFolder(menuFolder); }, [this] { return !menuFolder.empty(); }, "Right-click a folder in Note to choose an item");
+        else focusEditor(true); }, [this] { return !layoutScript.enabled() || layoutScript.hasView(composition, "documents"); }, "This layout has no navigation view; use the Command Palette or edit the layout script");
+    add("folder.remove", "Remove folder from Note", "Folders", "", [this] {
+        auto selected = collection.compare(0, 7, "folder:") == 0 ? recent.rootDirectory(utf8Path(collection.substr(7))) : storage::Path{};
+        recent.removeDirectory(menuFolder);
+        if (recent.directories.empty()) folderWorkspace = false;
+        if (selected == menuFolder || collection == "folder:" + utf8(menuFolder)) collection = "all";
+        collectionOffset = 0;
+        noteFileScroll = 0;
+        refreshNoteFiles(true); }, [this] { return !menuFolder.empty(); }, "Right-click a folder in Note to choose an item");
     add("view.lineNumbers.toggle", "Toggle line numbers", "View", "", [this] { layout().lineNumbers = !layout().lineNumbers; applyAppearance(); });
     add("layout.memo", "Use Memo layout", "Layout", "", [this] { setLayout(Layout::Memo); });
     add("layout.note", "Use Note layout", "Layout", "", [this] { setLayout(Layout::Note); });
     add("layout.script.edit", "Edit current layout script", "Layout", "", [this] { editLayoutScript(); });
     add("layout.titlebar.edit", "Edit title bar script", "Layout", "", [this] { editLayoutScript(true); });
-    add("layout.script.reload", "Reload current layout script", "Layout", "", [this] { reloadLayoutScript(); });
-    add("extensions.edit", "Edit input extensions", "Input extensions", "", [this] { editInputExtensions(); });
+    add("layout.script.reload", "Reload current layout script", "Layout", "", [this] { layoutScript.refresh(composition, layoutScriptState(), true, true); });
+    add("extensions.edit", "Edit input extensions", "Input extensions", "", [this] {
+        std::string error;
+        auto path = inputExtensions.edit(error);
+        if (!error.empty()) workspace.error = std::move(error);
+        else openPath(path); });
     add("extensions.reload", "Reload input extensions", "Input extensions", "", [this] { inputExtensions.reload(); });
     add("extensions.disable", "Disable input extensions", "Input extensions", "", [this] { inputExtensions.setEnabled(false); });
     add("extensions.enable", "Enable input extensions", "Input extensions", "", [this] { inputExtensions.setEnabled(true); });
@@ -530,14 +556,6 @@ void EditorApp::openPalette()
     focusEditor(false);
 }
 
-void EditorApp::closePalette()
-{
-    palette = false;
-    recentPalette = false;
-    paletteTarget = 0;
-    focusEditor(prompt == Prompt::None && !dialog);
-}
-
 storage::Path EditorApp::suggestedSavePath(uint64_t id) const
 {
     auto tab = workspace.find(id);
@@ -575,8 +593,30 @@ void EditorApp::dialogResult(bool saving, uint64_t id, const std::vector<std::st
 {
     dialog = false;
     if (!error.empty()) {
-        // A failed open dialog falls back to the most recent document of its folder.
-        if (saving || !openLatest(findDirectory)) workspace.error = error;
+        // A failed open dialog falls back to the most recent document of its folder:
+        // the files used last come first; a folder never used offers its newest file.
+        storage::Path latest;
+        if (!saving && !findDirectory.empty()) {
+            std::error_code missing;
+            for (const auto& path : recent.files) {
+                if (std::mismatch(findDirectory.begin(), findDirectory.end(), path.begin(), path.end()).first != findDirectory.end() || !std::filesystem::is_regular_file(path, missing)) continue;
+                latest = path;
+                break;
+            }
+            if (latest.empty()) {
+                std::filesystem::file_time_type newest;
+                for (std::filesystem::directory_iterator entry(findDirectory, missing), end; !missing && entry != end; entry.increment(missing)) {
+                    std::error_code unreadable;
+                    if (entry->path().filename().native().front() == '.' || !entry->is_regular_file(unreadable)) continue;
+                    auto modified = entry->last_write_time(unreadable);
+                    if (unreadable || (!latest.empty() && modified <= newest)) continue;
+                    latest = entry->path();
+                    newest = modified;
+                }
+            }
+        }
+        if (latest.empty()) workspace.error = error;
+        else activateDocument(workspace.open(latest));
     } else if (!paths.empty()) {
         if (saving) {
             if (workspace.saveAs(id, utf8Path(paths.front())) && prompt != Prompt::None) waitingSave = true;
@@ -733,14 +773,6 @@ bool EditorApp::syncInputExtensions()
     for (auto& tab : workspace.documents())
         ids.push_back(tab->id);
     return inputExtensions.observe(ids);
-}
-
-void EditorApp::editInputExtensions()
-{
-    std::string error;
-    auto path = inputExtensions.edit(error);
-    if (!error.empty()) workspace.error = std::move(error);
-    else openPath(path);
 }
 
 int EditorApp::delay() const

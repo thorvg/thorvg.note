@@ -101,23 +101,6 @@ Preferences EditorApp::preferences() const
     return {fontChoice, options.fontSize, dark, int(tabs.options.style), layouts, composition, recent, options.lineNumberScale, options.lineNumberOffset};
 }
 
-void EditorApp::loadPreferences()
-{
-    Preferences value;
-    if (preferenceFile.load(settingsDirectory.empty() ? storage::Path{} : settingsDirectory / "settings.conf", value)) {
-        selectFont(value.font);
-        options.fontSize = value.fontSize;
-        options.lineNumberScale = value.lineNumberScale;
-        options.lineNumberOffset = value.lineNumberOffset;
-        dark = value.dark;
-        tabs.options.style = ui::TabStyle(value.tabStyle);
-        layouts = value.layouts;
-        composition = value.composition;
-        recent = std::move(value.recent);
-    }
-    preferenceFile.track(preferences());
-}
-
 bool EditorApp::flushPreferences(bool force)
 {
     return preferenceFile.flush(preferences(), now(), force, workspace.persist);
