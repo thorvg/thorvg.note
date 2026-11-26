@@ -20,9 +20,15 @@ if target_platform == 'darwin'
 endif
 # 'cpu' rasterizes with partial rendering; 'gl' draws with OpenGL or WebGL 2.
 render_engine = 'cpu'
+threads = get_option('threads')
 
 src_inc = include_directories('src')
 if target_platform == 'emscripten'
+  if threads
+    # Shared memory requires every object to be built for threads, the subprojects included.
+    add_global_arguments('-pthread', language: ['c', 'cpp'])
+    add_global_link_arguments('-pthread', language: ['c', 'cpp'])
+  endif
   # WebAssembly has no system packages; ThorVG comes from its wrap.
   thorvg = subproject(
     'thorvg',
@@ -32,7 +38,7 @@ if target_platform == 'emscripten'
       'b_ndebug=' + get_option('b_ndebug'),
       'engines=' + render_engine,
       'loaders=svg,lottie,ttf,png,jpg,webp,gif',
-      'threads=false',
+      'threads=' + threads.to_string(),
       'extra=',
       'static=true',
     ],

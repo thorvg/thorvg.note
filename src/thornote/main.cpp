@@ -2,9 +2,11 @@
 #include <thornote/app/editor_app.h>
 #include <thorvg.h>
 #include <ui/ui.h>
+#include <algorithm>
 #include <iostream>
 #include <optional>
 #include <string_view>
+#include <thread>
 
 namespace
 {
@@ -14,7 +16,13 @@ struct Runtime
     std::string regular = tn::utf8(tn::appData("assets/Pretendard-Regular.ttf")), bold = tn::utf8(tn::appData("assets/Pretendard-Bold.ttf"));
     Runtime()
     {
-        if (tvg::Initializer::init(0) != tvg::Result::Success) return;
+#ifdef THORNOTE_THREADS
+        // One core stays with the event loop.
+        auto threads = std::max(std::thread::hardware_concurrency(), 1u) - 1;
+#else
+        auto threads = 0u;
+#endif
+        if (tvg::Initializer::init(threads) != tvg::Result::Success) return;
         ready = tvg::Text::load(regular.c_str()) == tvg::Result::Success && tvg::Text::load(bold.c_str()) == tvg::Result::Success;
     }
     ~Runtime()

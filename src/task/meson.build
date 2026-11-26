@@ -1,6 +1,6 @@
 task_threads_dep = declare_dependency()
 task_args = []
-if not get_option('task_threads')
+if not threads
   task_args += ['-DTN_TASK_SINGLE_THREAD']
 elif host_machine.system() != 'emscripten'
   task_threads_dep = dependency('threads')

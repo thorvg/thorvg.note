@@ -38,10 +38,14 @@ identity_data.set('THORVG_SYMBOL_SVG', import('fs').read(meson.project_source_ro
 thornote_sources = files('path.h')
 thornote_deps = [ui_dep, storage_dep, sdl_dep]
 thornote_data = get_option('datadir') / 'thornote'
+thornote_name = 'ThorNote'
 thornote_args = [
   '-DTHORNOTE_SOURCE_DATA="' + meson.current_source_dir() / 'data' + '"',
   '-DTHORNOTE_INSTALL_DATA="' + get_option('prefix') / thornote_data + '"',
 ]
+if threads
+  thornote_args += '-DTHORNOTE_THREADS'
+endif
 thornote_link_args = []
 thornote_link_depends = []
 subdir('app')
@@ -91,6 +95,13 @@ if target_platform == 'emscripten'
   if render_engine == 'gl'
     thornote_link_args += ['-sMIN_WEBGL_VERSION=2', '-sMAX_WEBGL_VERSION=2']
   endif
+  if threads
+    # Shared memory needs a cross-origin isolated page, so the page loads this build there and ThorNote.js elsewhere.
+    thornote_name = 'ThorNote.threads'
+    # A thread started later waits for the page to yield, so every thread starts with the page:
+    # one per core but one for ThorVG and up to four task workers.
+    thornote_link_args += '-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency+3'
+  endif
   thornote_link_depends += files('data/layouts/titlebar.lua', 'data/layouts/workspace.lua')
   thornote_link_depends += files('data/themes/light.lua', 'data/themes/dark.lua')
   # The optimization level also selects the optimized runtime and the post-link passes.
@@ -104,7 +115,7 @@ endif
 
 thornote_main = files('main.cpp')
 thornote = executable(
-  'ThorNote',
+  thornote_name,
   thornote_main,
   dependencies: thornote_app_dep,
   link_args: thornote_link_args,

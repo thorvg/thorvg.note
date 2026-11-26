@@ -15,6 +15,8 @@
 #include <emscripten.h>
 #include <emscripten/eventloop.h>
 #include <emscripten/html5.h>
+#include <emscripten/proxying.h>
+#include <emscripten/threading.h>
 #include <thornote/platform/emscripten/browser_files.h>
 
 extern "C" EMSCRIPTEN_KEEPALIVE void thornoteWindowExposed(SDL_WindowID window)
@@ -442,6 +444,13 @@ void step(void* data)
 
 void wake()
 {
+#ifdef __EMSCRIPTEN_PTHREADS__
+    // Only the page thread runs SDL and schedules the steps, so a worker passes the wake to it.
+    if (!emscripten_is_main_runtime_thread()) {
+        emscripten_proxy_async(emscripten_proxy_get_system_queue(), emscripten_main_runtime_thread_id(), [](void*) { wake(); }, nullptr);
+        return;
+    }
+#endif
     auto& box = mailbox();
     std::lock_guard<std::mutex> lock(box.mutex);
     box.post();

@@ -25,6 +25,6 @@
 - A job that has committed or finished cannot be cancelled. `commit()` only changes task state; the work performs the actual irreversible step.
 - No priorities, delays, or result types. A scheduled queue drains its pending work before releasing the worker, so fairness between queues is not guaranteed.
 - A completion exception propagates from `poll()` and leaves the remaining entries queued for a later call.
-- Without workers (`task_threads` disabled), work runs during `submit()` and `wait()` does nothing; completions still require `poll()`.
+- Without workers (`threads` disabled), work runs during `submit()` and `wait()` does nothing; completions still require `poll()`.
 - WebAssembly enables workers only with compiler and linker pthread flags. Blocking the browser main thread in `wait()` or `shutdown()` can prevent worker startup.
 - `wait()` and `shutdown()` must not be called from work running on the same queue.
