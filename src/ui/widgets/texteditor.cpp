@@ -76,11 +76,9 @@ void TextEditor::options(TextEditorOptions value)
 {
     if (!std::isfinite(value.fontSize) || value.fontSize <= 0 || value.fontSize > TextEditorOptions::maxFontSize) value.fontSize = impl->configuration.fontSize;
     value.padding = std::clamp(value.padding, 0.0f, 64.0f);
-    value.lineNumberScale = std::isfinite(value.lineNumberScale) ? std::clamp(value.lineNumberScale, 0.5f, 2.0f) : impl->configuration.lineNumberScale;
-    value.lineNumberOffset = std::isfinite(value.lineNumberOffset) ? std::clamp(value.lineNumberOffset, -16.0f, 16.0f) : impl->configuration.lineNumberOffset;
     impl->editing.readOnly(value.readOnly);
     const auto& current = impl->configuration;
-    if (current.fontSize == value.fontSize && current.padding == value.padding && current.lineNumbers == value.lineNumbers && current.readOnly == value.readOnly && current.markdown == value.markdown && current.lineNumberScale == value.lineNumberScale && current.lineNumberOffset == value.lineNumberOffset) return;
+    if (current.fontSize == value.fontSize && current.padding == value.padding && current.lineNumbers == value.lineNumbers && current.readOnly == value.readOnly && current.markdown == value.markdown) return;
     impl->configuration = value;
     impl->restyle();
 }

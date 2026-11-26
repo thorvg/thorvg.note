@@ -118,8 +118,6 @@ EditorApp::EditorApp(const std::function<void()>& wake, const storage::Path& set
     if (preferenceFile.load(settingsDirectory.empty() ? storage::Path{} : settingsDirectory / "settings.conf", saved)) {
         selectFont(saved.font);
         options.fontSize = saved.fontSize;
-        options.lineNumberScale = saved.lineNumberScale;
-        options.lineNumberOffset = saved.lineNumberOffset;
         dark = saved.dark;
         tabs.options.style = ui::TabStyle(saved.tabStyle);
         layouts = saved.layouts;
@@ -320,8 +318,6 @@ void EditorApp::applyEditorOptions()
     settings.preview.options(preview);
     // Publish the engine-accepted size to app controls and every document view.
     options.fontSize = settings.preview.options().fontSize;
-    options.lineNumberScale = settings.preview.options().lineNumberScale;
-    options.lineNumberOffset = settings.preview.options().lineNumberOffset;
     for (const auto& tab : workspace.documents()) {
         auto& editor = tab->editor;
         bool zoom = editor.options().fontSize != options.fontSize;

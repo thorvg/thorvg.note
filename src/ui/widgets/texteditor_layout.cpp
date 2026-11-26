@@ -526,9 +526,9 @@ void TextEditor::Impl::relayout()
             tvg::TextMetrics bodyMetrics{};
             measurer->metrics(bodyMetrics);
             auto number = digits(lineNumberFont, numberAscent);
-            numberScale = (body.second > 0 && number.second > 0 ? body.second / number.second : 1) * configuration.lineNumberScale;
+            numberScale = body.second > 0 && number.second > 0 ? body.second / number.second : 1;
             auto top = (std::max(lineHeight, bodyMetrics.advance) - (bodyMetrics.ascent - bodyMetrics.descent)) / 2;
-            numberTop = top + bodyAscent - body.first - (numberAscent - number.first) * numberScale + configuration.lineNumberOffset;
+            numberTop = top + bodyAscent - body.first - (numberAscent - number.first) * numberScale;
             measurer->font(fonts ? fonts->textFont(documentFont) : themeTokens.font.c_str());
             for (char ch = '0'; ch <= '9'; ++ch)
                 digitWidth = std::max(digitWidth, measure(std::string_view(&ch, 1), lineNumberFont, numberScale));

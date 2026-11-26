@@ -944,36 +944,6 @@ TEST_CASE_FIXTURE(Editor, "line_numbers_match_body_digit_height_and_position_aft
         CHECK(std::abs(headingNumber.second - headingNumber.first + 1 - height) <= 1);
         CHECK(editor.caretRect().h > bodyHeight);
     }
-    editor.select(0, 0);
-    options.lineNumberOffset = 3;
-    editor.options(options);
-    auto shifted = ink(theme.muted, true);
-    CHECK(shifted.first == number.first + 3);
-    CHECK(shifted.second == number.second + 3);
-    options.lineNumberScale = 0.75f;
-    editor.options(options);
-    auto smaller = ink(theme.muted, true);
-    CHECK(std::abs(smaller.second - smaller.first + 1 - height * 0.75f) <= 2);
-    CHECK(editor.caretRect().h == doctest::Approx(bodyHeight));
-    options.lineNumberScale = 1;
-    options.lineNumberOffset = 0;
-    editor.options(options);
-    CHECK(ink(theme.muted, true) == number);
-}
-
-TEST_CASE_FIXTURE(Editor, "line_number_corrections_validate_nonfinite_and_out_of_range_values")
-{
-    auto options = editor.options();
-    options.lineNumberScale = 3;
-    options.lineNumberOffset = -50;
-    editor.options(options);
-    CHECK(editor.options().lineNumberScale == 2);
-    CHECK(editor.options().lineNumberOffset == -16);
-    options.lineNumberScale = std::numeric_limits<float>::quiet_NaN();
-    options.lineNumberOffset = std::numeric_limits<float>::infinity();
-    editor.options(options);
-    CHECK(editor.options().lineNumberScale == 2);
-    CHECK(editor.options().lineNumberOffset == -16);
 }
 
 TEST_CASE_FIXTURE(Editor, "markdown_reparses_edits_and_preserves_composition_and_decorations")
