@@ -26,4 +26,6 @@ SDL_Surface* createAppIcon(float margin = 0);
 bool applyAppIcon(SDL_Window*);
 // A file such as "assets/Pretendard-Regular.ttf", from the app bundle, installed data directory or source tree.
 std::filesystem::path appData(std::string_view relative);
+// The per-user settings folder, or empty when the platform offers none.
+std::filesystem::path preferencesDirectory();
 }  // namespace tn

@@ -98,72 +98,29 @@ bool EditorApp::selectFont(const FontChoice& choice)
 
 Preferences EditorApp::preferences() const
 {
-    return {fontChoice, options.fontSize, dark, int(tabOptions.style), layouts, composition, recent, options.lineNumberScale, options.lineNumberOffset};
+    return {fontChoice, options.fontSize, dark, int(tabs.options.style), layouts, composition, recent, options.lineNumberScale, options.lineNumberOffset};
 }
 
 void EditorApp::loadPreferences()
 {
-    if (!preferencesPath.empty()) {
-        std::error_code ec;
-        std::filesystem::create_directories(preferencesPath.parent_path(), ec);
-        auto loaded = storage::load(preferencesPath, {true, 64 * 1024});
-        if (!loaded) {
-            settings.saveError = "Cannot read settings: " + loaded.error.message;
-            preferenceSave.enabled = false;
-        } else {
-            preferencesStamp = loaded.value.stamp;
-            Preferences value;
-            if (loaded.value.stamp.exists() && !decodePreferences(loaded.value.text, value)) {
-                settings.saveError = "Invalid settings file. Fix settings.conf and reopen the app.";
-                preferenceSave.enabled = false;
-            } else if (loaded.value.stamp.exists()) {
-                selectFont(value.font);
-                options.fontSize = value.fontSize;
-                options.lineNumberScale = value.lineNumberScale;
-                options.lineNumberOffset = value.lineNumberOffset;
-                dark = value.dark;
-                tabOptions.style = ui::TabStyle(value.tabStyle);
-                layouts = value.layouts;
-                composition = value.composition;
-                recent = std::move(value.recent);
-            }
-        }
+    Preferences value;
+    if (preferenceFile.load(settingsDirectory.empty() ? storage::Path{} : settingsDirectory / "settings.conf", value)) {
+        selectFont(value.font);
+        options.fontSize = value.fontSize;
+        options.lineNumberScale = value.lineNumberScale;
+        options.lineNumberOffset = value.lineNumberOffset;
+        dark = value.dark;
+        tabs.options.style = ui::TabStyle(value.tabStyle);
+        layouts = value.layouts;
+        composition = value.composition;
+        recent = std::move(value.recent);
     }
-    preferenceSave.saved = preferenceSave.observed = encodePreferences(preferences());
+    preferenceFile.track(preferences());
 }
 
 bool EditorApp::flushPreferences(bool force)
 {
-    if (preferencesPath.empty() || !preferenceSave.enabled || syncingPreferences) return false;
-    auto text = encodePreferences(preferences());
-    if (!preferenceSave.due(text, SDL_GetTicks(), force)) return false;
-    std::error_code ec;
-    std::filesystem::create_directories(preferencesPath.parent_path(), ec);
-    storage::SaveOptions saveOptions;
-    saveOptions.expected = preferencesStamp;
-    saveOptions.maxBytes = 64 * 1024;
-    auto result = ec ? storage::SaveResult{} : storage::save(preferencesPath, text, saveOptions);
-    preferenceSave.at = 0;
-    if (result) {
-        preferencesStamp = result.stamp;
-        if (workspace.persist) {
-            syncingPreferences = true;
-            workspace.persist([this, text](const std::string& error) {
-                syncingPreferences = false;
-                if (error.empty()) {
-                    preferenceSave.saved = text;
-                    settings.saveError.clear();
-                } else settings.saveError = "Cannot save settings: " + error;
-            });
-        } else {
-            preferenceSave.saved = text;
-            settings.saveError.clear();
-        }
-    } else {
-        settings.saveError = "Cannot save settings: " + (ec ? ec.message() : result.error.message);
-        if (result.state != storage::SaveState::NotWritten) preferenceSave.enabled = false;
-    }
-    return true;
+    return preferenceFile.flush(preferences(), now(), force, workspace.persist);
 }
 
 void EditorApp::drawSettings(ui::Rect r)
@@ -325,10 +282,10 @@ void EditorApp::drawSettings(ui::Rect r)
             y += 50;
             context.text({body.x, y, body.w, 24}, "Tab style", theme.text, 12, true);
             y += 32;
-            choices("settings/tabs", {"Connected", "Segmented", "Underline"}, tabOptions.style == ui::TabStyle::Connected ? 0 : tabOptions.style == ui::TabStyle::Segmented ? 1
-                                                                                                                                                                            : 2,
-                    [this](int value) { tabOptions.style = value == 0 ? ui::TabStyle::Connected : value == 1 ? ui::TabStyle::Segmented
-                                                                                                             : ui::TabStyle::Underline; });
+            choices("settings/tabs", {"Connected", "Segmented", "Underline"}, tabs.options.style == ui::TabStyle::Connected ? 0 : tabs.options.style == ui::TabStyle::Segmented ? 1
+                                                                                                                                                                                : 2,
+                    [this](int value) { tabs.options.style = value == 0 ? ui::TabStyle::Connected : value == 1 ? ui::TabStyle::Segmented
+                                                                                                               : ui::TabStyle::Underline; });
             y = top + appearanceHeight;
         }
         if (sections[2]) {
@@ -343,7 +300,8 @@ void EditorApp::drawSettings(ui::Rect r)
         if (!sections[0] && !sections[1] && !sections[2]) context.text({body.x, y, body.w, 48}, "No matching settings", theme.muted, 13);
     });
     ui::scrollbar(context, {r.x + r.w - 8, body.y, 3, body.h}, body.h, total, settings.scroll);
-    context.text({body.x, r.y + r.h - 24, body.w, 22}, settings.saveError.empty() ? "Changes apply immediately and are saved automatically." : settings.saveError,
-                 settings.saveError.empty() ? theme.muted : theme.danger, 10);
+    const auto& saveError = preferenceFile.error();
+    context.text({body.x, r.y + r.h - 24, body.w, 22}, saveError.empty() ? "Changes apply immediately and are saved automatically." : saveError,
+                 saveError.empty() ? theme.muted : theme.danger, 10);
 }
 }  // namespace tn

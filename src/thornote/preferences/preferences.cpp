@@ -84,4 +84,60 @@ bool decodePreferences(std::string_view text, Preferences& result)
     result = std::move(value);
     return true;
 }
+
+bool PreferenceFile::load(const storage::Path& file, Preferences& value)
+{
+    path = file;
+    if (path.empty()) return false;
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    auto loaded = storage::load(path, {true, 64 * 1024});
+    if (!loaded) {
+        message = "Cannot read settings: " + loaded.error.message;
+        autosave.enabled = false;
+        return false;
+    }
+    stamp = loaded.value.stamp;
+    if (!stamp.exists()) return false;
+    if (!decodePreferences(loaded.value.text, value)) {
+        message = "Invalid settings file. Fix settings.conf and reopen the app.";
+        autosave.enabled = false;
+        return false;
+    }
+    return true;
+}
+
+bool PreferenceFile::flush(const Preferences& value, uint64_t now, bool force, const Persist& persist)
+{
+    if (path.empty() || !autosave.enabled || syncing) return false;
+    auto text = encodePreferences(value);
+    if (!autosave.due(text, now, force)) return false;
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    storage::SaveOptions options;
+    options.expected = stamp;
+    options.maxBytes = 64 * 1024;
+    auto result = ec ? storage::SaveResult{} : storage::save(path, text, options);
+    autosave.at = 0;
+    if (result) {
+        stamp = result.stamp;
+        if (persist) {
+            syncing = true;
+            persist([this, text](const std::string& error) {
+                syncing = false;
+                if (error.empty()) {
+                    autosave.saved = text;
+                    message.clear();
+                } else message = "Cannot save settings: " + error;
+            });
+        } else {
+            autosave.saved = text;
+            message.clear();
+        }
+    } else {
+        message = "Cannot save settings: " + (ec ? ec.message() : result.error.message);
+        if (result.state != storage::SaveState::NotWritten) autosave.enabled = false;
+    }
+    return true;
+}
 }  // namespace tn

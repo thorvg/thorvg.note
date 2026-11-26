@@ -1,6 +1,7 @@
 #include "app_identity.h"
 #include <thornote/app/app_identity_data.h>
 #include <thornote/platform/native_window.h>
+#include <thornote/preferences/preferences.h>
 #include <thorvg.h>
 #include <ui/ui.h>
 #include <algorithm>
@@ -112,5 +113,11 @@ std::filesystem::path appData(std::string_view relative)
         return utf8Path(THORNOTE_SOURCE_DATA);
     }();
     return root / utf8Path(relative);
+}
+
+std::filesystem::path preferencesDirectory()
+{
+    std::unique_ptr<char, decltype(&SDL_free)> path(SDL_GetPrefPath(preferencesOrganization, preferencesAppId), SDL_free);
+    return path ? utf8Path(path.get()) : std::filesystem::path{};
 }
 }  // namespace tn

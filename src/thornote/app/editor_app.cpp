@@ -1,6 +1,5 @@
 #include "editor_app.h"
 #include "app_identity.h"
-#include <thornote/platform/native_window.h>
 #include <thornote/platform/clipboard.h>
 #include <thornote/platform/display_text.h>
 #include <ui/ui.h>
@@ -9,6 +8,9 @@
 #include <exception>
 #include <cmath>
 #include <limits>
+#ifdef __EMSCRIPTEN__
+#include <thornote/platform/emscripten/browser_files.h>
+#endif
 
 namespace tn
 {
@@ -52,27 +54,29 @@ constexpr MarkdownCommand markdownCommands[] = {
 };
 }  // namespace
 
-bool EditorApp::markdownShortcut(const SDL_KeyboardEvent& event, ui::platform::KeyModifiers keys)
+bool EditorApp::markdownShortcut(const KeyEvent& event)
 {
-    if (!editorFocus || settings.active || keys.control == keys.meta || (keys.shift && keys.alt) || (event.mod & SDL_KMOD_MODE)) return false;
+    const auto& keys = event.modifiers;
+    if (!editorFocus || settings.active || keys.control == keys.meta || (keys.shift && keys.alt) || event.altGr) return false;
     auto modifier = keys.shift ? Modifier::Shift : keys.alt ? Modifier::Alt
                                                             : Modifier::Primary;
-    auto key = event.key;
-    if (key >= SDLK_A && key <= SDLK_Z) key = 'A' + key - SDLK_A;
-    else if (event.scancode >= SDL_SCANCODE_1 && event.scancode <= SDL_SCANCODE_9) key = '1' + event.scancode - SDL_SCANCODE_1;
-    else if (event.scancode == SDL_SCANCODE_PERIOD) key = '.';
+    auto key = uint32_t(event.key);
+    // Digits and the period follow their key position, USB HID usages 30-38 and 55.
+    if (key >= 'a' && key <= 'z') key = 'A' + key - 'a';
+    else if (event.scancode >= 30 && event.scancode <= 38) key = '1' + event.scancode - 30;
+    else if (event.scancode == 55) key = '.';
     for (const auto& command : markdownCommands) {
-        if (key != SDL_Keycode(command.key) || modifier != command.modifier) continue;
+        if (key != uint32_t(command.key) || modifier != command.modifier) continue;
         if (!event.repeat) commands.execute(command.id);
         return true;
     }
     return false;
 }
 
-EditorApp::EditorApp(std::function<void()> wake, const storage::Path& settingsDirectory) :
-    workspace(wake), noteBrowser(wake), sessionStore(std::move(wake))
+EditorApp::EditorApp(const std::function<void()>& wake, const storage::Path& settingsDirectory) :
+    workspace(wake), settingsDirectory(settingsDirectory), noteBrowser(wake), session(wake)
 {
-    customChrome = nativeWindowChromeAvailable();
+    chrome.window.customTitleBar = nativeWindowChromeAvailable();
     bundledFonts = {ui::loadFont(utf8(appData("assets/Pretendard-Regular.ttf")).c_str()), ui::loadFont(utf8(appData("assets/Pretendard-Bold.ttf")).c_str())};
     lineNumberFont = ui::loadFont(utf8(appData("assets/DejaVuSansMono.ttf")).c_str());
     editorFont = bundledFonts[0];
@@ -110,16 +114,14 @@ EditorApp::EditorApp(std::function<void()> wake, const storage::Path& settingsDi
         if (id == "collections") layout().sidebarWidth = value;
         else if (id == "documents") (composition == Layout::Note && !commandList ? layout().notesWidth : layout().sidebarWidth) = value;
     };
-    if (!settingsDirectory.empty()) preferencesPath = settingsDirectory / "settings.conf";
     loadPreferences();
-    themeProfiles.setDirectory(preferencesPath.empty() ? storage::Path{} : preferencesPath.parent_path() / "themes");
+    themeProfiles.setDirectory(settingsDirectory.empty() ? storage::Path{} : settingsDirectory / "themes");
     applyAppearance();
     registerCommands();
-    inputExtensions.setDirectory(preferencesPath.empty() ? storage::Path{} : preferencesPath.parent_path() / "extensions");
+    inputExtensions.setDirectory(settingsDirectory.empty() ? storage::Path{} : settingsDirectory / "extensions");
     auto& bar = layoutScript.titlebar();
     bar.tooltip = [this](std::string_view text, ui::Rect anchor) {
-        hint = text;
-        hintBounds = anchor;
+        hint = {std::string(text), anchor};
     };
     bar.menuAnchor = [this](std::string_view id, ui::Rect anchor) {
         if (menuRoot.empty() || menuRoot == id) menuButton = anchor;
@@ -129,6 +131,20 @@ EditorApp::EditorApp(std::function<void()> wake, const storage::Path& settingsDi
         menuButton = anchor;
         openMenu(id);
     };
+    tabs.activate = [this](uint64_t id) {
+        if (id) activateDocument(id);
+        else openSettings();
+    };
+    tabs.close = [this](uint64_t id) {
+        if (id) requestClose(id);
+        else closeSettings();
+    };
+    tabs.dragged = [this] {
+        focusEditor(true);
+    };
+    welcome.open = [this](const storage::Path& path) {
+        activateDocument(workspace.open(path, false));
+    };
     workspace.fileAccessed = [this](const storage::Path& path, bool saved) {
         auto root = composition == Layout::Note ? recent.rootDirectory(path.parent_path()) : storage::Path{};
         recent.rememberFile(path, root.empty());
@@ -136,11 +152,22 @@ EditorApp::EditorApp(std::function<void()> wake, const storage::Path& settingsDi
         noteBrowser.fileAccessed(path, saved);
         refreshNoteFiles();
     };
+#ifdef __EMSCRIPTEN__
+    workspace.persist = [wake](auto complete) {
+        browserSync([complete = std::move(complete), wake](std::string error) {
+            complete(std::move(error));
+            if (wake) wake();
+        });
+    };
+    exportFile = [this](uint64_t id) {
+        if (auto tab = workspace.find(id)) browserExport(utf8(suggestedSavePath(id).filename()), tab->document.text(), tab->format);
+    };
+#endif
 }
 
 EditorApp::~EditorApp()
 {
-    if (sessionSave.enabled && !workspace.busy()) checkpointSession(true);
+    if (session.enabled() && !workspace.busy()) checkpointSession(true);
     flushPreferences(true);
 }
 
@@ -226,7 +253,7 @@ void EditorApp::prepareFont(DocumentTab& tab, std::string_view added)
 void EditorApp::focusEditor(bool focus)
 {
     auto active = visibleDocument();
-    bool selected = focus && windowFocused && active && !active->loading;
+    bool selected = focus && chrome.focused && active && !active->loading;
     if (!selected || !editorFocus) composing = false;
     editorFocus = selected;
     if (selected) context.focus("editor");
@@ -409,10 +436,7 @@ void EditorApp::registerCommands()
         return ready() && !target()->editor.composing();
     };
     auto matches = [this, searchable] {
-        if (!find.open || !searchable() || find.query.value().empty()) return false;
-        auto tab = target();
-        if (find.document == tab->id && find.revision == tab->document.revision() && find.searchedQuery == find.query.value()) return !find.matches.empty();
-        return tab->document.text().find(find.query.value()) != std::string::npos;
+        return find.open && searchable() && find.found(*target());
     };
     auto replaceable = [matches, editable] {
         return matches() && editable();
@@ -424,17 +448,17 @@ void EditorApp::registerCommands()
     const char* replaceShortcut = "Mod+H";
 #endif
     add("edit.replace", "Find and replace", "Edit", replaceShortcut, [this] { openFind(true); }, searchable);
-    add("edit.find.next", "Find next", "Edit", "Mod+G", [this] { findMatch(1); }, matches);
-    add("edit.find.previous", "Find previous", "Edit", "Mod+Shift+G", [this] { findMatch(-1); }, matches);
-    add("edit.find.close", "Close find", "Edit", "Escape", [this] { closeFind(); }, [this] { return find.open; });
+    add("edit.find.next", "Find next", "Edit", "Mod+G", [this] { find.step(visibleDocument(), 1); }, matches);
+    add("edit.find.previous", "Find previous", "Edit", "Mod+Shift+G", [this] { find.step(visibleDocument(), -1); }, matches);
+    add("edit.find.close", "Close find", "Edit", "Escape", [this] {
+        find.open = false;
+        updateFind();
+        focusEditor(true); }, [this] { return find.open; });
     add("edit.replace.toggle", "Toggle replacement field", "Edit", "", [this] {
         if (!find.open) openFind(true);
-        else {
-            find.replace = !find.replace;
-            if (!find.replace && context.focused() == "find/replacement") context.focus("find/query");
-        } }, searchable);
-    add("edit.replace.current", "Replace current match", "Edit", "", [this] { replaceMatch(); }, replaceable);
-    add("edit.replace.all", "Replace all matches", "Edit", "", [this] { replaceMatch(true); }, replaceable);
+        else find.toggleReplace(); }, searchable);
+    add("edit.replace.current", "Replace current match", "Edit", "", [this] { find.substitute(visibleDocument(), false); }, replaceable);
+    add("edit.replace.all", "Replace all matches", "Edit", "", [this] { find.substitute(visibleDocument(), true); }, replaceable);
     add("ui.commands.open", "Open Command Palette", "Commands", "Mod+Shift+P", [this] { openPalette(); });
     add("settings.open", "Open Settings", "Settings", "Mod+,", [this] { openSettings(); });
     add("settings.editor.open", "Open editor settings", "Settings", "", [this] {
@@ -471,18 +495,28 @@ void EditorApp::registerCommands()
     add("theme.edit", "Edit current theme", "Appearance", "", [this] { editTheme(); });
     add("theme.reload", "Reload theme", "Appearance", "", [this] { themeProfiles.refresh(dark, true); applyAppearance(); });
     add("window.close", "Close window", "Window", "", [this] { requestQuit(); });
-    add("window.minimize", "Minimize window", "Window", "", [this] { changeWindow(WindowAction::Minimize); }, [this] { return bool(changeWindow) && !windowFullscreen; });
-    add("window.maximize", "Maximize / restore window", "Window", "", [this] { changeWindow(WindowAction::Maximize); }, [this] { return bool(changeWindow) && !windowFullscreen; });
+    add("window.minimize", "Minimize window", "Window", "", [this] { changeWindow(WindowAction::Minimize); }, [this] { return bool(changeWindow) && !chrome.window.fullscreen; });
+    add("window.maximize", "Maximize / restore window", "Window", "", [this] { changeWindow(WindowAction::Maximize); }, [this] { return bool(changeWindow) && !chrome.window.fullscreen; });
     add("window.fullscreen", "Enter / leave full screen", "Window", "", [this] { changeWindow(WindowAction::Fullscreen); }, [this] { return bool(changeWindow); });
-    add("tabs.connected", "Use connected tabs", "Appearance", "", [this] { tabOptions.style = ui::TabStyle::Connected; });
-    add("tabs.segmented", "Use segmented tabs", "Appearance", "", [this] { tabOptions.style = ui::TabStyle::Segmented; });
-    add("tabs.underline", "Use underlined tabs", "Appearance", "", [this] { tabOptions.style = ui::TabStyle::Underline; });
+    add("tabs.connected", "Use connected tabs", "Appearance", "", [this] { tabs.options.style = ui::TabStyle::Connected; });
+    add("tabs.segmented", "Use segmented tabs", "Appearance", "", [this] { tabs.options.style = ui::TabStyle::Segmented; });
+    add("tabs.underline", "Use underlined tabs", "Appearance", "", [this] { tabs.options.style = ui::TabStyle::Underline; });
     add("editor.font.increase", "Increase editor font size", "Appearance", "Mod++", [this] { setFontSize(options.fontSize + 1); }, [this] { return options.fontSize < ui::TextEditorOptions::maxFontSize; });
     add("editor.font.decrease", "Decrease editor font size", "Appearance", "Mod+-", [this] { setFontSize(options.fontSize - std::min(1.0f, options.fontSize / 2)); });
     add("editor.font.reset", "Reset editor font size", "Appearance", "Mod+0", [this] { setFontSize(16); });
     add("tab.next", "Next tab", "Tabs", "Mod+Tab", [this] { cycleTabs(1); }, [this] { return workspace.documents().size() + settings.open > 1; }, "Only one tab is open");
     add("tab.previous", "Previous tab", "Tabs", "Mod+Shift+Tab", [this] { cycleTabs(-1); }, [this] { return workspace.documents().size() + settings.open > 1; }, "Only one tab is open");
     add("file.lineEndings.lf", "Convert output line endings to LF", "File", "", [this] { if (auto tab = target()) tab->format.ending = storage::LineEnding::Lf; }, ready, "No document is ready");
+}
+
+void EditorApp::openFind(bool replace)
+{
+    auto tab = target();
+    if (!tab || tab->loading || tab->editor.composing()) return;
+    configure(*tab);
+    focusEditor(false);
+    find.show(*tab, replace);
+    find.step(visibleDocument(), 0);
 }
 
 void EditorApp::openPalette()
@@ -504,7 +538,7 @@ void EditorApp::closePalette()
     focusEditor(prompt == Prompt::None && !dialog);
 }
 
-storage::Path EditorApp::suggestedSavePath(uint64_t id, const storage::Path& defaultFolder) const
+storage::Path EditorApp::suggestedSavePath(uint64_t id) const
 {
     auto tab = workspace.find(id);
     if (!tab) return {};
@@ -521,7 +555,7 @@ storage::Path EditorApp::suggestedSavePath(uint64_t id, const storage::Path& def
     if (name.empty()) name = "Untitled " + std::to_string(id);
     auto extension = tab->path.empty() ? std::string(".txt") : utf8(tab->path.extension());
     if (name.size() < extension.size() || name.compare(name.size() - extension.size(), extension.size(), extension) != 0) name += extension;
-    return (tab->path.empty() ? defaultFolder : tab->path.parent_path()) / utf8Path(name);
+    return tab->path.empty() ? utf8Path(name) : tab->path.parent_path() / utf8Path(name);
 }
 
 void EditorApp::save(uint64_t id, bool saveAs)
@@ -532,7 +566,7 @@ void EditorApp::save(uint64_t id, bool saveAs)
         if (chooseFile) {
             dialog = true;
             focusEditor(false);
-            chooseFile(true, id, {});
+            chooseFile(true, suggestedSavePath(id), [this, id](const std::vector<std::string>& paths, const std::string& error) { dialogResult(true, id, paths, error); });
         }
     } else if (workspace.save(id) && prompt != Prompt::None) waitingSave = true;
 }
@@ -616,7 +650,7 @@ void EditorApp::requestQuit()
         workspace.error = "Finish the current file operation before closing.";
         return;
     }
-    if (sessionSave.enabled) {
+    if (session.enabled()) {
         if (checkpointSession(true)) exiting = true;
         return;
     }
@@ -656,16 +690,16 @@ void EditorApp::finishPrompt(bool discard)
     }
 }
 
-bool EditorApp::poll()
+bool EditorApp::update()
 {
     bool changed = workspace.poll() != 0;
     changed |= noteBrowser.poll();
-    auto now = SDL_GetTicks();
-    bool polling = now >= nextLayoutPoll;
+    auto time = now();
+    bool polling = time >= nextLayoutPoll;
     // Finding changes encodes the settings and the session, so look with the other polls unless a save is due.
-    if (polling || now >= preferenceSave.deadline()) changed |= flushPreferences();
-    changed |= pollSession();
-    if (polling || now >= sessionSave.deadline()) checkpointSession();
+    if (polling || time >= preferenceFile.deadline()) changed |= flushPreferences();
+    changed |= session.poll(workspace.persist, workspace.error);
+    if (polling || time >= session.deadline()) checkpointSession();
     if (polling) {
         if (themeProfiles.refresh(dark)) {
             applyAppearance();
@@ -673,7 +707,7 @@ bool EditorApp::poll()
         }
         changed |= layoutScript.refresh(composition, layoutScriptState(), true);
         changed |= inputExtensions.poll();
-        nextLayoutPoll = now + 200;
+        nextLayoutPoll = time + 200;
     }
     if (waitingSave) {
         auto tab = workspace.find(promptTarget);
@@ -709,13 +743,14 @@ void EditorApp::editInputExtensions()
     else openPath(path);
 }
 
-int EditorApp::nextPollDelay(uint64_t now) const
+int EditorApp::delay() const
 {
     auto deadline = nextLayoutPoll;
-    if (!preferencesPath.empty()) deadline = std::min(deadline, preferenceSave.deadline());
-    if (!sessionStore.busy() && !workspace.busy()) deadline = std::min(deadline, sessionSave.deadline());
-    if (deadline <= now) return 0;
-    return int(std::min<uint64_t>(deadline - now, std::numeric_limits<int>::max()));
+    deadline = std::min(deadline, preferenceFile.deadline());
+    if (!session.busy() && !workspace.busy()) deadline = std::min(deadline, session.deadline());
+    auto time = now();
+    if (deadline <= time) return 0;
+    return int(std::min<uint64_t>(deadline - time, std::numeric_limits<int>::max()));
 }
 
 void EditorApp::drawPrompt(ui::Rect viewport)
@@ -770,7 +805,7 @@ void EditorApp::drawPrompt(ui::Rect viewport)
     ui::button(context, "prompt/cancel", promptCancel, "Cancel", [this] { cancelPrompt(); }, {.enabled = enabled});
 }
 
-std::string EditorApp::windowTitle() const
+std::string EditorApp::title() const
 {
     if (settings.active) return "Settings — ThorNote";
     auto tab = visibleDocument();

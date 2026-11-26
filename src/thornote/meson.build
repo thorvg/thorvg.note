@@ -49,8 +49,9 @@ subdir('documents')
 subdir('preferences')
 subdir('scripting')
 subdir('extensions')
-subdir('views')
+subdir('widgets')
 subdir('platform')
+subdir('shell')
 
 thornote_app = static_library(
   'thornote-app',

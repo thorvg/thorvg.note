@@ -203,10 +203,7 @@ void EditorApp::drawNoteHeading(ui::Rect r)
     context.icon("note/lineNumbers/icon", toggle, "line-numbers", theme.muted,
                  {state.hovered, state.pressed, options.lineNumbers, enabled, state.focused});
     if (state.focused) context.focusRing(toggle);
-    if (state.hovered) {
-        hint = options.lineNumbers ? "Hide line numbers" : "Show line numbers";
-        hintBounds = toggle;
-    }
+    if (state.hovered) hint = {options.lineNumbers ? "Hide line numbers" : "Show line numbers", toggle};
     drawNoteFavorite({r.x + r.w - 42, r.y + (r.h - 28) / 2, 28, 28});
 }
 
@@ -225,49 +222,11 @@ void EditorApp::drawNoteFavorite(ui::Rect star)
 void EditorApp::drawStatus(ui::Rect r)
 {
     auto tab = visibleDocument();
-    context.rect(r, theme.surface);
-    context.line(r.x, r.y, r.x + r.w, r.y, theme.border);
     std::string_view error = workspace.error;
     if (error.empty()) error = themeProfiles.error(dark);
     if (error.empty()) error = inputExtensions.error();
     if (error.empty()) error = layoutScript.error();
-    if (!error.empty()) {
-        context.text({r.x + 12, r.y, r.w - 24, r.h}, context.elideText(error, std::max(0.0f, r.w - 24), 10), theme.danger, 10);
-        return;
-    }
-    if (settings.active) {
-        context.text({r.x + 12, r.y, r.w - 24, r.h}, "Settings", theme.muted, 10);
-        return;
-    }
-    if (!tab) return;
-    auto caret = tab->editor.session().selection().caret;
-    auto line = tab->document.lineAt(caret);
-    size_t column = 1;
-    for (auto pos = tab->document.lineStart(line); pos < caret; pos = tab->document.next(pos))
-        ++column;
-    const char* eol = tab->format.ending == storage::LineEnding::Lf ? "LF" : tab->format.ending == storage::LineEnding::Crlf ? "CRLF"
-        : tab->format.ending == storage::LineEnding::Cr                                                                      ? "CR"
-                                                                                                                             : "Mixed EOL";
-#ifdef __EMSCRIPTEN__
-    constexpr auto savedLabel = "Saved in browser";
-#else
-    constexpr auto savedLabel = "Saved";
-#endif
-    std::string state = tab->loading ? "Opening…" : tab->saving ? "Saving…"
-        : tab->dirty()                                          ? "Modified"
-        : tab->stamp.exists()                                   ? savedLabel
-                                                                : "Not saved";
-    if (!tab->editor.inputState().status.empty()) state = tab->editor.inputState().status + " · " + state;
-    tab->widgets.update(tab->document);
-    if (tab->widgets.total) {
-        state += " · Tasks " + std::to_string(tab->widgets.completed) + '/' + std::to_string(tab->widgets.total);
-        ui::Rect progress{r.x + r.w / 2 - 70, r.y + r.h / 2 - 2, 58, 4};
-        context.rect(progress, theme.border, 2);
-        progress.w *= float(tab->widgets.completed) / tab->widgets.total;
-        if (progress.w > 0) context.rect(progress, theme.accent, 2);
-    }
-    context.text({r.x + 12, r.y, r.w / 2 - (tab->widgets.total ? 86 : 12), r.h}, state, theme.muted, 10);
-    context.text({r.x + r.w / 2, r.y, r.w / 2 - 12, r.h}, "Ln " + std::to_string(line + 1) + ", Col " + std::to_string(column) + "     UTF-8     " + eol, theme.muted, 10, false, ui::Align::End);
+    drawStatusBar(context, r, error, settings.active, tab);
 }
 
 void EditorApp::drawEditor(ui::Rect r)
@@ -290,7 +249,7 @@ void EditorApp::drawEditor(ui::Rect r)
         tab->editor.scroll(saved.x, saved.y);
         tab->restoreView.reset();
     }
-    drawFind(r);
+    find.draw(r, *tab, hint);
     editorBounds = r;
     tab->editor.render(context, "editor", editorBounds);
 }
@@ -318,7 +277,7 @@ void EditorApp::render(float w, float h, double seconds)
     }
     syncInputExtensions();
     updateFind();
-    hint.clear();
+    hint.text.clear();
     context.begin(theme, {0, 0, w, h}, seconds);
     context.pointerPosition(pointerX, pointerY);
     context.rect({0, 0, w, h}, theme.background);
@@ -326,10 +285,10 @@ void EditorApp::render(float w, float h, double seconds)
     bool notes = composition == Layout::Note && !commandList;
     if (notes) refreshNoteFiles();
     bool navigation = (composition == Layout::Note || commandList) && w >= 660;
-    editorBounds = sidebarBounds = searchBounds = headerDragBounds = {};
+    editorBounds = sidebarBounds = searchBounds = {};
+    chrome.begin(w);
     find.queryBounds = find.replacementBounds = {};
     if (!menu.empty()) menuButton = contextMenuAnchor.value_or(ui::Rect{});
-    windowDragBounds.clear();
     layoutScript.refresh(composition, layoutScriptState());
     std::vector<ui::ViewType> types{
         {"titlebar", [this](ui::Context&, ui::Rect r, std::string_view) {
@@ -383,7 +342,7 @@ void EditorApp::render(float w, float h, double seconds)
         categoryChildren.push_back(std::move(categoryList));
         auto categoryPane = ui::column(std::move(categoryChildren));
         categoryPane.id = "collections";
-        categoryPane.width = ui::preferred(state.sidebarWidth, customTitleBarVisible() && !windowControls.leading() ? 200 : 150, 260);
+        categoryPane.width = ui::preferred(state.sidebarWidth, customTitleBarVisible() && !chrome.controls.leading() ? 200 : 150, 260);
         categoryPane.visible = categories;
         categoryPane.resizable = true;
         auto documentList = pane("documents", true, {});
@@ -421,17 +380,13 @@ void EditorApp::render(float w, float h, double seconds)
         ui::commandPalette(context, {0, 0, w, h}, recentPalette ? recentCommands : commands, paletteState, [this, recent = recentPalette] { if (recent == recentPalette) closePalette(); }, options);
     }
     if (prompt != Prompt::None) drawPrompt({0, 0, w, h});
-    if (!hint.empty() && menu.empty() && !palette && prompt == Prompt::None && !dialog) {
-        float size = context.textWidth(hint, 11) + 18;
-        ui::Rect r{std::clamp(hintBounds.x, 8.0f, std::max(8.0f, w - size - 8)), hintBounds.y + hintBounds.h + 8, size, 28};
+    if (!hint.text.empty() && menu.empty() && !palette && prompt == Prompt::None && !dialog) {
+        float size = context.textWidth(hint.text, 11) + 18;
+        ui::Rect r{std::clamp(hint.bounds.x, 8.0f, std::max(8.0f, w - size - 8)), hint.bounds.y + hint.bounds.h + 8, size, 28};
         context.rect(r, theme.raised, 5, theme.border);
-        context.text(r.inset(5), hint, theme.text, 11);
+        context.text(r.inset(5), hint.text, theme.text, 11);
     }
-    if (customTitleBarVisible() && !windowMaximized && !windowFullscreen) {
-        auto border = theme.border;
-        if (!windowFocused) border.a = 128;
-        context.rect({0.5f, 0.5f, w - 1, h - 1}, {0, 0, 0, 0}, 0, border);
-    }
+    chrome.drawBorder(context, w, h);
     if (themeTransition) context.requestAnimationFrame();
     context.end();
     // Keyboard focus may have reached or left the editor inside the context; a closing modal layer restores its own focus.

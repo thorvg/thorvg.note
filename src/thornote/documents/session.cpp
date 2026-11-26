@@ -119,7 +119,7 @@ SessionState SessionStore::load(const storage::Path& path)
     finish();
     blobs.clear();
     message.clear();
-    writable = false;
+    writable = autosave.enabled = false;
     lastSucceeded = false;
     SessionState result;
     if (path.empty()) {
@@ -158,7 +158,7 @@ SessionState SessionStore::load(const storage::Path& path)
         result.documents.push_back(std::move(doc));
     }
     if (result.active && std::none_of(result.documents.begin(), result.documents.end(), [&](const auto& doc) { return doc.id == result.active; })) result.active = 0;
-    lastSucceeded = writable;
+    lastSucceeded = autosave.enabled = writable;
     return result;
 }
 
@@ -263,15 +263,49 @@ bool SessionStore::submit(SessionState state)
     return true;
 }
 
-bool SessionStore::poll()
+bool SessionStore::checkpoint(const std::function<SessionState(bool contents)>& capture, uint64_t now, bool force, std::string& error)
+{
+    if (!autosave.enabled || syncing) return false;
+    if (force && writing) {
+        if (finish()) autosave.saved = submitted;
+        else error = message;
+    }
+    auto signature = encodeSession(capture(false));
+    if (!autosave.due(signature, now, force) || (!force && writing)) return true;
+    if (!submit(capture(true))) {
+        error = message;
+        return false;
+    }
+    submitted = std::move(signature);
+    autosave.at = 0;
+    if (!force) return true;
+    if (!finish()) {
+        error = message;
+        return false;
+    }
+    autosave.saved = submitted;
+    return true;
+}
+
+bool SessionStore::poll(const Persist& persist, std::string& error)
 {
 #ifdef __EMSCRIPTEN__
     auto completed = browserCompleted;
     browserCompleted = false;
-    return queue.poll() != 0 || completed;
+    if (queue.poll() == 0 && !completed) return false;
 #else
-    return queue.poll() != 0;
+    if (queue.poll() == 0) return false;
 #endif
+    if (!message.empty()) error = message;
+    else if (persist) {
+        syncing = true;
+        persist([this, &error, signature = submitted](const std::string& failure) {
+            syncing = false;
+            if (failure.empty()) autosave.saved = signature;
+            else error = "Recovery could not be saved: " + failure;
+        });
+    } else autosave.saved = submitted;
+    return true;
 }
 
 bool SessionStore::finish()

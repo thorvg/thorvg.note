@@ -14,14 +14,7 @@ class CommandRegistry;
 
 namespace tn
 {
-
-struct NativeTextEdit
-{
-    uint64_t document = 0;
-    size_t begin = 0, end = 0, cursor = 0;
-    std::string text;
-    bool composition = false;
-};
+struct NativeTextEdit;
 
 // Cocoa needs document-relative UTF-16 selection and replacement ranges.
 // Keep that platform contract in the app; the editor receives UTF-8 byte ranges.

@@ -8,8 +8,8 @@ namespace tn
 {
 std::optional<ui::Rect> EditorApp::restoreSession()
 {
-    if (preferencesPath.empty() || !workspace.documents().empty()) return {};
-    auto saved = sessionStore.load(preferencesPath.parent_path() / "session");
+    if (settingsDirectory.empty() || !workspace.documents().empty()) return {};
+    auto saved = session.load(settingsDirectory / "session");
     if (saved.documents.size() == 1 && !saved.settingsOpen) {
         const auto& only = saved.documents.front();
         // Older versions created and checkpointed an empty startup document automatically.
@@ -18,8 +18,7 @@ std::optional<ui::Rect> EditorApp::restoreSession()
             saved.active = 0;
         }
     }
-    sessionSave.enabled = sessionStore.available();
-    if (!sessionStore.error().empty()) workspace.error = sessionStore.error();
+    if (!session.error().empty()) workspace.error = session.error();
     restoredWidth = saved.width;
     restoredHeight = saved.height;
     collection = std::move(saved.collection);
@@ -35,7 +34,7 @@ std::optional<ui::Rect> EditorApp::restoreSession()
 #endif
         if (record.favorite) favorites.insert(record.id);
         workspace.restore(std::move(record));
-        if (!workspace.error.empty()) sessionSave.enabled = false;
+        if (!workspace.error.empty()) session.disable();
     }
     if (saved.active) workspace.select(saved.active);
     if (saved.settingsActive) openSettings();
@@ -84,42 +83,8 @@ SessionState EditorApp::captureSession(bool contents) const
     return result;
 }
 
-bool EditorApp::pollSession()
-{
-    if (!sessionStore.poll()) return false;
-    if (!sessionStore.error().empty()) workspace.error = sessionStore.error();
-    else if (workspace.persist) {
-        syncingSession = true;
-        workspace.persist([this, signature = submittedSession](const std::string& error) {
-            syncingSession = false;
-            if (error.empty()) sessionSave.saved = signature;
-            else workspace.error = "Recovery could not be saved: " + error;
-        });
-    } else sessionSave.saved = submittedSession;
-    return true;
-}
-
 bool EditorApp::checkpointSession(bool force)
 {
-    if (!sessionSave.enabled || workspace.busy() || syncingSession) return false;
-    if (force && sessionStore.busy()) {
-        if (sessionStore.finish()) sessionSave.saved = submittedSession;
-        else workspace.error = sessionStore.error();
-    }
-    auto signature = encodeSession(captureSession(false));
-    if (!sessionSave.due(signature, SDL_GetTicks(), force) || (!force && sessionStore.busy())) return true;
-    if (!sessionStore.submit(captureSession(true))) {
-        workspace.error = sessionStore.error();
-        return false;
-    }
-    submittedSession = std::move(signature);
-    sessionSave.at = 0;
-    if (!force) return true;
-    if (!sessionStore.finish()) {
-        workspace.error = sessionStore.error();
-        return false;
-    }
-    sessionSave.saved = submittedSession;
-    return true;
+    return !workspace.busy() && session.checkpoint([this](bool contents) { return captureSession(contents); }, now(), force, workspace.error);
 }
 }  // namespace tn

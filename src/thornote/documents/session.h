@@ -1,9 +1,11 @@
 #pragma once
 
+#include "autosave.h"
 #include <storage/storage.h>
 #include <task/task.h>
 #include <thornote/path.h>
 #include <array>
+#include <functional>
 #include <map>
 #include <vector>
 
@@ -35,16 +37,26 @@ struct SessionState
 class SessionStore
 {
 public:
+    // Makes a finished write durable where the platform needs that, then reports the outcome.
+    using Persist = std::function<void(std::function<void(std::string)>)>;
+
     explicit SessionStore(std::function<void()> wake = {});
+    // Checkpoints follow once the folder proves writable.
     SessionState load(const storage::Path& directory);
-    bool submit(SessionState);
-    bool poll();
-    bool finish();
+    // Writes the captured session once it changed and a checkpoint is due, or at once and to the end when forced.
+    // Failures replace the error.
+    bool checkpoint(const std::function<SessionState(bool contents)>& capture, uint64_t now, bool force, std::string& error);
+    // Applies a finished write; returns whether one finished. The error must outlive the persisting.
+    bool poll(const Persist&, std::string& error);
+    void disable() { autosave.enabled = false; }
+    bool enabled() const { return autosave.enabled; }
     bool busy() const { return writing; }
-    bool available() const { return writable; }
+    uint64_t deadline() const { return autosave.deadline(); }
     const std::string& error() const { return message; }
 
 private:
+    bool submit(SessionState);
+    bool finish();
     std::string write(SessionState);
     storage::Path directory;
     storage::DiskStamp stamp;
@@ -52,7 +64,10 @@ private:
     // Metadata of each document's committed buffer.
     std::map<uint64_t, SessionDocument> blobs;
     std::string message;
-    bool writable = false, lastSucceeded = true, writing = false;
+    // Checkpoints recur while typing instead of waiting for idle input.
+    Autosave autosave{750, false, false};
+    std::string submitted;
+    bool writable = false, lastSucceeded = true, writing = false, syncing = false;
 #ifdef __EMSCRIPTEN__
     std::shared_ptr<bool> browserLifetime = std::make_shared<bool>(true);
     bool browserCompleted = false, browserPending = false;

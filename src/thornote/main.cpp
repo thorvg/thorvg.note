@@ -1,8 +1,9 @@
-#include <thornote/app/window.h>
 #include <thornote/app/app_identity.h>
+#include <thornote/app/editor_app.h>
 #include <thorvg.h>
 #include <ui/ui.h>
 #include <iostream>
+#include <optional>
 #include <string_view>
 
 namespace
@@ -37,24 +38,26 @@ int usage(int status)
 int main(int argc, char** argv)
 {
     tn::RunOptions options;
-    bool files = false;
+    std::optional<tn::Layout> layout;
+    std::string layoutDirectory, settingsDirectory;
+    std::vector<std::string> paths;
+    bool settings = false, fresh = false, files = false;
     for (int i = 1; i < argc; ++i) {
         std::string_view arg(argv[i]);
-        if (files) options.paths.emplace_back(arg);
+        if (files) paths.emplace_back(arg);
         else if (arg == "--") files = true;
         else if (arg == "--layout" && i + 1 < argc) {
-            options.layoutSpecified = true;
-            std::string_view layout(argv[++i]);
-            if (layout == "memo") options.layout = tn::Layout::Memo;
-            else if (layout == "note") options.layout = tn::Layout::Note;
+            std::string_view value(argv[++i]);
+            if (value == "memo") layout = tn::Layout::Memo;
+            else if (value == "note") layout = tn::Layout::Note;
             else return usage(2);
-        } else if (arg == "--layout-dir" && i + 1 < argc) options.layoutDirectory = argv[++i];
-        else if (arg == "--settings-dir" && i + 1 < argc) options.settingsDirectory = argv[++i];
-        else if (arg == "--settings") options.settings = true;
-        else if (arg == "--fresh") options.fresh = true;
+        } else if (arg == "--layout-dir" && i + 1 < argc) layoutDirectory = argv[++i];
+        else if (arg == "--settings-dir" && i + 1 < argc) settingsDirectory = argv[++i];
+        else if (arg == "--settings") settings = true;
+        else if (arg == "--fresh") fresh = true;
         else if (arg == "--snapshot" && i + 1 < argc) options.snapshot = argv[++i];
         else if (arg == "--help" || arg == "-h") return usage(0);
-        else if (!arg.empty() && arg.front() != '-') options.paths.emplace_back(arg);
+        else if (!arg.empty() && arg.front() != '-') paths.emplace_back(arg);
         else return usage(2);
     }
 #ifdef __EMSCRIPTEN__
@@ -67,5 +70,17 @@ int main(int argc, char** argv)
         std::cerr << "ThorNote: cannot initialize ThorVG and fonts\n";
         return 1;
     }
-    return tn::run(options);
+    auto app = std::make_unique<tn::EditorApp>(tn::wake, settingsDirectory.empty() ? tn::preferencesDirectory() : tn::utf8Path(settingsDirectory));
+    if (!fresh) {
+        if (auto restored = app->restoreSession()) {
+            options.width = restored->w;
+            options.height = restored->h;
+        }
+    }
+    if (!layoutDirectory.empty()) app->setLayoutDirectory(tn::utf8Path(layoutDirectory));
+    if (layout) app->setLayout(*layout);
+    for (const auto& path : paths)
+        app->openPath(tn::utf8Path(path));
+    if (settings) app->openSettings();
+    return tn::run(std::move(app), options);
 }

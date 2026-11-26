@@ -1,10 +1,10 @@
-#include "window.h"
-#include "app_identity.h"
-#include "editor_app.h"
-#include <thornote/platform/native_text_input.h>
-#include <thornote/platform/native_window.h>
+#include "shell.h"
+#include "input.h"
 #include "live_resize.h"
 #include "cursors.h"
+#include <thornote/app/app_identity.h>
+#include <thornote/platform/native_text_input.h>
+#include <thornote/platform/native_window.h>
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -36,10 +36,10 @@ namespace tn
 {
 namespace
 {
+using FileChosen = std::function<void(const std::vector<std::string>&, const std::string&)>;
 struct DialogResult
 {
-    bool save;
-    uint64_t target;
+    FileChosen done;
     std::vector<std::string> paths;
     std::string error;
 };
@@ -47,40 +47,40 @@ struct Mailbox
 {
     std::mutex mutex;
     std::deque<DialogResult> results;
-    uint32_t event = 0;
-    bool alive = true;
-    void wake()
+    uint32_t event = 0;  // Registered while the shell runs.
+    // Requires the lock.
+    void post() const
     {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (alive) {
-            SDL_Event value{};
-            value.type = event;
-            SDL_PushEvent(&value);
-        }
+        if (!event) return;
+        SDL_Event value{};
+        value.type = event;
+        SDL_PushEvent(&value);
     }
 };
+// Never released: file dialogs and background work can report after the shell stops.
+Mailbox& mailbox()
+{
+    static auto value = new Mailbox;
+    return *value;
+}
 struct DialogRequest
 {
-    std::shared_ptr<Mailbox> mailbox;
-    bool save;
-    uint64_t target;
+    FileChosen done;
     std::string initial;
 };
 void SDLCALL dialogCallback(void* data, const char* const* paths, int)
 {
     std::unique_ptr<DialogRequest> request(static_cast<DialogRequest*>(data));
-    DialogResult result{request->save, request->target, {}, {}};
+    DialogResult result{std::move(request->done), {}, {}};
     if (!paths) result.error = std::string("File dialog failed: ") + SDL_GetError();
     else
         for (auto current = paths; *current; ++current)
             result.paths.emplace_back(*current);
-    auto mailbox = request->mailbox;
-    std::lock_guard<std::mutex> lock(mailbox->mutex);
-    if (!mailbox->alive) return;
-    mailbox->results.push_back(std::move(result));
-    SDL_Event event{};
-    event.type = mailbox->event;
-    SDL_PushEvent(&event);
+    auto& box = mailbox();
+    std::lock_guard<std::mutex> lock(box.mutex);
+    if (!box.event) return;
+    box.results.push_back(std::move(result));
+    box.post();
 }
 
 class Window
@@ -93,8 +93,10 @@ public:
         nativeInput.stop();
         cursors.clear();
         {
-            std::lock_guard<std::mutex> lock(mailbox->mutex);
-            mailbox->alive = false;
+            auto& box = mailbox();
+            std::lock_guard<std::mutex> lock(box.mutex);
+            box.event = 0;
+            box.results.clear();
         }
         canvas.reset();
         app.reset();
@@ -103,8 +105,9 @@ public:
         SDL_Quit();
     }
 
-    bool initialize(const RunOptions& options)
+    bool initialize(std::unique_ptr<App> value, const RunOptions& options)
     {
+        app = std::move(value);
         if (!initializeAppIdentity() || !SDL_Init(SDL_INIT_VIDEO)) return false;
 #ifdef __EMSCRIPTEN__
         constexpr int profile = SDL_GL_CONTEXT_PROFILE_ES, major = 3, minor = 0;
@@ -127,49 +130,38 @@ public:
             SDL_ClearError();
         }
 #endif
-        nativeInputReady = nativeInput.initialize(window, [this](const auto& edit) { app->nativeTextInput(edit); updateTextInput(); }, [this](const auto& key) { SDL_Event event{}; event.key = key; app->event(event, inputX, inputY); updateTextInput(); }, [this](const auto& key) {
+        nativeInputReady = nativeInput.initialize(window, [this](const auto& edit) { app->edit(edit); updateTextInput(); }, [this](const auto& key) { SDL_Event event{}; event.key = key; send(*app, event, inputX, inputY); updateTextInput(); }, [this](const auto& key) {
 #ifdef __EMSCRIPTEN__
             // The browser hands over clipboard shortcuts at once; the input queued before them comes first.
             for (SDL_Event queued; SDL_PollEvent(&queued);)
                 dispatch(queued);
 #endif
-            bool handled = app->nativeKeyDown(key);
+            bool handled = app->keyDown(keyEvent(key));
             updateTextInput();
             return handled; });
-        mailbox->event = SDL_RegisterEvents(1);
-        if (mailbox->event == uint32_t(-1)) return false;
+        {
+            auto& box = mailbox();
+            std::lock_guard<std::mutex> lock(box.mutex);
+            box.event = SDL_RegisterEvents(1);
+            if (!box.event) return false;
+        }
         auto display = SDL_GetWindowDisplayScale(window), density = SDL_GetWindowPixelDensity(window);
         auto scale = display > 0 && density > 0 ? display / density : 1;
-        SDL_SetWindowSize(window, int(1080 * scale), int(720 * scale));
-        storage::Path settingsDirectory;
-        if (!options.settingsDirectory.empty()) settingsDirectory = utf8Path(options.settingsDirectory);
-        else if (auto path = SDL_GetPrefPath(preferencesOrganization, preferencesAppId)) {
-            settingsDirectory = utf8Path(path);
-            SDL_free(path);
-        }
-        app = std::make_unique<EditorApp>([mailbox = mailbox] { mailbox->wake(); }, settingsDirectory);
-#ifdef __EMSCRIPTEN__
-        app->workspace.persist = [this](auto complete) {
-            browserSync([this, complete = std::move(complete)](std::string error) {
-                complete(std::move(error));
-                mailbox->wake();
-            });
-        };
-        app->exportFile = [this](uint64_t id) {
-            if (auto tab = app->workspace.find(id)) browserExport(utf8(app->suggestedSavePath(id, "/notes").filename()), tab->document.text(), tab->format);
-        };
-#endif
+        SDL_SetWindowSize(window, std::max(1, int(options.width * scale)), std::max(1, int(options.height * scale)));
         app->showTextMenu = [this](float x, float y, std::string_view selection, const ui::CommandRegistry& commands) {
             if (!nativeInputReady) return false;
             SDL_CaptureMouse(false);
             if (!draw()) return false;  // Present the word selected by right-click before modal menu tracking.
             return nativeInput.contextMenu(x / inputX, y / inputY, selection, commands);
         };
-        app->changeWindow = [this](EditorApp::WindowAction action) {
+        app->changeWindow = [this](WindowAction action) {
             pendingWindowAction = action;
-            mailbox->wake();
+            wake();
         };
-        bool custom = nativeWindowChromeSupported(window) && SDL_SetWindowHitTest(window, hitTest, this) && titleBarInput.initialize(window, [this](float x, float y) { return app->customTitleBarVisible() && !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) && app->windowDraggableAt(x * inputX, y * inputY); }, [this] { app->changeWindow(EditorApp::WindowAction::TitleBarDoubleClick); });
+        app->chooseFile = [this](bool save, const storage::Path& initial, FileChosen done) {
+            showFileDialog(save, initial, std::move(done));
+        };
+        custom = nativeWindowChromeSupported(window) && SDL_SetWindowHitTest(window, hitTest, this) && titleBarInput.initialize(window, [this](float x, float y) { return custom && !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) && app->draggable(x * inputX, y * inputY); }, [this] { app->changeWindow(WindowAction::TitleBarDoubleClick); });
         if (custom) custom = updateNativeWindowChrome(window, false);
         if (!custom) {
             titleBarInput.stop();
@@ -177,38 +169,7 @@ public:
             if (!updateNativeWindowChrome(window, true)) return false;
             SDL_ClearError();
         }
-        app->setCustomTitleBarSupported(custom);
-        if (!options.fresh) {
-            if (auto restored = app->restoreSession()) SDL_SetWindowSize(window, std::max(1, int(restored->w * scale)), std::max(1, int(restored->h * scale)));
-        }
-        if (!options.layoutDirectory.empty()) app->setLayoutDirectory(utf8Path(options.layoutDirectory));
-        if (options.layoutSpecified) app->setLayout(options.layout);
-        app->chooseFile = [this](bool save, uint64_t target, const storage::Path& directory) {
-            auto request = new DialogRequest{mailbox, save, target, {}};
-            if (save) {
-                auto folder = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
-                request->initial = utf8(app->suggestedSavePath(target, folder ? utf8Path(folder) : storage::Path{}));
-            } else request->initial = utf8(directory);
-#ifdef __EMSCRIPTEN__
-            if (save) {
-                auto path = browserSavePath(request->initial);
-                const char* paths[] = {path.empty() ? nullptr : path.c_str(), nullptr};
-                dialogCallback(request, paths, 0);
-            } else {
-                browserOpenFiles([request](const char* const* paths, const char* error) {
-                    if (error) SDL_SetError("%s", error);
-                    dialogCallback(request, error ? nullptr : paths, 0);
-                });
-            }
-#else
-            if (save) SDL_ShowSaveFileDialog(dialogCallback, request, window, nullptr, 0, request->initial.c_str());
-            else SDL_ShowOpenFileDialog(dialogCallback, request, window, nullptr, 0, request->initial.empty() ? nullptr : request->initial.c_str(), true);
-#endif
-        };
-        for (const auto& path : options.paths)
-            app->openPath(utf8Path(path));
-        if (options.settings) app->openSettings();
-        // Apply restored geometry before creating the first GL frame.
+        // Apply the window size before creating the first GL frame.
         if (!SDL_SyncWindow(window)) return false;
         if (!liveResize.start(window, [this] { return drawFrame(); })) return false;
 #ifdef __EMSCRIPTEN__
@@ -232,14 +193,15 @@ public:
     std::optional<int> step(const RunOptions& options)
     {
         if (app->done()) return 0;
-        bool dirty = app->poll();
+        bool dirty = app->update();
         std::deque<DialogResult> results;
         {
-            std::lock_guard<std::mutex> lock(mailbox->mutex);
-            results.swap(mailbox->results);
+            auto& box = mailbox();
+            std::lock_guard<std::mutex> lock(box.mutex);
+            results.swap(box.results);
         }
         for (const auto& result : results) {
-            app->dialogResult(result.save, result.target, result.paths, result.error);
+            result.done(result.paths, result.error);
             dirty = true;
         }
         // Reloads and file completions can replace controls; rebuild before queued input.
@@ -257,10 +219,10 @@ public:
             }
             if (dispatch(event) && liveResize.needsDraw(event)) dirty = stale = true;
         }
-        if (auto next = app->context.nextFrame(); next && drawable()) dirty |= *next <= ui::frameTime();
+        if (auto next = app->nextFrame(); next && drawable()) dirty |= *next <= ui::frameTime();
         if (dirty || !options.snapshot.empty())
             if (!draw()) return 1;
-        if (!options.snapshot.empty() && !app->filesPending() && ++passes >= 3) return snapshot(options.snapshot) ? 0 : 1;
+        if (!options.snapshot.empty() && !app->busy() && ++passes >= 3) return snapshot(options.snapshot) ? 0 : 1;
         return std::nullopt;
     }
 
@@ -268,12 +230,35 @@ public:
     int delay(const RunOptions& options) const
     {
         if (!options.snapshot.empty()) return 1;
-        auto delay = app->nextPollDelay(SDL_GetTicks());
-        if (auto next = app->context.nextFrame(); next && drawable()) delay = std::min(delay, int(std::ceil(std::max(0.0, *next - ui::frameTime()) * 1000)));
+        auto delay = app->delay();
+        if (auto next = app->nextFrame(); next && drawable()) delay = std::min(delay, int(std::ceil(std::max(0.0, *next - ui::frameTime()) * 1000)));
         return delay;
     }
 
 private:
+    void showFileDialog(bool save, const storage::Path& initial, FileChosen done)
+    {
+        auto request = new DialogRequest{std::move(done), utf8(initial)};
+        if (save && !initial.empty() && initial.is_relative()) {
+            if (auto folder = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS)) request->initial = utf8(utf8Path(folder) / initial);
+        }
+#ifdef __EMSCRIPTEN__
+        if (save) {
+            auto path = browserSavePath(request->initial);
+            const char* paths[] = {path.empty() ? nullptr : path.c_str(), nullptr};
+            dialogCallback(request, paths, 0);
+        } else {
+            browserOpenFiles([request](const char* const* paths, const char* error) {
+                if (error) SDL_SetError("%s", error);
+                dialogCallback(request, error ? nullptr : paths, 0);
+            });
+        }
+#else
+        if (save) SDL_ShowSaveFileDialog(dialogCallback, request, window, nullptr, 0, request->initial.c_str());
+        else SDL_ShowOpenFileDialog(dialogCallback, request, window, nullptr, 0, request->initial.empty() ? nullptr : request->initial.c_str(), true);
+#endif
+    }
+
     // Returns whether the event may change the frame.
     bool dispatch(SDL_Event& event)
     {
@@ -282,7 +267,7 @@ private:
         if (!handled && nativeInputReady) handled = nativeInput.event(event);
         if (!handled) {
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) SDL_CaptureMouse(true);
-            return app->event(event, inputX, inputY);
+            return send(*app, event, inputX, inputY);
         }
         return true;
     }
@@ -290,9 +275,8 @@ private:
     static SDL_HitTestResult SDLCALL hitTest(SDL_Window* window, const SDL_Point* point, void* data)
     {
         auto& self = *static_cast<Window*>(data);
-        auto flags = SDL_GetWindowFlags(window);
-        if (!self.app || self.app->nativeTitleBarVisible() || (flags & SDL_WINDOW_FULLSCREEN)) return SDL_HITTEST_NORMAL;
-        return self.titleBarInput.hitTest(nativeWindowHitTest(window, *point, self.app->windowDraggableAt(point->x * self.inputX, point->y * self.inputY)));
+        if (!self.custom || (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN)) return SDL_HITTEST_NORMAL;
+        return self.titleBarInput.hitTest(nativeWindowHitTest(window, *point, self.app->draggable(point->x * self.inputX, point->y * self.inputY)));
     }
 
     bool draw()
@@ -311,13 +295,13 @@ private:
         if (pendingWindowAction) {
             auto action = *pendingWindowAction;
             pendingWindowAction.reset();
-            if (!performWindowAction(window, action)) app->workspace.error = std::string("Cannot change window state: ") + SDL_GetError();
+            if (!performWindowAction(window, action)) app->error(std::string("Cannot change window state: ") + SDL_GetError());
         }
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) return true;
         auto flags = SDL_GetWindowFlags(window);
-        app->setWindowState(flags & SDL_WINDOW_MAXIMIZED, flags & SDL_WINDOW_FULLSCREEN);
-        if (!updateNativeWindowChrome(window, app->nativeTitleBarVisible())) return false;
-        titleBarInput.update(app->customTitleBarVisible(), flags & SDL_WINDOW_INPUT_FOCUS);
+        app->window({custom, bool(flags & SDL_WINDOW_MAXIMIZED), bool(flags & SDL_WINDOW_FULLSCREEN)});
+        if (!updateNativeWindowChrome(window, !custom)) return false;
+        titleBarInput.update(custom, flags & SDL_WINDOW_INPUT_FOCUS);
         int ww, wh, width, height;
         if (!SDL_GetWindowSize(window, &ww, &wh) || !SDL_GetWindowSizeInPixels(window, &width, &height)) return false;
         if (ww <= 0 || wh <= 0 || width <= 0 || height <= 0) return true;
@@ -330,45 +314,41 @@ private:
             targetWidth = width;
             targetHeight = height;
         }
-        app->render(width / scale, height / scale);
+        app->render(width / scale, height / scale, ui::frameTime());
         if (present) {
-            ui::transform(app->context.scene(), {scale, 0, 0, 0, scale, 0, 0, 0, 1});
+            ui::transform(app->scene(), {scale, 0, 0, 0, scale, 0, 0, 0, 1});
             if (!attached) {
-                if (canvas->add(app->context.scene()) != tvg::Result::Success) return false;
+                if (canvas->add(app->scene()) != tvg::Result::Success) return false;
                 attached = true;
             }
             if (canvas->update() != tvg::Result::Success || canvas->draw(true) != tvg::Result::Success || canvas->sync() != tvg::Result::Success) return SDL_SetError("Cannot draw the GL frame");
         }
-        SDL_SetWindowTitle(window, app->windowTitle().c_str());
+        SDL_SetWindowTitle(window, app->title().c_str());
         updateTextInput();
         float mx = 0, my = 0;
         SDL_GetMouseState(&mx, &my);
         if (SDL_GetMouseFocus() == window) {
-            auto hit = app->customTitleBarVisible() ? nativeWindowHitTest(window, {int(mx), int(my)}, false) : SDL_HITTEST_NORMAL;
-            if (hit < SDL_HITTEST_RESIZE_TOPLEFT) cursors.set(app->context.cursor());
+            auto hit = custom ? nativeWindowHitTest(window, {int(mx), int(my)}, false) : SDL_HITTEST_NORMAL;
+            if (hit < SDL_HITTEST_RESIZE_TOPLEFT) cursors.set(app->cursor());
         }
         return !present || snapshotMode || SDL_GL_SwapWindow(window);
     }
 
     void updateTextInput()
     {
-        if (auto area = app->textInputArea()) {
-            SDL_Rect rect{int(area->x / inputX), int(area->y / inputY), 1, std::max(1, int(std::ceil(area->h / inputY)))};
-            auto tab = app->textInputTarget();
-            if (auto input = app->context.input(); nativeInputReady && input) {
-                auto selection = input->session.selection();
-                nativeInput.update(reinterpret_cast<uintptr_t>(&input->document), &input->document, selection.anchor, selection.caret, &rect);
-            } else if (nativeInputReady && tab) {
-                auto selection = tab->editor.session().selection();
-                nativeInput.update(tab->id, &tab->document, selection.anchor, selection.caret, &rect);
-            } else {
-                nativeInput.update(0, nullptr, 0, 0, nullptr);
-                SDL_SetTextInputArea(window, &rect, 0);
-                SDL_StartTextInput(window);
-            }
-        } else {
+        auto input = app->textInput();
+        if (!input) {
             nativeInput.update(0, nullptr, 0, 0, nullptr);
             SDL_StopTextInput(window);
+            return;
+        }
+        const auto& area = input->area;
+        SDL_Rect rect{int(area.x / inputX), int(area.y / inputY), 1, std::max(1, int(std::ceil(area.h / inputY)))};
+        if (nativeInputReady && input->document) nativeInput.update(input->id, input->document, input->anchor, input->caret, &rect);
+        else {
+            nativeInput.update(0, nullptr, 0, 0, nullptr);
+            SDL_SetTextInputArea(window, &rect, 0);
+            SDL_StartTextInput(window);
         }
     }
 
@@ -401,15 +381,14 @@ private:
     SDL_Window* window = nullptr;
     SDL_GLContext gl = nullptr;
     int targetWidth = 0, targetHeight = 0;
-    bool snapshotMode = false;
+    bool snapshotMode = false, custom = false;
     tn::Cursors cursors;
     NativeTextInput nativeInput;
     NativeTitleBarInput titleBarInput;
     bool nativeInputReady = false;
     std::unique_ptr<tvg::GlCanvas> canvas;
-    std::shared_ptr<Mailbox> mailbox = std::make_shared<Mailbox>();
-    std::unique_ptr<EditorApp> app;
-    std::optional<EditorApp::WindowAction> pendingWindowAction;
+    std::unique_ptr<App> app;
+    std::optional<WindowAction> pendingWindowAction;
     float inputX = 1, inputY = 1;
     bool attached = false;
     size_t passes = 0;
@@ -436,7 +415,7 @@ void schedule(Session& session, int delay)
     } else if (!session.timer) session.timer = emscripten_set_timeout(step, delay, &session);
 }
 
-bool SDLCALL wake(void* data, SDL_Event*)
+bool SDLCALL watch(void* data, SDL_Event*)
 {
     schedule(*static_cast<Session*>(data), 0);
     return true;
@@ -449,28 +428,35 @@ void step(void* data)
     if (session.frame) emscripten_cancel_animation_frame(session.frame);
     if (session.timer) emscripten_clear_timeout(session.timer);
     session.frame = session.timer = 0;
-    if (session.window.step(session.options)) SDL_RemoveEventWatch(wake, data);
+    if (session.window.step(session.options)) SDL_RemoveEventWatch(watch, data);
     else schedule(session, session.window.delay(session.options));
 }
 #endif
 }  // namespace
 
-int run(const RunOptions& options)
+void wake()
+{
+    auto& box = mailbox();
+    std::lock_guard<std::mutex> lock(box.mutex);
+    box.post();
+}
+
+int run(std::unique_ptr<App> app, const RunOptions& options)
 {
 #ifdef __EMSCRIPTEN__
     auto session = new Session{options, {}};
-    if (!session->window.initialize(session->options)) {
+    if (!session->window.initialize(std::move(app), session->options)) {
         std::cerr << "ThorNote: initialization failed: " << SDL_GetError() << '\n';
         EM_ASM({ if (Module['onAbort']) Module['onAbort'](UTF8ToString($0)); }, SDL_GetError());
         delete session;
         return 1;
     }
-    SDL_AddEventWatch(wake, session);
+    SDL_AddEventWatch(watch, session);
     schedule(*session, 0);
     return 0;
 #else
     Window window;
-    if (!window.initialize(options)) {
+    if (!window.initialize(std::move(app), options)) {
         std::cerr << "ThorNote: initialization failed: " << SDL_GetError() << '\n';
         return 1;
     }

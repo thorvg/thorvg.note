@@ -100,10 +100,7 @@ void EditorApp::drawNoteSearch(ui::Rect r, std::string_view placeholder)
     ui::Rect button{r.x + r.w - 40, r.y + 10, 30, 30};
     auto state = ui::button(context, "notes/new", button, "", [this] { commands.execute("file.new"); },
                             {.style = ui::ButtonStyle::Quiet, .icon = "plus", .enabled = !dialog});
-    if (state.hovered) {
-        hint = "New document";
-        hintBounds = button;
-    }
+    if (state.hovered) hint = {"New document", button};
 }
 
 void EditorApp::drawNoteFiles(ui::Rect r)

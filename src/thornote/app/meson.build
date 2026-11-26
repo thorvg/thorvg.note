@@ -6,8 +6,11 @@ configure_file(
 thornote_sources += files(
   'app_identity.cpp',
   'app_session.cpp',
+  'chrome.cpp',
   'editor_app.cpp',
   'input.cpp',
-  'search.cpp',
-  'window.cpp',
+  'layout.cpp',
+  'note_sidebar.cpp',
+  'settings.cpp',
+  'welcome.cpp',
 )

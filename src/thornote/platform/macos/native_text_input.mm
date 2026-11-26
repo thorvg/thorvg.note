@@ -1,4 +1,5 @@
 #include <thornote/platform/native_text_input.h>
+#include <thornote/shell/shell.h>
 #include <ui/ui.h>
 #import <AppKit/AppKit.h>
 #include <algorithm>

@@ -1,11 +1,17 @@
-#include <thornote/platform/native_text_input.h>
 #include <common/doctest/doctest.h>
 #include <common/engine.h>
 #include <storage/common/files.h>
 #include <thornote/app/editor_app.h>
+#include <thornote/shell/input.h>
 
 namespace tn::test
 {
+#ifdef __APPLE__
+constexpr ui::platform::KeyModifiers primary{.meta = true};
+#else
+constexpr ui::platform::KeyModifiers primary{.control = true};
+#endif
+
 class EditorTest
 {
     Engine engine;
@@ -32,7 +38,7 @@ public:
     const auto& collection() const { return app->collection; }
     bool run(std::string_view command) { return app->commands.execute(command); }
     bool enabled(std::string_view command) { return app->commands.find(command)->enabled(); }
-    void draw(float width = 800) { app->render(width, 600); }
+    void draw(float width = 800) { app->render(width, 600, ui::frameTime()); }
     ui::Rect editorBounds() const { return app->editorBounds; }
     auto preview(std::string_view text, float width) { return app->previewLines(text, width); }
 
@@ -42,33 +48,14 @@ public:
         app->updateFind();
     }
 
-    void key(SDL_Keycode key, SDL_Keymod modifiers = SDL_KMOD_NONE)
-    {
-        SDL_Event event{};
-        event.type = SDL_EVENT_KEY_DOWN;
-        event.key.key = key;
-        event.key.mod = modifiers;
-        app->event(event, 1, 1);
-    }
-
-    void input(const char* value)
-    {
-        SDL_Event event{};
-        event.type = SDL_EVENT_TEXT_INPUT;
-        event.text.text = value;
-        app->event(event, 1, 1);
-    }
+    void key(Key key, ui::platform::KeyModifiers modifiers = {}) { app->keyDown({.key = key, .modifiers = modifiers}); }
+    void input(const char* value) { app->text(value); }
 
     void click(ui::Rect rect)
     {
-        for (auto type : {SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP}) {
-            SDL_Event event{};
-            event.type = type;
-            event.button.button = SDL_BUTTON_LEFT;
-            event.button.x = rect.x + rect.w / 2;
-            event.button.y = rect.y + rect.h / 2;
-            app->event(event, 1, 1);
-        }
+        PointerEvent pointer{.x = rect.x + rect.w / 2, .y = rect.y + rect.h / 2};
+        app->pointerDown(pointer);
+        app->pointerUp(pointer);
     }
 
     const ui::Theme& appearance() const { return app->theme; }
@@ -80,7 +67,9 @@ public:
 };
 }  // namespace tn::test
 
+using tn::Key;
 using tn::test::EditorTest;
+using tn::test::primary;
 
 TEST_SUITE_BEGIN("search");
 
@@ -258,7 +247,7 @@ TEST_CASE_FIXTURE(EditorTest, "tabbing_from_search_back_to_the_editor_restores_t
     query("cat");
     draw();
     for (int i = 0; i < 10 && app->context.focused() != "editor"; ++i) {
-        key(SDLK_TAB);
+        key(Key::Tab);
         draw();
     }
     REQUIRE(app->context.focused() == "editor");
@@ -272,11 +261,7 @@ TEST_CASE_FIXTURE(EditorTest, "field_input_navigation_and_close_preserve_documen
 {
     auto& tab = document("cat cat");
     draw();
-#ifdef __APPLE__
-    key(SDLK_F, SDL_KMOD_GUI);
-#else
-    key(SDLK_F, SDL_KMOD_CTRL);
-#endif
+    key(Key('f'), primary);
     draw(390);
     REQUIRE(state().open);
     CHECK(app->context.focused() == "find/query");
@@ -288,23 +273,23 @@ TEST_CASE_FIXTURE(EditorTest, "field_input_navigation_and_close_preserve_documen
     REQUIRE(area);
     CHECK(area->y >= state().queryBounds.y);
     CHECK(area->y + area->h <= state().queryBounds.y + state().queryBounds.h);
-    key(SDLK_RETURN);
+    key(Key::Enter);
     CHECK(state().current == 1);
-    key(SDLK_RETURN, SDL_KMOD_SHIFT);
+    key(Key::Enter, {.shift = true});
     CHECK(state().current == 0);
     REQUIRE(run("edit.replace.toggle"));
     draw(390);
     click(state().replacementBounds);
     CHECK(app->context.focused() == "find/replacement");
     input("dog");
-    key(SDLK_F3);
+    key(Key::F3);
     CHECK(tab.document.text() == "cat cat");
     CHECK(state().current == 1);
-    key(SDLK_F3, SDL_KMOD_SHIFT);
+    key(Key::F3, {.shift = true});
     CHECK(state().current == 0);
-    key(SDLK_RETURN);
+    key(Key::Enter);
     CHECK(tab.document.text() == "dog cat");
-    key(SDLK_ESCAPE);
+    key(Key::Escape);
     CHECK(!state().open);
     CHECK(editorFocused());
     CHECK(app->context.focused() == "editor");
@@ -337,7 +322,7 @@ TEST_CASE_FIXTURE(EditorTest, "opening_a_listed_note_preserves_sidebar_geometry"
     auto wait = [&](const auto& complete) {
         auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         while (!complete() && std::chrono::steady_clock::now() < end) {
-            app->poll();
+            app->update();
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         return complete();
@@ -419,45 +404,30 @@ TEST_CASE_FIXTURE(EditorTest, "editor_zoom_accelerates_only_while_the_shortcut_i
 {
     auto& tab = document("sample");
     draw();
-#ifdef __APPLE__
-    constexpr auto primary = SDL_KMOD_GUI;
-#else
-    constexpr auto primary = SDL_KMOD_CTRL;
-#endif
-    auto press = [&](SDL_Keycode key, uint64_t ms, bool repeat = false) {
-        SDL_KeyboardEvent event{};
-        event.type = SDL_EVENT_KEY_DOWN;
-        event.key = key;
-        event.mod = primary;
-        event.timestamp = SDL_MS_TO_NS(ms);
-        event.repeat = repeat;
-        REQUIRE(app->nativeKeyDown(event));
+    auto press = [&](Key key, uint64_t ms, bool repeat = false) {
+        REQUIRE(app->keyDown({.key = key, .modifiers = primary, .repeat = repeat, .time = ms}));
         return tab.editor.options().fontSize;
     };
-    CHECK(press(SDLK_EQUALS, 100) == 17);
-    CHECK(press(SDLK_EQUALS, 400, true) == 19);
-    CHECK(press(SDLK_EQUALS, 1000, true) == 23);
-    CHECK(press(SDLK_EQUALS, 1800, true) == 29);
+    CHECK(press(Key('='), 100) == 17);
+    CHECK(press(Key('='), 400, true) == 19);
+    CHECK(press(Key('='), 1000, true) == 23);
+    CHECK(press(Key('='), 1800, true) == 29);
     REQUIRE(run("editor.font.decrease"));
     CHECK(tab.editor.options().fontSize == 28);
 
-    SDL_Event release{};
-    release.type = SDL_EVENT_KEY_UP;
-    release.key.key = SDLK_EQUALS;
-    release.key.mod = primary;
-    app->event(release, 1, 1);
-    CHECK(press(SDLK_EQUALS, 2000, true) == 29);
-    CHECK(press(SDLK_MINUS, 2100) == 28);
-    CHECK(press(SDLK_MINUS, 3000, true) == 24);
-    CHECK(press(SDLK_MINUS, 4000, true) == 18);
-    CHECK(press(SDLK_MINUS, 4100, true) == 12);
-    CHECK(press(SDLK_MINUS, 4200, true) == 6);
+    app->keyUp({.key = Key('='), .modifiers = primary});
+    CHECK(press(Key('='), 2000, true) == 29);
+    CHECK(press(Key('-'), 2100) == 28);
+    CHECK(press(Key('-'), 3000, true) == 24);
+    CHECK(press(Key('-'), 4000, true) == 18);
+    CHECK(press(Key('-'), 4100, true) == 12);
+    CHECK(press(Key('-'), 4200, true) == 6);
     CHECK(enabled("editor.font.decrease"));
     CHECK(run("editor.font.decrease"));
-    CHECK(press(SDLK_PLUS, 4300) == 6);
-    CHECK(press(SDLK_0, 4400) == 16);
-    CHECK(press(SDLK_KP_PLUS, 4500) == 17);
-    CHECK(press(SDLK_KP_MINUS, 4600) == 16);
+    CHECK(press(Key('+'), 4300) == 6);
+    CHECK(press(Key('0'), 4400) == 16);
+    CHECK(press(Key::KeypadPlus, 4500) == 17);
+    CHECK(press(Key::KeypadMinus, 4600) == 16);
 }
 
 TEST_CASE_FIXTURE(EditorTest, "control_wheel_changes_editor_font_size")
@@ -473,7 +443,7 @@ TEST_CASE_FIXTURE(EditorTest, "control_wheel_changes_editor_font_size")
     motion.type = SDL_EVENT_MOUSE_MOTION;
     motion.motion.x = x;
     motion.motion.y = y;
-    app->event(motion, 1, 1);
+    tn::send(*app, motion, 1, 1);
 
     SDL_Event event{};
     event.type = SDL_EVENT_MOUSE_WHEEL;
@@ -484,7 +454,7 @@ TEST_CASE_FIXTURE(EditorTest, "control_wheel_changes_editor_font_size")
         event.wheel.direction = direction;
         auto previous = SDL_GetModState();
         SDL_SetModState(modifiers);
-        app->event(event, 1, 1);
+        tn::send(*app, event, 1, 1);
         SDL_SetModState(previous);
         return tab.editor.options().fontSize;
     };
@@ -518,19 +488,16 @@ TEST_CASE_FIXTURE(EditorTest, "find_field_undo_and_redo_do_not_change_the_docume
     draw();
     input("한글");
     input(" input");
-#ifdef __APPLE__
-    constexpr auto primary = SDL_KMOD_GUI;
-#else
-    constexpr auto primary = SDL_KMOD_CTRL;
-#endif
-    key(SDLK_Z, primary);
+    auto shift = primary;
+    shift.shift = true;
+    key(Key('z'), primary);
     CHECK(state().query.value() == "한글");
-    key(SDLK_Z, SDL_Keymod(primary | SDL_KMOD_SHIFT));
+    key(Key('z'), shift);
     CHECK(state().query.value() == "한글 input");
-    key(SDLK_A, primary);
+    key(Key('a'), primary);
     input("replacement");
     CHECK(state().query.value() == "replacement");
-    key(SDLK_Z, primary);
+    key(Key('z'), primary);
     CHECK(state().query.value() == "한글 input");
     CHECK(tab.document.text() == "Original document");
 }
@@ -543,17 +510,17 @@ TEST_CASE_FIXTURE(EditorTest, "find_field_native_composition_preserves_replaceme
     draw();
     auto& field = state().query;
     auto id = reinterpret_cast<uintptr_t>(&field.document);
-    app->nativeTextInput({id, 0, 0, 3, "ㅎ", true});
+    app->edit({id, 0, 0, 3, "ㅎ", true});
     CHECK(field.value().empty());
     CHECK(field.preedit == "ㅎ");
-    app->nativeTextInput({id, 0, 0, 3, "한", true});
+    app->edit({id, 0, 0, 3, "한", true});
     CHECK(field.value().empty());
-    app->nativeTextInput({id, 0, 0, 0, "한", false});
+    app->edit({id, 0, 0, 0, "한", false});
     CHECK(field.value() == "한");
     CHECK(field.preedit.empty());
-    app->nativeTextInput({id, 0, 3, 3, "하", true});
+    app->edit({id, 0, 3, 3, "하", true});
     CHECK(field.value() == "한");
-    app->nativeTextInput({id, 0, 3, 0, "하", false});
+    app->edit({id, 0, 3, 0, "하", false});
     CHECK(field.value() == "하");
     REQUIRE(field.session.undo());
     CHECK(field.value() == "한");
@@ -569,24 +536,13 @@ TEST_CASE_FIXTURE(EditorTest, "palette_leaves_printable_native_keys_for_text_int
     auto field = app->context.input();
     REQUIRE(field);
     REQUIRE(app->context.focused() == "palette/search");
-    for (auto key : {SDLK_A, SDLK_E, SDLK_SPACE}) {
-        SDL_KeyboardEvent event{};
-        event.type = SDL_EVENT_KEY_DOWN;
-        event.key = key;
-        CHECK_FALSE(app->nativeKeyDown(event));
-    }
-    SDL_KeyboardEvent option{};
-    option.type = SDL_EVENT_KEY_DOWN;
-    option.key = SDLK_E;
-    option.mod = SDL_KMOD_ALT;
-    CHECK_FALSE(app->nativeKeyDown(option));
+    for (auto key : {Key('a'), Key('e'), Key::Space})
+        CHECK_FALSE(app->keyDown({.key = key}));
+    CHECK_FALSE(app->keyDown({.key = Key('e'), .modifiers = {.alt = true}}));
     auto id = reinterpret_cast<uintptr_t>(&field->document);
-    app->nativeTextInput({id, 0, 0, 0, "find", false});
+    app->edit({id, 0, 0, 0, "find", false});
     CHECK(field->value() == "find");
-    SDL_KeyboardEvent backspace{};
-    backspace.type = SDL_EVENT_KEY_DOWN;
-    backspace.key = SDLK_BACKSPACE;
-    CHECK(app->nativeKeyDown(backspace));
+    CHECK(app->keyDown({.key = Key::Backspace}));
     CHECK(field->value() == "fin");
 }
 
@@ -600,7 +556,7 @@ TEST_CASE_FIXTURE(EditorTest, "file_commands_keep_the_buffer_on_rename_and_confi
     auto wait = [&] {
         auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         while (app->workspace.busy() && std::chrono::steady_clock::now() < end) {
-            app->poll();
+            app->update();
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         REQUIRE_FALSE(app->workspace.busy());
@@ -613,17 +569,17 @@ TEST_CASE_FIXTURE(EditorTest, "file_commands_keep_the_buffer_on_rename_and_confi
 
     auto fromPalette = [&](const char* query) {
         draw();
-        key(SDLK_F1);
+        key(Key::F1);
         draw();
         input(query);
         draw();
-        key(SDLK_RETURN);
+        key(Key::Enter);
         draw();
     };
     fromPalette("rename file");
     REQUIRE(app->context.focused() == "prompt/name");
     input("renamed");
-    key(SDLK_RETURN);
+    key(Key::Enter);
     CHECK_FALSE(std::filesystem::exists(source));
     REQUIRE(std::filesystem::exists(destination));
     REQUIRE(app->workspace.find(id) == tab);
@@ -640,13 +596,13 @@ TEST_CASE_FIXTURE(EditorTest, "file_commands_keep_the_buffer_on_rename_and_confi
     REQUIRE(tab->editor.insert("more ", error));
     fromPalette("delete file");
     REQUIRE(app->context.focused() == "prompt/cancel");
-    key(SDLK_ESCAPE);
+    key(Key::Escape);
     CHECK(std::filesystem::exists(destination));
     CHECK(tab->dirty());
     fromPalette("delete file");
-    key(SDLK_TAB);
+    key(Key::Tab);
     REQUIRE(app->context.focused() == "prompt/confirm");
-    key(SDLK_RETURN);
+    key(Key::Enter);
     CHECK_FALSE(std::filesystem::exists(destination));
     CHECK_FALSE(app->workspace.find(id));
 }
@@ -659,12 +615,9 @@ TEST_CASE_FIXTURE(EditorTest, "settings_search_leaves_printable_native_keys_for_
     draw();
     auto field = app->context.input();
     REQUIRE(field);
-    SDL_KeyboardEvent event{};
-    event.type = SDL_EVENT_KEY_DOWN;
-    event.key = SDLK_A;
-    CHECK_FALSE(app->nativeKeyDown(event));
+    CHECK_FALSE(app->keyDown({.key = Key('a')}));
     auto id = reinterpret_cast<uintptr_t>(&field->document);
-    app->nativeTextInput({id, 0, 0, 0, "font", false});
+    app->edit({id, 0, 0, 0, "font", false});
     CHECK(field->value() == "font");
 }
 
@@ -673,41 +626,23 @@ TEST_CASE_FIXTURE(EditorTest, "editor_leaves_printable_native_keys_for_text_inte
     auto& tab = document("");
     draw();
     REQUIRE(editorFocused());
-    for (auto key : {SDLK_A, SDLK_C, SDLK_X, SDLK_V, SDLK_Z, SDLK_Y, SDLK_B, SDLK_SPACE}) {
-        SDL_KeyboardEvent event{};
-        event.type = SDL_EVENT_KEY_DOWN;
-        event.key = key;
-        CHECK_FALSE(app->nativeKeyDown(event));
-        event.mod = SDL_KMOD_SHIFT;
-        CHECK_FALSE(app->nativeKeyDown(event));
+    for (auto key : {Key('a'), Key('c'), Key('x'), Key('v'), Key('z'), Key('y'), Key('b'), Key::Space}) {
+        CHECK_FALSE(app->keyDown({.key = key}));
+        CHECK_FALSE(app->keyDown({.key = key, .modifiers = {.shift = true}}));
     }
-    SDL_KeyboardEvent option{};
-    option.type = SDL_EVENT_KEY_DOWN;
-    option.key = SDLK_A;
-    option.mod = SDL_KMOD_ALT;
-    CHECK_FALSE(app->nativeKeyDown(option));
+    CHECK_FALSE(app->keyDown({.key = Key('a'), .modifiers = {.alt = true}}));
     CHECK(tab.document.text().empty());
-    app->nativeTextInput({tab.id, 0, 0, 0, "a", false});
+    app->edit({tab.id, 0, 0, 0, "a", false});
     CHECK(tab.document.text() == "a");
-    app->nativeTextInput({tab.id, 1, 1, 3, "한", true});
+    app->edit({tab.id, 1, 1, 3, "한", true});
     CHECK(tab.document.text() == "a");
-    app->nativeTextInput({tab.id, 1, 1, 0, "한", false});
+    app->edit({tab.id, 1, 1, 0, "한", false});
     CHECK(tab.document.text() == "a한");
-#ifdef __APPLE__
-    constexpr auto primary = SDL_KMOD_GUI;
-#else
-    constexpr auto primary = SDL_KMOD_CTRL;
-#endif
-    SDL_KeyboardEvent shortcut{};
-    shortcut.type = SDL_EVENT_KEY_DOWN;
-    shortcut.key = SDLK_A;
-    shortcut.mod = primary;
-    CHECK(app->nativeKeyDown(shortcut));
+    CHECK(app->keyDown({.key = Key('a'), .modifiers = primary}));
     CHECK(tab.editor.session().selectedText() == "a한");
-    app->nativeTextInput({tab.id, 0, 4, 0, "A", false});
+    app->edit({tab.id, 0, 4, 0, "A", false});
     CHECK(tab.document.text() == "A");
-    shortcut.key = SDLK_Z;
-    CHECK(app->nativeKeyDown(shortcut));
+    CHECK(app->keyDown({.key = Key('z'), .modifiers = primary}));
     CHECK(tab.document.text() == "a한");
 }
 
@@ -715,12 +650,7 @@ TEST_CASE_FIXTURE(EditorTest, "markdown_shortcuts_use_the_editor_selection")
 {
     auto& tab = document("한글 note");
     draw();
-#ifdef __APPLE__
-    constexpr auto primary = SDL_KMOD_GUI;
-#else
-    constexpr auto primary = SDL_KMOD_CTRL;
-#endif
-    for (auto [shortcut, marker] : {std::pair{SDLK_B, "**"}, {SDLK_I, "*"}, {SDLK_E, "`"}}) {
+    for (auto [shortcut, marker] : {std::pair{Key('b'), "**"}, {Key('i'), "*"}, {Key('e'), "`"}}) {
         tab.editor.select(6, 0);
         key(shortcut, primary);
         CHECK(tab.document.text() == std::string(marker) + "한글" + marker + " note");
@@ -729,31 +659,33 @@ TEST_CASE_FIXTURE(EditorTest, "markdown_shortcuts_use_the_editor_selection")
         key(shortcut, primary);
         CHECK(tab.document.text() == "한글 note");
     }
-    auto shift = SDL_Keymod(primary | SDL_KMOD_SHIFT);
-    key(SDLK_X, shift);
+    auto shift = primary, alt = primary;
+    shift.shift = true;
+    alt.alt = true;
+    key(Key('x'), shift);
     CHECK(tab.document.text() == "~~한글~~ note");
-    key(SDLK_X, shift);
-    key(SDLK_2, SDL_Keymod(primary | SDL_KMOD_ALT));
+    key(Key('x'), shift);
+    key(Key('2'), alt);
     CHECK(tab.document.text() == "## 한글 note");
-    key(SDLK_1, SDL_Keymod(primary | SDL_KMOD_ALT));
+    key(Key('1'), alt);
     CHECK(tab.document.text() == "# 한글 note");
-    key(SDLK_1, SDL_Keymod(primary | SDL_KMOD_ALT));
-    key(SDLK_8, shift);
+    key(Key('1'), alt);
+    key(Key('8'), shift);
     CHECK(tab.document.text() == "- 한글 note");
-    key(SDLK_7, shift);
+    key(Key('7'), shift);
     CHECK(tab.document.text() == "1. 한글 note");
-    key(SDLK_9, shift);
+    key(Key('9'), shift);
     CHECK(tab.document.text() == "- [ ] 한글 note");
-    key(SDLK_9, shift);
-    key(SDLK_PERIOD, shift);
+    key(Key('9'), shift);
+    key(Key('.'), shift);
     CHECK(tab.document.text() == "> 한글 note");
-    key(SDLK_PERIOD, shift);
-    key(SDLK_K, primary);
+    key(Key('.'), shift);
+    key(Key('k'), primary);
     CHECK(tab.document.text() == "[한글]() note");
     CHECK(tab.editor.session().selection().caret == 9);
     tab.editor.undo();
     REQUIRE(run("edit.find"));
-    key(SDLK_B, primary);
+    key(Key('b'), primary);
     CHECK(tab.document.text() == "한글 note");
 }
 

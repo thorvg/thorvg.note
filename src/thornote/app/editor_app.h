@@ -2,7 +2,6 @@
 
 #include <thornote/documents/workspace.h>
 #include <thornote/documents/emoji.h>
-#include <thornote/documents/autosave.h>
 #include <thornote/preferences/layout.h>
 #include <thornote/scripting/layout_script.h>
 #include <thornote/preferences/preferences.h>
@@ -10,69 +9,71 @@
 #include <thornote/documents/note_browser.h>
 #include <thornote/extensions/host.h>
 #include <thornote/platform/system_fonts.h>
-#include <thornote/platform/native_window.h>
+#include <thornote/shell/shell.h>
+#include <thornote/widgets/find_bar.h>
+#include <thornote/widgets/status_bar.h>
+#include <thornote/widgets/tab_strip.h>
+#include <thornote/widgets/welcome.h>
+#include <thornote/widgets/window_chrome.h>
 #include <ui/ui.h>
-#include <SDL3/SDL.h>
 #include <array>
 #include <set>
 
 namespace tn
 {
-struct NativeTextEdit;
 namespace test
 {
 class EditorTest;
 }
 
-class EditorApp
+class EditorApp : public App
 {
     friend class test::EditorTest;
     SystemFonts systemFonts;
     EmojiAssets emojiAssets;
 
 public:
-    using WindowAction = tn::WindowAction;
-    explicit EditorApp(std::function<void()> wake = {}, const storage::Path& settingsDirectory = {});
-    ~EditorApp();
+    explicit EditorApp(const std::function<void()>& wake = {}, const storage::Path& settingsDirectory = {});
+    ~EditorApp() override;
     void openPath(const storage::Path&);
     void openSettings();
     void activateDocument(uint64_t);
+    // Returns the saved window size.
     std::optional<ui::Rect> restoreSession();
     void setLayout(Layout);
     void setLayoutDirectory(storage::Path path);
-    void render(float width, float height, double seconds = -1);
-    // Returns whether the event may change the frame.
-    bool event(const SDL_Event&, float windowToLogicalX, float windowToLogicalY);
-    void nativeTextInput(const NativeTextEdit&);
-    bool nativeKeyDown(const SDL_KeyboardEvent&);
-    bool poll();
-    int nextPollDelay(uint64_t now) const;
-    bool filesPending() const { return workspace.busy() || noteBrowser.loading(); }
-    void requestQuit();
-    void dialogResult(bool save, uint64_t target, const std::vector<std::string>& paths, const std::string& error);
     std::optional<ui::Rect> textInputArea();
     // The document whose editor owns the keyboard and accepts committed text.
     DocumentTab* textInputTarget() const;
     bool editorAt(float x, float y) const;
-    std::string windowTitle() const;
-    bool nativeTitleBarVisible() const { return !customTitleBarVisible(); }
-    bool customTitleBarVisible() const;
-    void setCustomTitleBarSupported(bool supported) { customChrome = supported; }
-    void setWindowState(bool maximized, bool fullscreen)
-    {
-        windowMaximized = maximized;
-        windowFullscreen = fullscreen;
-    }
-    bool windowDraggableAt(float x, float y) const;
-    storage::Path suggestedSavePath(uint64_t id, const storage::Path& defaultFolder) const;
-    bool done() const { return exiting; }
+
+    bool update() override;
+    int delay() const override;
+    void render(float width, float height, double seconds) override;
+    tvg::Scene* scene() const override { return context.scene(); }
+    std::optional<double> nextFrame() const override { return context.nextFrame(); }
+    bool done() const override { return exiting; }
+    bool busy() const override { return workspace.busy() || noteBrowser.loading(); }
+    void window(const WindowState& state) override { chrome.window = state; }
+    std::string title() const override;
+    ui::Cursor cursor() const override { return context.cursor(); }
+    bool draggable(float x, float y) const override;
+    std::optional<TextInputState> textInput() override;
+    void error(std::string message) override { workspace.error = std::move(message); }
+    bool keyDown(const KeyEvent&) override;
+    bool keyUp(const KeyEvent&) override;
+    void text(std::string_view committed) override;
+    void compose(std::string_view text, size_t cursor) override;
+    void edit(const NativeTextEdit&) override;
+    bool pointerMove(float x, float y) override;
+    void pointerDown(const PointerEvent&) override;
+    void pointerUp(const PointerEvent&) override;
+    void wheel(const WheelEvent&) override;
+    void focus(bool focused) override;
+    void close() override;
 
     Workspace workspace;
     ui::Context context;
-    std::function<void(bool save, uint64_t target, const storage::Path& directory)> chooseFile;
-    std::function<void(uint64_t)> exportFile;
-    std::function<void(WindowAction)> changeWindow;
-    std::function<bool(float x, float y, std::string_view selection, const ui::CommandRegistry&)> showTextMenu;
 
 private:
     enum class Prompt
@@ -93,7 +94,11 @@ private:
     void drawWelcome(ui::Rect);
     bool welcomeVisible() const { return workspace.documents().empty() && !settings.active && (composition != Layout::Note || !folderWorkspace); }
     void requestClose(uint64_t id);
+    void requestQuit();
+    // A relative path when the document has no file.
+    storage::Path suggestedSavePath(uint64_t id) const;
     void save(uint64_t id, bool saveAs = false);
+    void dialogResult(bool save, uint64_t target, const std::vector<std::string>& paths, const std::string& error);
     void finishPrompt(bool discard);
     void requestFilePrompt(Prompt);
     void finishFilePrompt();
@@ -101,7 +106,7 @@ private:
     void applyAppearance();
     void applyEditorOptions();
     void setFontSize(float size);
-    void zoom(int direction, const SDL_KeyboardEvent&);
+    void zoom(int direction, const KeyEvent&);
     void advanceAppearance(double seconds);
     void editTheme();
     void configure(DocumentTab&);
@@ -116,16 +121,13 @@ private:
     bool hasLayoutView(std::string_view) const;
     SessionState captureSession(bool content) const;
     bool checkpointSession(bool force = false);
-    bool pollSession();
     LayoutState& layout() { return layouts[size_t(composition)]; }
     const LayoutState& layout() const { return layouts[size_t(composition)]; }
+    bool customTitleBarVisible() const { return chrome.window.customTitleBar; }
+    bool nativeTitleBarVisible() const { return !customTitleBarVisible(); }
     void drawHeader(ui::Rect);
     void drawTitleBar(ui::Rect, bool headerOnly = false);
-    void drawAppIcon(ui::Rect, bool divider = true);
-    void drawWindowControls(ui::Rect, std::string_view instance, bool divider = true);
-    void drawWindowTitle(ui::Rect, bool text = true, bool divider = true);
-    void drawCenteredTitle(ui::Rect available, std::string_view title, float size, bool modified = false);
-    void drawWindowButton(ui::Rect, std::string_view instance, const char* command);
+    void drawWindowTitle(ui::Rect, bool divider);
     std::vector<ui::ViewType> windowViewTypes(bool divider = true);
     void drawTabs(ui::Context&, ui::Rect, bool titlebar = false);
     void drawSidebar(ui::Rect);
@@ -135,13 +137,8 @@ private:
     void drawNoteFavorite(ui::Rect);
     void drawStatus(ui::Rect);
     void drawEditor(ui::Rect);
-    void drawFind(ui::Rect&);
     void openFind(bool replace = false);
-    void closeFind();
-    void updateFind();
-    void findMatch(int direction);
-    void replaceMatch(bool all = false);
-    bool findFocused() const;
+    void updateFind() { find.update(visibleDocument()); }
     void drawMenu();
     void openMenu(std::string_view);
     void openEditorMenu(float x, float y);
@@ -162,15 +159,20 @@ private:
     DocumentTab* visibleDocument() const;
     bool searchFocused() const;
     void editorCommand(ui::Key);
-    bool key(const SDL_KeyboardEvent&);
-    bool markdownShortcut(const SDL_KeyboardEvent&, ui::platform::KeyModifiers);
+    bool key(const KeyEvent&);
+    bool markdownShortcut(const KeyEvent&);
     void commitText(uint64_t, std::string_view);
+    // Extensions and find results follow every input; returns whether the frame may change.
+    bool sync(bool changed = true);
     bool syncInputExtensions();
     void editInputExtensions();
     ui::lua::Values layoutScriptState() const;
     void editLayoutScript(bool titlebar = false);
     void reloadLayoutScript();
+    // Milliseconds on the frame clock.
+    static uint64_t now() { return uint64_t(ui::frameTime() * 1000); }
 
+    std::function<void(uint64_t)> exportFile;
     ThemeProfiles themeProfiles;
     ui::Theme theme;
     struct ThemeTransition
@@ -181,11 +183,9 @@ private:
     std::optional<ThemeTransition> themeTransition;
     RecentItems recent;
     storage::Path findDirectory;  // Folder shown by the pending open dialog.
-    std::unique_ptr<tvg::Picture> titleBarIcon;
     ui::TextEditorOptions options{.markdown = true};
-    SDL_Keycode zoomKey = SDLK_UNKNOWN;
+    Key zoomKey = Key::Unknown;
     uint64_t zoomStarted = 0;
-    ui::TabOptions tabOptions{ui::TabStyle::Connected, 7, 6};
     ui::FontId editorFont = 0, lineNumberFont = 0;
     std::array<ui::FontId, 2> bundledFonts{};
     std::vector<uint32_t> labelCodepoints;
@@ -198,25 +198,14 @@ private:
         size_t fontOffset = 0;
         ui::TextInput search, fontSearch;
         ui::Rect searchBounds{}, fontSearchBounds{};
-        std::string previousFontQuery, fontError, saveError;
+        std::string previousFontQuery, fontError;
         std::vector<FontChoice> catalog;
         tn::Document sample;
         ui::TextEditor preview{sample};
         ui::FontId previewFont = 0;
     } settings;
-    struct Find
-    {
-        bool open = false, replace = false;
-        ui::TextInput query, replacement;
-        ui::Rect queryBounds{}, replacementBounds{};
-        uint64_t document = 0, revision = uint64_t(-1);
-        std::string searchedQuery;
-        std::vector<ui::TextDecoration> matches;
-        std::optional<size_t> current;
-    } find;
-    storage::Path preferencesPath;
-    storage::DiskStamp preferencesStamp;
-    Autosave preferenceSave{500, true, true};
+    storage::Path settingsDirectory;
+    PreferenceFile preferenceFile;
     NoteBrowser noteBrowser;
     NoteFileList noteFiles;
     struct Preview
@@ -228,14 +217,13 @@ private:
     };
     std::vector<Preview> previews;
     size_t nextPreview = 0;
-    SessionStore sessionStore;
-    // Checkpoints recur while typing instead of waiting for idle input.
-    Autosave sessionSave{750, false, false};
+    SessionStore session;
     float restoredWidth = 1080, restoredHeight = 720;
-    std::string submittedSession;
-    bool syncingSession = false, syncingPreferences = false;
     ui::CommandRegistry commands;
     ui::CommandRegistry recentCommands;
+    FindBar find{context, workspace, commands};
+    TabStrip tabs{workspace, commands};
+    WelcomePage welcome{commands};
     tn::InputExtensions inputExtensions{commands,
                                         [this](uint64_t id) -> ui::TextEditor* { auto tab = workspace.find(id); return tab && !tab->loading ? &tab->editor : nullptr; },
                                         [this] { auto tab = target(); return tab ? tab->id : 0; },
@@ -244,29 +232,13 @@ private:
                                             return editorFocus && tab && tab->id == id;
                                         }};
     bool recentPalette = false;
-    struct
-    {
-        ui::Rect viewport{};
-        float x = 0, y = 0, limitX = 0, limitY = 0;
-        std::optional<float> grabX, grabY;
-    } welcomeScroll;
-    struct
-    {
-        float x = 0, width = 0, origin = 0, limit = 0;
-        size_t count = 0;
-        uint64_t selected = 0, pressed = 0;
-        std::optional<float> grab;
-        bool dragging = false;
-    } tabScroll;
     LayoutScript layoutScript{commands};
     ui::Composition workbench;
     ui::CommandListState paletteState, listState;
     ui::ListState collectionList, folderList;
     std::vector<ui::ListItem> collectionItems, folderItems;  // Borrowed by the lists until input is dispatched.
     ui::Rect editorBounds{}, sidebarBounds{}, searchBounds{}, menuButton{};
-    ui::Rect headerDragBounds{};
-    std::vector<ui::Rect> windowDragBounds;
-    ui::Rect promptSave{}, promptDiscard{}, promptCancel{}, hintBounds{};
+    ui::Rect promptSave{}, promptDiscard{}, promptCancel{};
     ui::TextInput renameInput;
     float width = 0, height = 0, pointerX = -1, pointerY = -1;
     Layout composition = Layout::Memo;
@@ -280,16 +252,16 @@ private:
     ui::TextInput noteSearch;
     mutable std::string searchedQuery;
     mutable std::unordered_map<uint64_t, std::pair<uint64_t, bool>> searchHits;  // tab id -> (revision + 1, match)
-    std::string collection = "all", previousQuery, hint;
+    std::string collection = "all", previousQuery;
+    Hint hint;
+    WindowChrome chrome{commands};
     bool folderWorkspace = false;
     std::set<uint64_t> favorites;
     bool revealDocument = true;
     bool dark = false, commandList = false, palette = false, dialog = false;
-    bool customChrome = false, windowMaximized = false, windowFullscreen = false;
-    WindowControls windowControls{nativeWindowControls()};
     // Whether the visible document editor owns keyboard input; mirrors the context focus on "editor".
     bool editorFocus = false;
-    bool composing = false, windowFocused = true, exiting = false, waitingSave = false;
+    bool composing = false, exiting = false, waitingSave = false;
     std::string suppressedInputText;
     bool suppressKeyText = false, textInputShift = false;
     uint64_t paletteTarget = 0, lastActive = 0, promptTarget = 0;
