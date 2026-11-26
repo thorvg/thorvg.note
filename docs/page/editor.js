@@ -134,7 +134,8 @@
             onAbort: function (reason) { fail(typeof reason === 'string' ? reason : 'The app stopped unexpectedly'); }
         };
         var script = document.createElement('script');
-        script.src = 'ThorNote.js';
+        // Threads share memory between workers, which only a cross-origin isolated page may do.
+        script.src = window.crossOriginIsolated ? 'ThorNote.threads.js' : 'ThorNote.js';
         script.onerror = function () { fail('The app could not be loaded'); };
         document.body.appendChild(script);
     }
@@ -163,6 +164,31 @@
         if (document.activeElement !== keyboard) event.stopPropagation();
     }, {capture: true});
 
+    // The service worker isolates the page from the next load on, so a page it does not control yet reloads once under
+    // it. A page it controls without isolation, as in a browser without the headers, keeps the single-thread build.
+    function isolate(done) {
+        var settled = false;
+        function settle() {
+            if (settled) return;
+            settled = true;
+            done();
+        }
+        try {
+            if (window.crossOriginIsolated || window.parent !== window || !navigator.serviceWorker || navigator.serviceWorker.controller || sessionStorage.getItem('thornote-isolation')) return done();
+            // Reloads once per tab, even when the worker never takes the page over.
+            sessionStorage.setItem('thornote-isolation', '1');
+        } catch (error) { return done(); }
+        // A registration that does not finish soon leaves this load to the single-thread build.
+        setTimeout(settle, 3000);
+        navigator.serviceWorker.register('isolation.js').then(function () {
+            return navigator.serviceWorker.ready;
+        }).then(function () {
+            if (settled) return;
+            settled = true;
+            window.location.reload();
+        }, settle);
+    }
+
     if (typeof WebAssembly !== 'object') fail('This browser cannot run WebAssembly');
-    else fetchNotes().then(start);
+    else isolate(function () { fetchNotes().then(start); });
 })();
