@@ -1,6 +1,5 @@
 #include "shell.h"
 #include "input.h"
-#include "live_resize.h"
 #include "cursors.h"
 #include <thornote/app/app_identity.h>
 #include <thornote/platform/native_text_input.h>
@@ -88,7 +87,7 @@ class Window
 public:
     ~Window()
     {
-        liveResize.stop();
+        SDL_RemoveEventWatch(exposeWatch, this);
         titleBarInput.stop();
         nativeInput.stop();
         cursors.clear();
@@ -151,7 +150,7 @@ public:
         app->showTextMenu = [this](float x, float y, std::string_view selection, const ui::CommandRegistry& commands) {
             if (!nativeInputReady) return false;
             SDL_CaptureMouse(false);
-            if (!liveResize.draw()) return false;  // Present the word selected by right-click before modal menu tracking.
+            if (!draw()) return false;  // Present the word selected by right-click before modal menu tracking.
             return nativeInput.contextMenu(x / inputX, y / inputY, selection, commands);
         };
         app->changeWindow = [this](WindowAction action) {
@@ -171,12 +170,12 @@ public:
         }
         // Apply the window size before creating the first GL frame.
         if (!SDL_SyncWindow(window)) return false;
-        if (!liveResize.start(window, [this](bool present) { return drawFrame(present); })) return false;
+        if (!SDL_AddEventWatch(exposeWatch, this)) return false;
 #ifdef __EMSCRIPTEN__
         // A page resize clears the canvas even when the window keeps its size.
         EM_ASM({ window.addEventListener("resize", function() { _thornoteWindowExposed($0); }); }, SDL_GetWindowID(window));
 #endif
-        if (!liveResize.draw()) return false;
+        if (!draw()) return false;
         std::cout << "ThorNote: render engine gl; native UI + TextEditor\n";
         if (options.snapshot.empty()) SDL_ShowWindow(window);
         return true;
@@ -207,7 +206,7 @@ public:
             result.done(result.paths, result.error);
             dirty = true;
         }
-        if (dirty && !liveResize.draw()) return 1;
+        if (dirty && !draw()) return 1;
 
         // 2. Input. Rebuild without presenting between events so callbacks and input bounds reflect
         //    the latest state; wheel input can share a frame.
@@ -215,17 +214,17 @@ public:
         bool stale = false;
         for (SDL_Event event; SDL_PollEvent(&event);) {
             if (stale && event.type != SDL_EVENT_MOUSE_WHEEL) {
-                if (!liveResize.draw(false)) return 1;
+                if (!draw(false)) return 1;
                 stale = false;
             }
-            if (dispatch(event) && liveResize.needsDraw(event)) dirty = stale = true;
+            if (dispatch(event)) dirty = stale = true;
         }
 
         // 3. Animation.
         if (auto next = app->nextFrame(); next && drawable()) dirty |= *next <= ui::frameTime();
 
         // 4. Present.
-        if ((dirty || snapshotMode) && !liveResize.draw()) return 1;
+        if ((dirty || snapshotMode) && !draw()) return 1;
         if (snapshotMode && !app->busy() && ++passes >= 3) return snapshot(options.snapshot) ? 0 : 1;
         return std::nullopt;
     }
@@ -263,7 +262,8 @@ private:
 #endif
     }
 
-    // Returns whether the event may change the frame.
+    // Returns whether the event may change the frame. Input always may; a window notification can
+    // describe geometry already presented by the expose watch or an earlier event.
     bool dispatch(SDL_Event& event)
     {
         if ((event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT) || event.type == SDL_EVENT_WINDOW_FOCUS_LOST) SDL_CaptureMouse(false);
@@ -271,9 +271,21 @@ private:
         if (!handled && nativeInputReady) handled = nativeInput.event(event);
         if (!handled) {
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) SDL_CaptureMouse(true);
-            return send(*app, event, inputX, inputY);
+            if (!send(*app, event, inputX, inputY)) return false;
         }
-        return true;
+        switch (event.type) {
+            case SDL_EVENT_WINDOW_EXPOSED:
+                return event.window.windowID != SDL_GetWindowID(window) || !event.common.timestamp || event.common.timestamp > exposedAt;
+            case SDL_EVENT_WINDOW_MOVED:
+            case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+            case SDL_EVENT_WINDOW_SAFE_AREA_CHANGED:
+            case SDL_EVENT_WINDOW_MAXIMIZED:
+            case SDL_EVENT_WINDOW_RESTORED:
+                return event.window.windowID != SDL_GetWindowID(window) || presented != geometry();
+            default: return true;
+        }
     }
 
     static SDL_HitTestResult SDLCALL hitTest(SDL_Window* window, const SDL_Point* point, void* data)
@@ -281,6 +293,56 @@ private:
         auto& self = *static_cast<Window*>(data);
         if (!self.custom || (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN)) return SDL_HITTEST_NORMAL;
         return self.titleBarInput.hitTest(nativeWindowHitTest(window, *point, self.app->draggable(point->x * self.inputX, point->y * self.inputY)));
+    }
+
+    // Native move and resize loops hold the main loop and deliver expose events before SDL_PollEvent
+    // returns, so draw from here, on the main thread.
+    static bool SDLCALL exposeWatch(void* data, SDL_Event* event)
+    {
+        if (SDL_IsMainThread() && event->type == SDL_EVENT_WINDOW_EXPOSED) {
+            auto& self = *static_cast<Window*>(data);
+            if (event->window.windowID == SDL_GetWindowID(self.window) && !self.drawing && self.draw()) self.exposedAt = event->common.timestamp;
+        }
+        return true;
+    }
+
+    // What a presented frame depends on besides the app.
+    struct Geometry
+    {
+        int windowWidth = 0, windowHeight = 0, pixelWidth = 0, pixelHeight = 0;
+        float scale = 0;
+        SDL_WindowFlags flags = 0;
+        SDL_Rect safeArea{};
+        bool operator==(const Geometry& other) const
+        {
+            return windowWidth == other.windowWidth && windowHeight == other.windowHeight && pixelWidth == other.pixelWidth && pixelHeight == other.pixelHeight && scale == other.scale && flags == other.flags && safeArea.x == other.safeArea.x && safeArea.y == other.safeArea.y && safeArea.w == other.safeArea.w && safeArea.h == other.safeArea.h;
+        }
+    };
+
+    Geometry geometry() const
+    {
+        Geometry value;
+        SDL_GetWindowSize(window, &value.windowWidth, &value.windowHeight);
+        SDL_GetWindowSizeInPixels(window, &value.pixelWidth, &value.pixelHeight);
+        value.scale = SDL_GetWindowDisplayScale(window);
+        value.flags = SDL_GetWindowFlags(window) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_HIDDEN);
+        SDL_GetWindowSafeArea(window, &value.safeArea);
+        return value;
+    }
+
+    // Every frame goes through here: a draw started inside another one is skipped, and after a failed
+    // draw none runs. A draw that does not present keeps the presented geometry.
+    bool draw(bool present = true)
+    {
+        if (failed) return false;
+        if (drawing) return true;
+        drawing = true;
+        auto current = geometry();
+        bool result = drawFrame(present);
+        drawing = false;
+        failed |= !result;
+        if (result && present) presented = current;
+        return result;
     }
 
     // Without presenting, only updates the controls and the input state.
@@ -386,7 +448,9 @@ private:
     float inputX = 1, inputY = 1;
     bool attached = false;
     size_t passes = 0;
-    tn::LiveResize liveResize;
+    std::optional<Geometry> presented;
+    Uint64 exposedAt = 0;
+    bool drawing = false, failed = false;
 };
 
 #ifdef __EMSCRIPTEN__
