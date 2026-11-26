@@ -27,6 +27,7 @@ public:
     const char* textFont(FontId font);
     float textWidth(std::string_view text, const char* font, float size);
     float textKerning(FontId font, uint32_t left, uint32_t right) const;
+    bool kerned(FontId font) const;  // whether textKerning can return anything but zero
     uint64_t generation() const { return version; }
     uint64_t resetGeneration() const { return resetVersion; }
     const std::string& error() const { return message; }

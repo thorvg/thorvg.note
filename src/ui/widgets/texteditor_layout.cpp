@@ -110,7 +110,8 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         std::vector<Run> runs;
         Format current;
         FontId font = documentFont;
-        bool leading = true;
+        float unitsPerEm = 1000;
+        bool kerned = false, leading = true;
         uint32_t previous = 0;
         // Accumulate precisely because these positions also anchor visible text slices.
         double x = 0;
@@ -129,7 +130,7 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         tvg::GlyphMetrics space{};
         glyphMetrics(measurer.get(), " ", space);
         line.breakWidth = space.advance;
-        auto append = [&](std::string_view value, uint32_t cp, bool caret) {
+        auto append = [&](std::string_view value, uint32_t cp, uint32_t glyph, bool caret) {
             tvg::GlyphMetrics metrics{};
             auto byte = static_cast<unsigned char>(value.front());
             if (value.size() == 1 && byte < ascii.size()) {
@@ -146,8 +147,7 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 metrics = ascii[byte];
             } else glyphMetrics(measurer.get(), value, metrics);
             if (fonts) {
-                auto glyph = fonts->glyph(font, cp);
-                x += fonts->textKerning(font, previous, glyph) * size / fonts->unitsPerEm(font);
+                if (kerned) x += fonts->textKerning(font, previous, glyph) * size / unitsPerEm;
                 previous = glyph;
             }
             if (caret) line.x.back() = x;
@@ -156,7 +156,8 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 leading = false;
             }
             x += metrics.advance;
-            shown.append(value);
+            if (value.size() == 1) shown.push_back(value.front());
+            else shown.append(value);
             if (!runs.empty()) {
                 runs.back().end = shown.size();
                 runs.back().width = x - runs.back().left;
@@ -211,20 +212,25 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 tvg::TextMetrics metrics{};
                 measurer->metrics(metrics);
                 rowHeight = std::max(rowHeight, metrics.advance);
+                if (fonts) {
+                    unitsPerEm = fonts->unitsPerEm(font);
+                    kerned = fonts->kerned(font);
+                }
                 bool styled = item && offset >= item->range.start && offset < item->range.end;
                 runs.push_back({.first = shown.size(), .left = float(x), .top = metrics.ascent - metrics.descent, .scale = sizeScale, .font = font, .format = format, .foreground = styled ? item->range.foreground : std::nullopt, .background = styled ? item->range.background : std::nullopt});
                 leading = true;
                 previous = 0;
                 widgetBreak = false;
             }
-            if (fonts && !fonts->glyph(font, cp == '\t' ? uint32_t(' ') : cp)) runs.back().missing = true;
+            auto id = fonts ? fonts->glyph(font, cp == '\t' ? uint32_t(' ') : cp) : 0;
+            if (fonts && !id) runs.back().missing = true;
             if (cp == '\t') {
                 auto spaces = 4 - column % 4;
                 for (size_t i = 0; i < spaces; ++i)
-                    append(" ", ' ', i == 0);
+                    append(" ", ' ', id, i == 0);
                 column += spaces;
             } else {
-                append(value, cp, true);
+                append(value, cp, id, true);
                 ++column;
             }
             line.offsets.push_back(next - begin);

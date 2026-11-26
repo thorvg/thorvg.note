@@ -427,6 +427,11 @@ float FontManager::textKerning(FontId font, uint32_t left, uint32_t right) const
     auto face = lookup(font);
     return face ? face->textKerning(left, right) : 0;
 }
+bool FontManager::kerned(FontId font) const
+{
+    auto face = lookup(font);
+    return face && face->kernEnd - face->kern >= 8;
+}
 }  // namespace ui::detail
 
 namespace ui
