@@ -1,5 +1,6 @@
 #include "texteditor.h"
 #include <ui/core/text/internal.h>
+#include <bitset>
 
 namespace ui
 {
@@ -77,6 +78,11 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
     };
     size_t widget = 0;
     constexpr float headingScale[] = {1, 2, 1.65f, 1.4f, 1.2f, 1.1f, 1.05f};
+    // ThorVG measures a glyph per call, so ASCII ones are measured once per font and size.
+    std::array<tvg::GlyphMetrics, 128> ascii;
+    std::bitset<128> asciiMeasured;
+    auto asciiFont = documentFont;
+    float asciiSize = 0;
     for (size_t begin = 0;;) {
         auto stop = std::min(text.find('\n', begin), text.size());
         auto block = markdownBlock(sourceOffset(base + begin));
@@ -125,7 +131,20 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         line.breakWidth = space.advance;
         auto append = [&](std::string_view value, uint32_t cp, bool caret) {
             tvg::GlyphMetrics metrics{};
-            glyphMetrics(measurer.get(), value, metrics);
+            auto byte = static_cast<unsigned char>(value.front());
+            if (value.size() == 1 && byte < ascii.size()) {
+                if (font != asciiFont || size != asciiSize) {
+                    asciiMeasured.reset();
+                    asciiFont = font;
+                    asciiSize = size;
+                }
+                if (!asciiMeasured[byte]) {
+                    ascii[byte] = {};
+                    glyphMetrics(measurer.get(), value, ascii[byte]);
+                    asciiMeasured.set(byte);
+                }
+                metrics = ascii[byte];
+            } else glyphMetrics(measurer.get(), value, metrics);
             if (fonts) {
                 auto glyph = fonts->glyph(font, cp);
                 x += fonts->textKerning(font, previous, glyph) * size / fonts->unitsPerEm(font);
