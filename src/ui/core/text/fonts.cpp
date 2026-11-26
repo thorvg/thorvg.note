@@ -26,8 +26,9 @@ struct Face
     FontInfo info;
     float unitsPerEm = 1000;
     size_t kern = 0, kernEnd = 0;  // legacy kern table range in bytes
+    // BMP glyph ids in pages of 256 codepoints, ~0u until looked up; the other planes stay in cmap.
+    mutable std::array<std::unique_ptr<uint32_t[]>, 256> pages;
     mutable std::unordered_map<uint32_t, uint32_t> cmap;
-    mutable std::array<uint64_t, 1024> coverage{}, known{};
     static std::unique_ptr<Face> make(std::vector<unsigned char> bytes, unsigned index, std::string name, std::string& error);
     uint32_t glyph(uint32_t codepoint) const;
     float textKerning(uint32_t left, uint32_t right) const;
@@ -165,16 +166,18 @@ uint32_t Face::glyph(uint32_t codepoint) const
 {
     if (codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff)) return 0;
     if (codepoint < 0x10000) {
-        auto bit = uint64_t(1) << (codepoint % 64);
-        if ((known[codepoint / 64] & bit) && !(coverage[codepoint / 64] & bit)) return 0;
+        auto& page = pages[codepoint >> 8];
+        if (!page) {
+            page = std::make_unique<uint32_t[]>(256);
+            std::fill_n(page.get(), 256, ~0u);
+        }
+        auto& id = page[codepoint & 255];
+        if (id == ~0u) id = uint32_t(stbtt_FindGlyphIndex(&font, int(codepoint)));
+        return id;
     }
     auto found = cmap.find(codepoint);
     if (found != cmap.end()) return found->second;
     auto id = uint32_t(stbtt_FindGlyphIndex(&font, int(codepoint)));
-    if (codepoint < 0x10000) {
-        known[codepoint / 64] |= uint64_t(1) << (codepoint % 64);
-        if (id) coverage[codepoint / 64] |= uint64_t(1) << (codepoint % 64);
-    }
     if (id) cmap.emplace(codepoint, id);
     return id;
 }
