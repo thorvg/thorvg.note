@@ -15,7 +15,7 @@ public:
     LiveResize(const LiveResize&) = delete;
     LiveResize& operator=(const LiveResize&) = delete;
     ~LiveResize() { stop(); }
-    bool start(SDL_Window* window, std::function<bool()> render)
+    bool start(SDL_Window* window, std::function<bool(bool present)> render)
     {
         stop();
         this->window = window;
@@ -52,18 +52,14 @@ public:
             default: return true;
         }
     }
-    bool draw()
-    {
-        return draw(drawFrame);
-    }
     // A render that does not present keeps the presented geometry.
-    bool draw(const std::function<bool()>& render, bool present = true)
+    bool draw(bool present = true)
     {
-        if (failed || !render) return false;
+        if (failed || !drawFrame) return false;
         if (drawing) return true;
         drawing = true;
         auto currentSize = size();
-        bool result = render();
+        bool result = drawFrame(present);
         drawing = false;
         failed |= !result;
         if (result && present) {
@@ -107,7 +103,7 @@ private:
     }
     SDL_WindowID windowId = 0;
     SDL_Window* window = nullptr;
-    std::function<bool()> drawFrame;
+    std::function<bool(bool)> drawFrame;
     Size frameSize;
     Uint64 exposedAt = 0;
     bool watching = false, drawing = false, failed = false, hasFrame = false;

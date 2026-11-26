@@ -151,7 +151,7 @@ public:
         app->showTextMenu = [this](float x, float y, std::string_view selection, const ui::CommandRegistry& commands) {
             if (!nativeInputReady) return false;
             SDL_CaptureMouse(false);
-            if (!draw()) return false;  // Present the word selected by right-click before modal menu tracking.
+            if (!liveResize.draw()) return false;  // Present the word selected by right-click before modal menu tracking.
             return nativeInput.contextMenu(x / inputX, y / inputY, selection, commands);
         };
         app->changeWindow = [this](WindowAction action) {
@@ -171,12 +171,12 @@ public:
         }
         // Apply the window size before creating the first GL frame.
         if (!SDL_SyncWindow(window)) return false;
-        if (!liveResize.start(window, [this] { return drawFrame(); })) return false;
+        if (!liveResize.start(window, [this](bool present) { return drawFrame(present); })) return false;
 #ifdef __EMSCRIPTEN__
         // A page resize clears the canvas even when the window keeps its size.
         EM_ASM({ window.addEventListener("resize", function() { _thornoteWindowExposed($0); }); }, SDL_GetWindowID(window));
 #endif
-        if (!draw()) return false;
+        if (!liveResize.draw()) return false;
         std::cout << "ThorNote: render engine gl; native UI + TextEditor\n";
         if (options.snapshot.empty()) SDL_ShowWindow(window);
         return true;
@@ -189,40 +189,35 @@ public:
         return SDL_GetWindowSizeInPixels(window, &width, &height) && width > 0 && height > 0;
     }
 
-    // One pass over finished work and queued events; returns the exit status once the app is done.
+    // One pass of the loop; returns the exit status once the app is done.
     std::optional<int> step(const RunOptions& options)
     {
         if (app->done()) return 0;
+
+        // 1. Finished work: background loads, saves and file dialogs. These can replace controls,
+        //    so rebuild them before the queued input.
         bool dirty = app->update();
-        std::deque<DialogResult> results;
-        {
-            auto& box = mailbox();
-            std::lock_guard<std::mutex> lock(box.mutex);
-            results.swap(box.results);
-        }
-        for (const auto& result : results) {
-            result.done(result.paths, result.error);
-            dirty = true;
-        }
-        // Reloads and file completions can replace controls; rebuild before queued input.
-        if (dirty) {
-            if (!draw()) return 1;
-            dirty = false;
-        }
-        // Rebuild between events so callbacks and input bounds reflect the latest state, then draw once.
+        dirty |= finishDialogs();
+        if (dirty && !liveResize.draw()) return 1;
+
+        // 2. Input. Rebuild without presenting between events so callbacks and input bounds reflect
+        //    the latest state; wheel input can share a frame.
+        dirty = false;
         bool stale = false;
         for (SDL_Event event; SDL_PollEvent(&event);) {
-            // Wheel input can share a frame.
             if (stale && event.type != SDL_EVENT_MOUSE_WHEEL) {
-                if (!build()) return 1;
+                if (!liveResize.draw(false)) return 1;
                 stale = false;
             }
             if (dispatch(event) && liveResize.needsDraw(event)) dirty = stale = true;
         }
+
+        // 3. Animation.
         if (auto next = app->nextFrame(); next && drawable()) dirty |= *next <= ui::frameTime();
-        if (dirty || !options.snapshot.empty())
-            if (!draw()) return 1;
-        if (!options.snapshot.empty() && !app->busy() && ++passes >= 3) return snapshot(options.snapshot) ? 0 : 1;
+
+        // 4. Present.
+        if ((dirty || snapshotMode) && !liveResize.draw()) return 1;
+        if (snapshotMode && !app->busy() && ++passes >= 3) return snapshot(options.snapshot) ? 0 : 1;
         return std::nullopt;
     }
 
@@ -279,18 +274,22 @@ private:
         return self.titleBarInput.hitTest(nativeWindowHitTest(window, *point, self.app->draggable(point->x * self.inputX, point->y * self.inputY)));
     }
 
-    bool draw()
+    // Returns whether any dialog finished.
+    bool finishDialogs()
     {
-        return liveResize.draw();
+        std::deque<DialogResult> results;
+        {
+            auto& box = mailbox();
+            std::lock_guard<std::mutex> lock(box.mutex);
+            results.swap(box.results);
+        }
+        for (const auto& result : results)
+            result.done(result.paths, result.error);
+        return !results.empty();
     }
 
-    // Updates the controls and the input state without drawing the frame.
-    bool build()
-    {
-        return liveResize.draw([this] { return drawFrame(false); }, false);
-    }
-
-    bool drawFrame(bool present = true)
+    // Without presenting, only updates the controls and the input state.
+    bool drawFrame(bool present)
     {
         if (pendingWindowAction) {
             auto action = *pendingWindowAction;
@@ -460,6 +459,7 @@ int run(std::unique_ptr<App> app, const RunOptions& options)
         std::cerr << "ThorNote: initialization failed: " << SDL_GetError() << '\n';
         return 1;
     }
+    // Step, then sleep until input, wake() or the next deadline.
     for (;;) {
         if (auto status = window.step(options)) return *status;
         SDL_WaitEventTimeout(nullptr, window.delay(options));
