@@ -110,6 +110,7 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         std::vector<Run> runs;
         Format current;
         FontId font = documentFont;
+        tvg::TextMetrics fontMetrics{};
         float unitsPerEm = 1000;
         bool kerned = false, leading = true;
         uint32_t previous = 0;
@@ -206,18 +207,21 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
             }
             if (runs.empty() || format.start != current.start || format.end != current.end || face != font || widgetBreak) {
                 current = format;
-                font = face;
-                measurer->font(fonts ? fonts->textFont(font) : themeTokens.font.c_str());
-                measurer->size(size * fontPointsPerLogicalPixel);
-                tvg::TextMetrics metrics{};
-                measurer->metrics(metrics);
-                rowHeight = std::max(rowHeight, metrics.advance);
-                if (fonts) {
-                    unitsPerEm = fonts->unitsPerEm(font);
-                    kerned = fonts->kerned(font);
+                // Formats and widgets also break runs, but only a new face needs measuring again.
+                if (runs.empty() || face != font) {
+                    font = face;
+                    measurer->font(fonts ? fonts->textFont(font) : themeTokens.font.c_str());
+                    measurer->size(size * fontPointsPerLogicalPixel);
+                    fontMetrics = {};
+                    measurer->metrics(fontMetrics);
+                    rowHeight = std::max(rowHeight, fontMetrics.advance);
+                    if (fonts) {
+                        unitsPerEm = fonts->unitsPerEm(font);
+                        kerned = fonts->kerned(font);
+                    }
                 }
                 bool styled = item && offset >= item->range.start && offset < item->range.end;
-                runs.push_back({.first = shown.size(), .left = float(x), .top = metrics.ascent - metrics.descent, .scale = sizeScale, .font = font, .format = format, .foreground = styled ? item->range.foreground : std::nullopt, .background = styled ? item->range.background : std::nullopt});
+                runs.push_back({.first = shown.size(), .left = float(x), .top = fontMetrics.ascent - fontMetrics.descent, .scale = sizeScale, .font = font, .format = format, .foreground = styled ? item->range.foreground : std::nullopt, .background = styled ? item->range.background : std::nullopt});
                 leading = true;
                 previous = 0;
                 widgetBreak = false;
