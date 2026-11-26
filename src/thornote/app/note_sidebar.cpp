@@ -9,6 +9,16 @@ bool EditorApp::browsingNoteFiles() const
     return composition == Layout::Note && !commandList && (collection == "all" || collection.compare(0, 7, "folder:") == 0);
 }
 
+// Selects the note first, so the menu commands act on it.
+void EditorApp::openNoteMenu(uint64_t id, ui::Rect anchor)
+{
+    if (dialog || palette || prompt != Prompt::None || !layoutScript.menu("note-menu")) return;
+    activateDocument(id);
+    menuRoot = "note-menu";
+    contextMenuAnchor = menuButton = anchor;
+    openMenu("note-menu");
+}
+
 void EditorApp::refreshNoteFiles(bool force)
 {
     if (!browsingNoteFiles()) return;
@@ -136,7 +146,8 @@ void EditorApp::drawNoteFiles(ui::Rect r)
             auto key = "note-drafts/" + std::to_string(tab->id);
             ui::Rect row{body.x, body.y + draft.top - noteFileScroll, body.w, draft.height - 4};
             auto state = context.control(key, row, [this, id = tab->id](const ui::Event& event) {
-                if (event.activated()) activateDocument(id); }, !dialog);
+                if (event.type == ui::EventType::ContextMenu) openNoteMenu(id, {event.x, event.y, 1, 1});
+                else if (event.activated()) activateDocument(id); }, !dialog);
             bool selected = !settings.active && tab == workspace.active();
             if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);
             bool favorite = favorites.count(tab->id);
@@ -161,8 +172,8 @@ void EditorApp::drawNoteFiles(ui::Rect r)
             auto path = noteBrowser.files()[*entry.file].path;
             auto key = "note-files/" + utf8(path);
             auto state = context.control(key, row, [this, path](const ui::Event& event) {
-                if (event.activated())
-                    activateDocument(workspace.open(path, false)); }, !dialog);
+                if (event.type == ui::EventType::ContextMenu) openNoteMenu(workspace.open(path, false), {event.x, event.y, 1, 1});
+                else if (event.activated()) activateDocument(workspace.open(path, false)); }, !dialog);
             auto active = workspace.active();
             bool selected = !settings.active && active && active->path == path;
             if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);

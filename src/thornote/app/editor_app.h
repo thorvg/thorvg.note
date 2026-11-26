@@ -129,6 +129,7 @@ private:
     void updateFind() { find.update(visibleDocument()); }
     void openMenu(std::string_view);
     void closeMenu(bool preserveFolder = false);
+    void openNoteMenu(uint64_t id, ui::Rect anchor);
     std::vector<DocumentTab*> filteredDocuments() const;
     bool browsingNoteFiles() const;
     void refreshNoteFiles(bool force = false);

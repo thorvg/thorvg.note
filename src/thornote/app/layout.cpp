@@ -151,10 +151,9 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
             auto tab = documents[i];
             auto id = tab->id;
             ui::Rect row{body.x, body.y + rows[i].top - documentScroll, body.w, rows[i].height - 4};
-            auto state = context.control("documents/" + std::to_string(id), row, [this, id](const ui::Event& e) {
-                if (e.activated()) {
-                    activateDocument(id);
-                }
+            auto state = context.control("documents/" + std::to_string(id), row, [this, id, notes](const ui::Event& e) {
+                if (notes && e.type == ui::EventType::ContextMenu) openNoteMenu(id, {e.x, e.y, 1, 1});
+                else if (e.activated()) activateDocument(id);
             });
             bool selected = tab == workspace.active();
             if (selected || state.hovered) context.rect(row, selected ? theme.selection : theme.raised, 6);

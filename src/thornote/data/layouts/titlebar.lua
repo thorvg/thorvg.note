@@ -105,6 +105,13 @@ local definition = {
         ui.menu {id = "folder-menu", visible = false, compact = true, items = {
           {text = "Remove", command = "folder.remove"},
         }},
+        ui.menu {id = "note-menu", visible = false, compact = true, items = {
+          {text = "Favorite Note", command = "note.favorite.toggle", checked = state.favorite},
+          {text = "New Note", command = "file.new"},
+          {text = "Duplicate Note", command = "note.duplicate"},
+          {text = "Rename Note", command = "file.rename"},
+          {text = "Delete Note", command = "file.delete"},
+        }},
       },
     }
   end,

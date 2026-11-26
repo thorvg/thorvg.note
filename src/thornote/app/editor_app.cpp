@@ -515,6 +515,27 @@ void EditorApp::registerCommands()
     add("note.favorite.toggle", "Add / remove favorite", "Notes", "", [this] {
         if (auto tab = target()) { if (!favorites.erase(tab->id)) favorites.insert(tab->id); }
         focusEditor(true); }, ready, "No document is ready");
+    add("note.duplicate", "Duplicate note", "Notes", "", [this] {
+        auto source = target();
+        // A saved note gets a copy beside it, numbered when the name is taken.
+        storage::Path destination;
+        if (!source->path.empty()) {
+            auto stem = utf8(source->path.stem()) + " copy";
+            auto extension = utf8(source->path.extension());
+            std::error_code error;
+            destination = source->path.parent_path() / utf8Path(stem + extension);
+            for (int number = 2; std::filesystem::exists(destination, error); ++number) {
+                auto name = stem + " " + std::to_string(number);
+                name += extension;
+                destination.replace_filename(utf8Path(name));
+            }
+        }
+        auto& copy = workspace.create();
+        copy.document.text(source->document.text());
+        copy.format = source->format;
+        if (collection == "favorites") favorites.insert(copy.id);
+        if (!destination.empty()) workspace.saveAs(copy.id, destination);
+        focusEditor(true); }, ready, "No document is ready");
     add("theme.light", "Use light appearance", "Appearance", "", [this] { dark = false; applyAppearance(); });
     add("theme.dark", "Use dark appearance", "Appearance", "", [this] { dark = true; applyAppearance(); });
     add("theme.toggle", "Switch light / dark theme", "Appearance", "", [this] { dark = !dark; applyAppearance(); });

@@ -64,6 +64,35 @@ public:
     void prepareFont(DocumentTab& tab, std::string_view added) { app->prepareFont(tab, added); }
     bool editorFocused() const { return app->editorFocus; }
     void focusEditor() { app->focusEditor(true); }
+
+    std::optional<ui::MenuDefinition> menuDefinition(std::string_view id) const { return app->layoutScript.menu(id); }
+    void activate(uint64_t id) { app->activateDocument(id); }
+    // An installed copy of the bundled layouts can predate the source tree.
+    void useSourceLayouts() { app->setLayoutDirectory(utf8Path(THORNOTE_SOURCE_DATA) / "layouts"); }
+
+    // Right-clicks down the note list, from below its search field, until a note opens its menu.
+    bool rightClickNote()
+    {
+        draw();
+        auto search = app->searchBounds;
+        for (float y = search.y + search.h + 8; y < 600 && app->menu.empty(); y += 4) {
+            PointerEvent pointer{.x = search.x + 20, .y = y, .button = Button::Right};
+            app->pointerDown(pointer);
+            app->pointerUp(pointer);
+            draw();
+        }
+        return app->menu == "note-menu";
+    }
+
+    bool wait(const std::function<bool()>& complete)
+    {
+        auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!complete() && std::chrono::steady_clock::now() < end) {
+            app->update();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return complete();
+    }
 };
 }  // namespace tn::test
 
@@ -345,6 +374,61 @@ TEST_CASE_FIXTURE(EditorTest, "new_drafts_remain_in_all_notes")
     REQUIRE(run("file.new"));
     CHECK(collection() == "all");
     CHECK(app->workspace.documents().size() == 2);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "right_clicking_a_draft_selects_it_and_opens_the_note_menu")
+{
+    app->setLayout(tn::Layout::Note);
+    useSourceLayouts();
+    auto& first = document("first note");
+    document("second note");
+    REQUIRE(rightClickNote());
+    CHECK(app->workspace.active() == &first);
+    auto definition = menuDefinition("note-menu");
+    REQUIRE(definition);
+    std::vector<std::string> commands;
+    for (const auto& item : definition->items)
+        commands.push_back(item.command);
+    CHECK(commands == std::vector<std::string>{"note.favorite.toggle", "file.new", "note.duplicate", "file.rename", "file.delete"});
+    CHECK_FALSE(definition->items[0].checked);
+    REQUIRE(run("note.favorite.toggle"));
+    draw();
+    CHECK(menuDefinition("note-menu")->items[0].checked);
+    // A draft has no file to rename or delete.
+    CHECK_FALSE(enabled("file.rename"));
+    CHECK_FALSE(enabled("file.delete"));
+    REQUIRE(run("note.duplicate"));
+    REQUIRE(app->workspace.documents().size() == 3);
+    auto copy = app->workspace.active();
+    CHECK(copy != &first);
+    CHECK(copy->document.text() == "first note");
+    CHECK(copy->path.empty());
+}
+
+TEST_CASE_FIXTURE(EditorTest, "note_menu_duplicates_a_saved_note_beside_it")
+{
+    storage::test::Directory directory;
+    auto source = directory.file("note.md");
+    storage::test::write(source, "body\r\n");
+    app->openPath(directory.path);
+    useSourceLayouts();
+    REQUIRE(wait([&] { return !browser().loading(); }));
+    REQUIRE(rightClickNote());
+    auto original = app->workspace.active();
+    REQUIRE(original);
+    REQUIRE(wait([&] { return !app->workspace.busy(); }));
+    CHECK(original->document.text() == "body\n");
+    CHECK(enabled("file.rename"));
+    CHECK(enabled("file.delete"));
+    // The name of a copy that already exists is not reused.
+    for (auto name : {"note copy.md", "note copy 2.md"}) {
+        activate(original->id);
+        REQUIRE(run("note.duplicate"));
+        REQUIRE(wait([&] { return !app->workspace.busy(); }));
+        CHECK(app->workspace.active() != original);
+        CHECK(storage::test::read(directory.file(name)) == "body\r\n");
+    }
+    CHECK(storage::test::read(source) == "body\r\n");
 }
 
 TEST_CASE_FIXTURE(EditorTest, "note_previews_reuse_wrapping_and_follow_content_width_and_font_changes")
