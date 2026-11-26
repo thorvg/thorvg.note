@@ -1,6 +1,7 @@
 #include "emoji.h"
 #include "emoji_data.h"
 #include <algorithm>
+#include <array>
 #include <map>
 #include <cstring>
 #ifdef __EMSCRIPTEN__
@@ -20,6 +21,17 @@ auto token(std::string_view value)
 {
     return std::lower_bound(std::begin(emojiTokens), std::end(emojiTokens), value, [](const auto& item, auto text) { return item.value < text; });
 }
+
+// Every token spans two bytes or more, so the leading pair of a text tells whether one can start there.
+static_assert(std::ranges::none_of(emojiTokens, [](const auto& item) { return item.value.size() < 2; }));
+constexpr auto tokenPairs = [] {
+    std::array<uint64_t, 1024> bits{};
+    for (const auto& item : emojiTokens) {
+        auto pair = unsigned(static_cast<unsigned char>(item.value[0])) << 8 | static_cast<unsigned char>(item.value[1]);
+        bits[pair / 64] |= uint64_t(1) << pair % 64;
+    }
+    return bits;
+}();
 }  // namespace
 
 std::span<const Emoji> emojiCatalog()
@@ -58,18 +70,16 @@ size_t emojiMatches(std::string_view query, std::vector<size_t>& matches)
 
 void matchEmoji(std::string_view text, size_t base, std::vector<ui::TextWidget>& ranges)
 {
-    for (size_t at = 0; at < text.size();) {
-        auto byte = static_cast<unsigned char>(text[at]);
-        if (byte < 128 && text[at] != ':' && text[at] != '#' && text[at] != '*' && (text[at] < '0' || text[at] > '9')) {
-            ++at;
-            continue;
-        }
+    for (size_t at = 0; at + 1 < text.size();) {
         size_t matched = 0;
-        for (size_t end = at + 1; end <= std::min(text.size(), at + 128); ++end) {
-            auto prefix = text.substr(at, end - at);
-            auto found = token(prefix);
-            if (found == std::end(emojiTokens) || !found->value.starts_with(prefix)) break;
-            if (found->value == prefix) matched = end - at;
+        auto pair = unsigned(static_cast<unsigned char>(text[at])) << 8 | static_cast<unsigned char>(text[at + 1]);
+        if ((tokenPairs[pair / 64] >> pair % 64) & 1) {
+            for (size_t end = at + 2; end <= std::min(text.size(), at + 128); ++end) {
+                auto prefix = text.substr(at, end - at);
+                auto found = token(prefix);
+                if (found == std::end(emojiTokens) || !found->value.starts_with(prefix)) break;
+                if (found->value == prefix) matched = end - at;
+            }
         }
         if (matched) {
             ranges.push_back({base + at, base + at + matched, ui::TextWidget::Replace, 1.5f});
