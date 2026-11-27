@@ -556,6 +556,30 @@ TEST_CASE_FIXTURE(EditorTest, "control_wheel_changes_editor_font_size")
     CHECK(wheel(1, SDL_KMOD_LCTRL) == size);
 }
 
+TEST_CASE_FIXTURE(EditorTest, "font_size_reaches_a_hidden_document_when_it_is_shown")
+{
+    std::string text;
+    for (int i = 0; i < 200; ++i)
+        text += "line " + std::to_string(i) + '\n';
+    auto& hidden = document(text);
+    auto offset = text.find("line 100");
+    hidden.editor.select(offset, offset);
+    draw();
+    auto anchor = hidden.editor.caretRect();
+    auto& shown = document("shown");
+    draw();
+    REQUIRE(run("editor.font.increase"));
+    // Only the visible document lays out again.
+    CHECK(shown.editor.options().fontSize == 17);
+    CHECK(hidden.editor.options().fontSize == 16);
+    activate(hidden.id);
+    draw();
+    CHECK(hidden.editor.options().fontSize == 17);
+    // It keeps the caret where it was on screen.
+    auto caret = hidden.editor.caretRect();
+    CHECK(caret.y + caret.h / 2 == doctest::Approx(anchor.y + anchor.h / 2).epsilon(0.01));
+}
+
 TEST_CASE("fractional_font_sizes_survive_loading_preferences")
 {
     tn::Preferences decoded;

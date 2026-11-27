@@ -230,6 +230,7 @@ void EditorApp::drawEditor(ui::Rect r)
                      theme.muted, 16, false, ui::Align::Center);
         return;
     }
+    applyEditorOptions(*tab);
     if (tab->restoreView) {
         auto saved = *tab->restoreView;
         tab->editor.select(saved.anchor, saved.caret);

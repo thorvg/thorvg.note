@@ -100,6 +100,7 @@ private:
     void cancelPrompt();
     void applyAppearance();
     void applyEditorOptions();
+    void applyEditorOptions(DocumentTab&);
     void setFontSize(float size);
     void zoom(int direction, const KeyEvent&);
     void editTheme();

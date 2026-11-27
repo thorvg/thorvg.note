@@ -316,19 +316,24 @@ void EditorApp::applyEditorOptions()
     preview.lineNumbers = preview.readOnly = true;
     preview.markdown = false;
     settings.preview.options(preview);
-    // Publish the engine-accepted size to app controls and every document view.
+    // Publish the engine-accepted size to app controls and the document view.
     options.fontSize = settings.preview.options().fontSize;
-    for (const auto& tab : workspace.documents()) {
-        auto& editor = tab->editor;
-        bool zoom = editor.options().fontSize != options.fontSize;
-        auto anchor = zoom ? editor.caretRect() : ui::Rect{};
-        editor.options(options);
-        if (zoom) {
-            auto caret = editor.caretRect();
-            auto area = editor.textViewport();
-            float horizontal = caret.x + editor.scrollX() + 3 <= area.x + area.w ? 0 : editor.scrollX() + caret.x - anchor.x;
-            editor.scroll(horizontal, editor.scrollY() + (caret.y + caret.h / 2) - (anchor.y + anchor.h / 2));
-        }
+    // A zoom lays out the whole document, so hidden ones wait until they are shown.
+    if (auto tab = visibleDocument()) applyEditorOptions(*tab);
+}
+
+void EditorApp::applyEditorOptions(DocumentTab& tab)
+{
+    auto& editor = tab.editor;
+    // A pending saved view replaces the anchored scroll, so anchoring would only cost layouts.
+    bool zoom = !tab.restoreView && editor.options().fontSize != options.fontSize;
+    auto anchor = zoom ? editor.caretRect() : ui::Rect{};
+    editor.options(options);
+    if (zoom) {
+        auto caret = editor.caretRect();
+        auto area = editor.textViewport();
+        float horizontal = caret.x + editor.scrollX() + 3 <= area.x + area.w ? 0 : editor.scrollX() + caret.x - anchor.x;
+        editor.scroll(horizontal, editor.scrollY() + (caret.y + caret.h / 2) - (anchor.y + anchor.h / 2));
     }
 }
 

@@ -70,8 +70,10 @@ SessionState EditorApp::captureSession(bool contents) const
         auto selection = tab->editor.session().selection();
         doc.anchor = selection.anchor;
         doc.caret = selection.caret;
-        doc.scrollX = tab->editor.scrollX();
-        doc.scrollY = tab->editor.scrollY();
+        // A hidden document keeps its font size until shown, while the session restores it at the current one.
+        auto scale = options.fontSize / tab->editor.options().fontSize;
+        doc.scrollX = tab->editor.scrollX() * scale;
+        doc.scrollY = tab->editor.scrollY() * scale;
         if (tab->restoreView) {
             doc.anchor = tab->restoreView->anchor;
             doc.caret = tab->restoreView->caret;
