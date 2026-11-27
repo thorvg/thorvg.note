@@ -3,9 +3,8 @@ name: Deploy Pages
 on:
   push:
     branches: [main]
-    paths:
-      - docs/page/**
-      - .github/workflows/pages.yml
+    paths-ignore:
+      - '**.md'
   workflow_dispatch:
 
 permissions:
@@ -17,8 +16,38 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  EMSDK_VERSION: 6.0.0
+
 jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: brew install meson ninja sdl3
+
+      - name: Install ThorVG
+        run: |
+          revision=$(sed -n 's/^revision = //p' subprojects/thorvg.wrap)
+          git init -q "$RUNNER_TEMP/thorvg"
+          git -C "$RUNNER_TEMP/thorvg" fetch -q --depth 1 https://github.com/thorvg/thorvg.git "$revision"
+          git -C "$RUNNER_TEMP/thorvg" checkout -q FETCH_HEAD
+          meson setup "$RUNNER_TEMP/thorvg/build" "$RUNNER_TEMP/thorvg" --prefix "$RUNNER_TEMP/deps" \
+            -Ddefault_library=static -Dstatic=true -Dengines=cpu -Dloaders=svg,lottie,ttf,otf,png,jpg,webp,gif -Dextra= -Dtests=false
+          meson install -C "$RUNNER_TEMP/thorvg/build"
+          echo "PKG_CONFIG_PATH=$RUNNER_TEMP/deps/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: meson setup build && ninja -C build
+
+      - name: Test
+        run: SDL_VIDEODRIVER=dummy meson test -C build --print-errorlogs
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -26,6 +55,20 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Install build tools
+        run: pipx install meson && pipx install ninja && pipx install cmake
+
+      - name: Install Emscripten
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install "$EMSDK_VERSION"
+          "$RUNNER_TEMP/emsdk/emsdk" activate "$EMSDK_VERSION"
+
+      - name: Build web editor
+        run: |
+          . "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          tools/build_page.sh
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

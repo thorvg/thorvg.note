@@ -3,6 +3,7 @@ c = 'emcc'
 cpp = 'em++'
 ar = 'emar'
 strip = 'emstrip'
+cmake = 'cmake'
 
 [built-in options]
 buildtype = 'release'
@@ -13,6 +14,9 @@ c_args = ['-Os', '-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
 cpp_args = ['-Os', '-fno-rtti', '-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
 c_link_args = ['-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
 cpp_link_args = ['-fwasm-exceptions', '-sSUPPORT_LONGJMP=wasm']
+
+[cmake]
+CMAKE_SYSTEM_NAME = 'Emscripten'
 
 [host_machine]
 system = 'emscripten'
