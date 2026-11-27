@@ -127,8 +127,10 @@ bool NoteFileList::update(const std::vector<storage::DirectoryEntry>& files, uin
         if (!query.empty() && !contains(displayName(file.path)) && !contains(displayPath(file.path.parent_path()))) continue;
         auto date = modificationDate(file.modifiedAt);
         if (date != previousDate) {
-            entries.push_back({{}, date, contentHeight, 28});
-            contentHeight += 28;
+            // Groups after the first leave room above their date.
+            float height = entries.empty() ? 28 : 40;
+            entries.push_back({{}, date, contentHeight, height});
+            contentHeight += height;
             previousDate = std::move(date);
         }
         entries.push_back({i, {}, contentHeight, 60});

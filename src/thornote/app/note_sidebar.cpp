@@ -121,7 +121,15 @@ void EditorApp::drawNoteFiles(ui::Rect r)
             drafts.push_back({tab, std::move(lines), draftHeight, height});
             draftHeight += height;
         }
+        if (!drafts.empty()) draftHeight += 12;
     }
+    // A group reads as its label followed by a rule, at the bottom of its header row.
+    auto groupHeader = [&](ui::Rect row, std::string_view label) {
+        ui::Rect bounds{row.x + 10, row.y + row.h - 24, row.w - 20, 24};
+        context.text(bounds, label, theme.muted, 10, true);
+        auto start = bounds.x + context.textWidth(label, 10, true) + 8;
+        if (start < bounds.x + bounds.w) context.line(start, bounds.y + 12, bounds.x + bounds.w, bounds.y + 12, theme.border);
+    };
     auto linesFor = [&](size_t file) {
         const auto& path = noteBrowser.files()[file].path;
         auto opened = std::find_if(workspace.documents().begin(), workspace.documents().end(), [&](const auto& tab) { return tab->path == path && !tab->loading; });
@@ -138,7 +146,7 @@ void EditorApp::drawNoteFiles(ui::Rect r)
     float limit = std::max(0.0f, draftHeight + noteFiles.height() - body.h);
     context.scroll("note-files/scroll", body, noteFileScroll, limit, {.step = 60, .enabled = !dialog});
     context.clip(body, [&] {
-        if (!drafts.empty()) context.text({body.x + 10, body.y - noteFileScroll, body.w - 20, 24}, "Unsaved", theme.muted, 10, true);
+        if (!drafts.empty()) groupHeader({body.x, body.y - noteFileScroll, body.w, 24}, "Unsaved");
         for (const auto& draft : drafts) {
             if (draft.top + draft.height <= noteFileScroll) continue;
             if (draft.top >= noteFileScroll + body.h) break;
@@ -166,7 +174,7 @@ void EditorApp::drawNoteFiles(ui::Rect r)
             const auto& entry = noteFiles.rows()[i];
             ui::Rect row{body.x, body.y + draftHeight + entry.top - noteFileScroll, body.w, entry.height - 4};
             if (!entry.file) {
-                context.text({row.x + 10, row.y, row.w - 20, row.h}, entry.date, theme.muted, 10, true);
+                groupHeader(row, entry.date);
                 continue;
             }
             auto path = noteBrowser.files()[*entry.file].path;
