@@ -1,5 +1,6 @@
 #include "input.h"
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 
 namespace tn
@@ -97,7 +98,13 @@ void WheelResampler::add(const WheelEvent& event, double seconds)
     auto duration = gap > 0.1 ? 1.0 / 120 : std::max(gap * 2, 1.0 / 240);
     previous = seconds;
     latest = event;
-    pending.push_back({event.x, event.y, seconds, duration, 0});
+    pending.push_back({event.x, event.y, seconds, duration, 0, false});
+}
+
+void WheelResampler::ease(const WheelEvent& event, double seconds)
+{
+    latest = event;
+    pending.push_back({event.x, event.y, seconds, 0.12, 0, true});
 }
 
 std::optional<WheelEvent> WheelResampler::take(double seconds)
@@ -105,6 +112,7 @@ std::optional<WheelEvent> WheelResampler::take(double seconds)
     float x = 0, y = 0;
     for (auto& share : pending) {
         auto due = std::clamp((seconds - share.start) / share.duration, 0.0, 1.0);
+        if (share.eased) due = 1 - std::pow(1 - due, 3);
         x += share.x * float(due - share.taken);
         y += share.y * float(due - share.taken);
         share.taken = due;
@@ -114,6 +122,14 @@ std::optional<WheelEvent> WheelResampler::take(double seconds)
     auto result = latest;
     result.x = x;
     result.y = y;
+    return result;
+}
+bool WheelNotches::notch(float delta, double seconds)
+{
+    auto current = seconds - previous;
+    previous = seconds;
+    bool result = std::abs(delta) >= 10 && current >= 0.018 && gap >= 0.018;
+    gap = current;
     return result;
 }
 }  // namespace tn

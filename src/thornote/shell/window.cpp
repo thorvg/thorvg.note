@@ -213,18 +213,20 @@ public:
             if (dispatch(event)) dirty = stale = true;
         }
         for (NativeWheel::Scroll scroll; wheel.next(scroll);) {
-            if (!resampler.active()) nextTick = 0;
+            if (!resampler.active() && !easing.active()) nextTick = 0;
             resampler.add(pixelWheel(scroll.x, scroll.y, inputX, inputY), scroll.seconds);
         }
 
         // 3. Animation.
         if (auto next = app->nextFrame(); next && drawable()) dirty |= *next <= ui::frameTime();
-        if (resampler.active()) {
+        if (resampler.active() || easing.active()) {
             auto now = SDL_NS_TO_SECONDS(double(SDL_GetTicksNS()));
             if (now >= nextTick) {
-                if (auto scrolled = resampler.take(now)) {
-                    app->wheel(*scrolled);
-                    dirty = true;
+                for (auto source : {&resampler, &easing}) {
+                    if (auto scrolled = source->take(now)) {
+                        app->wheel(*scrolled);
+                        dirty = true;
+                    }
                 }
                 nextTick = now + framePeriod() / 2;
             }
@@ -242,7 +244,7 @@ public:
         if (!options.snapshot.empty()) return 1;
         auto delay = app->delay();
         if (auto next = app->nextFrame(); next && drawable()) delay = std::min(delay, int(std::ceil(std::max(0.0, *next - ui::frameTime()) * 1000)));
-        if (resampler.active()) delay = std::min(delay, int(std::max(0.0, nextTick - SDL_NS_TO_SECONDS(double(SDL_GetTicksNS()))) * 1000));
+        if (resampler.active() || easing.active()) delay = std::min(delay, int(std::max(0.0, nextTick - SDL_NS_TO_SECONDS(double(SDL_GetTicksNS()))) * 1000));
         return delay;
     }
 
@@ -284,7 +286,21 @@ private:
         if (event.type >= SDL_EVENT_WINDOW_FIRST && event.type <= SDL_EVENT_WINDOW_LAST) renderer.invalidate();
         bool handled = titleBarInput.event(event);
         if (!handled && nativeInputReady) handled = nativeInput.event(event);
-        if (!handled && event.type == SDL_EVENT_MOUSE_WHEEL && wheel.precise(event.wheel)) return false;
+        if (!handled && event.type == SDL_EVENT_MOUSE_WHEEL) {
+            if (wheel.precise(event.wheel)) return false;
+#ifdef __EMSCRIPTEN__
+            auto scrolled = wheelEvent(event.wheel, inputX, inputY, ui::wheelStepPixels);
+            bool notch = notches.notch(std::abs(scrolled.x) > std::abs(scrolled.y) ? scrolled.x : scrolled.y, SDL_NS_TO_SECONDS(double(event.wheel.timestamp)));
+#else
+            auto scrolled = wheelEvent(event.wheel, inputX, inputY, 0);
+            bool notch = true;
+#endif
+            if (notch && !scrolled.modifiers.control) {
+                if (!resampler.active() && !easing.active()) nextTick = 0;
+                easing.ease(scrolled, SDL_NS_TO_SECONDS(double(event.wheel.timestamp)));
+                return false;
+            }
+        }
         if (!handled) {
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) SDL_CaptureMouse(true);
             if (!send(*app, event, inputX, inputY)) return false;
@@ -424,7 +440,10 @@ private:
     NativeTextInput nativeInput;
     NativeTitleBarInput titleBarInput;
     NativeWheel wheel;
-    WheelResampler resampler;
+    WheelResampler resampler, easing;
+#ifdef __EMSCRIPTEN__
+    WheelNotches notches;
+#endif
     double nextTick = 0;
     bool nativeInputReady = false;
     std::unique_ptr<App> app;

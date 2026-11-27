@@ -806,6 +806,39 @@ TEST_CASE("wheel_resampler_keeps_sparse_momentum_moving_every_frame")
     }
 }
 
+TEST_CASE("wheel_notches_ease_out_over_display_frames")
+{
+    tn::WheelResampler easing;
+    easing.ease({.y = 1}, 0);
+    float total = 0, previous = 1;
+    for (double now = 1.0 / 120; now < 0.2; now += 1.0 / 120) {
+        if (auto scrolled = easing.take(now)) {
+            CHECK(!scrolled->pixels);
+            CHECK(scrolled->y <= previous);
+            previous = scrolled->y;
+            total += scrolled->y;
+        }
+    }
+    CHECK(!easing.active());
+    CHECK(total == doctest::Approx(1));
+}
+
+TEST_CASE("browser_wheel_notches_are_told_from_touchpad_streams")
+{
+    tn::WheelNotches notches;
+    CHECK(notches.notch(-12, 1.000));
+    CHECK(notches.notch(-90, 1.022));
+    CHECK(notches.notch(-103, 1.045));
+    CHECK(notches.notch(-13, 3.000));
+    CHECK(!notches.notch(-1, 5.000));
+    CHECK(!notches.notch(-4, 5.008));
+    CHECK(!notches.notch(-27, 5.016));
+    CHECK(!notches.notch(-84, 5.033));
+    CHECK(!notches.notch(-41, 5.041));
+    CHECK(!notches.notch(-1, 5.075));
+    CHECK(!notches.notch(-1, 5.141));
+}
+
 TEST_CASE_FIXTURE(EditorTest, "font_size_reaches_a_hidden_document_when_it_is_shown")
 {
     std::string text;

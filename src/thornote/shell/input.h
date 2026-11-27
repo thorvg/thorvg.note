@@ -16,11 +16,12 @@ WheelEvent pixelWheel(float x, float y, float windowToLogicalX, float windowToLo
 bool send(App&, const SDL_Event&, float windowToLogicalX, float windowToLogicalY);
 
 // Spreads each precise wheel delta over the time since the previous one, so display frames
-// receive even shares of input that arrives at another rate.
+// receive even shares of input that arrives at another rate. Wheel notches ease out instead.
 class WheelResampler
 {
 public:
     void add(const WheelEvent&, double seconds);
+    void ease(const WheelEvent&, double seconds);
     // Returns the deltas due by the given time, or nothing when none are.
     std::optional<WheelEvent> take(double seconds);
     bool active() const { return !pending.empty(); }
@@ -30,9 +31,20 @@ private:
     {
         float x, y;
         double start, duration, taken;
+        bool eased;
     };
     std::deque<Share> pending;
     WheelEvent latest;
     double previous = -1;
+};
+
+// Tells mouse wheel notches from touchpad streams, which browsers report alike in pixels.
+class WheelNotches
+{
+public:
+    bool notch(float delta, double seconds);
+
+private:
+    double previous = -1, gap = 1;
 };
 }  // namespace tn
