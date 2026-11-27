@@ -771,6 +771,41 @@ TEST_CASE_FIXTURE(EditorTest, "control_wheel_changes_editor_font_size")
     CHECK(wheel(1, SDL_KMOD_LCTRL) == size);
 }
 
+TEST_CASE("wheel_resampler_gives_display_frames_even_shares_of_slower_input")
+{
+    tn::WheelResampler resampler;
+    double frame = 1.0 / 120;
+    size_t event = 0;
+    float total = 0;
+    std::vector<float> shares;
+    for (double now = 0; now < 0.5; now += frame) {
+        for (; event * 0.01 <= now && event < 40; ++event)
+            resampler.add({.y = 10, .pixels = true}, event * 0.01);
+        if (auto scrolled = resampler.take(now)) {
+            CHECK(scrolled->pixels);
+            total += scrolled->y;
+            shares.push_back(scrolled->y);
+        } else shares.push_back(0);
+    }
+    CHECK(!resampler.active());
+    CHECK(total == doctest::Approx(400));
+    for (size_t i = 4; i < 40; ++i)
+        CHECK(shares[i] == doctest::Approx(10 * frame / 0.01).epsilon(0.02));
+}
+
+TEST_CASE("wheel_resampler_keeps_sparse_momentum_moving_every_frame")
+{
+    tn::WheelResampler resampler;
+    resampler.add({.y = 20, .pixels = true}, 0);
+    resampler.add({.y = 20, .pixels = true}, 0.04);
+    resampler.add({.y = 20, .pixels = true}, 0.08);
+    for (double now = 0.045; now < 0.12; now += 1.0 / 120) {
+        auto scrolled = resampler.take(now);
+        REQUIRE(scrolled);
+        CHECK(scrolled->y > 0);
+    }
+}
+
 TEST_CASE_FIXTURE(EditorTest, "font_size_reaches_a_hidden_document_when_it_is_shown")
 {
     std::string text;

@@ -392,7 +392,7 @@ struct NativeWheel::Impl
     id monitor = nil;
     bool precise = false, watching = false;
     std::deque<Uint64> preciseEvents;
-    static constexpr float pixelsPerUnit = 10;
+    std::deque<Scroll> scrolls;
 
     static bool SDLCALL watch(void* data, SDL_Event* event)
     {
@@ -403,32 +403,48 @@ struct NativeWheel::Impl
 };
 
 NativeWheel::NativeWheel() :
-    impl(std::make_unique<Impl>()) {}
+    impl(std::make_unique<Impl>())
+{
+    SDL_SetHint(SDL_HINT_MAC_SCROLL_MOMENTUM, "1");
+}
 NativeWheel::~NativeWheel()
 {
     stop();
 }
-bool NativeWheel::initialize()
+bool NativeWheel::initialize(SDL_Window* window)
 {
     stop();
+    auto native = (__bridge NSWindow*)SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
+    if (!native) return false;
     auto self = impl.get();
     self->monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel
                                                           handler:^NSEvent*(NSEvent* event) {
                                                             self->precise = event.hasPreciseScrollingDeltas;
+                                                            if (!self->precise || event.window != native) return event;
+                                                            float direction = event.isDirectionInvertedFromDevice ? -1 : 1;
+                                                            auto clock = SDL_NS_TO_SECONDS(double(SDL_GetTicksNS())) - NSProcessInfo.processInfo.systemUptime;
+                                                            if (event.scrollingDeltaX || event.scrollingDeltaY) self->scrolls.push_back({event.timestamp + clock, float(-event.scrollingDeltaX) * direction, float(event.scrollingDeltaY) * direction});
                                                             return event;
                                                           }];
     self->watching = self->monitor && SDL_AddEventWatch(Impl::watch, self);
     if (!self->watching) stop();
     return self->watching;
 }
-float NativeWheel::pixels(const SDL_MouseWheelEvent& event)
+bool NativeWheel::precise(const SDL_MouseWheelEvent& event)
 {
     auto& events = impl->preciseEvents;
     while (!events.empty() && events.front() < event.timestamp)
         events.pop_front();
-    if (events.empty() || events.front() != event.timestamp) return 0;
+    if (events.empty() || events.front() != event.timestamp) return false;
     events.pop_front();
-    return Impl::pixelsPerUnit;
+    return true;
+}
+bool NativeWheel::next(Scroll& scroll)
+{
+    if (impl->scrolls.empty()) return false;
+    scroll = impl->scrolls.front();
+    impl->scrolls.pop_front();
+    return true;
 }
 void NativeWheel::stop()
 {
@@ -439,5 +455,6 @@ void NativeWheel::stop()
     state.monitor = nil;
     state.precise = false;
     state.preciseEvents.clear();
+    state.scrolls.clear();
 }
 }  // namespace tn

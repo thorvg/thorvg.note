@@ -41,15 +41,26 @@ private:
     std::unique_ptr<Impl> impl;
 };
 
-// Tells wheel steps from the pixel deltas of precise devices such as trackpads.
+// Reads the scrolling of precise devices such as trackpads straight from the platform, since the
+// wheel events made from it can arrive merged into coarse steps.
 class NativeWheel
 {
 public:
+    // Pixels to the right and away from the user, at a time on the SDL_GetTicksNS() clock.
+    struct Scroll
+    {
+        double seconds;
+        float x, y;
+    };
+
+    // Construct before SDL_Init(), which reads the platform scrolling options.
     NativeWheel();
     ~NativeWheel();
-    bool initialize();
-    // Pixels per wheel unit of a precise device's event, or 0 when the event counts wheel steps.
-    float pixels(const SDL_MouseWheelEvent&);
+    bool initialize(SDL_Window*);
+    // Whether a wheel event came from a precise device; its scrolling arrives through next() instead.
+    bool precise(const SDL_MouseWheelEvent&);
+    // Takes the oldest scroll not yet taken.
+    bool next(Scroll&);
     void stop();
 
 private:

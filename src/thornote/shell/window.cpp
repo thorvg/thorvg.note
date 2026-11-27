@@ -115,7 +115,7 @@ public:
             SDL_ClearError();
         }
 #endif
-        wheel.initialize();
+        wheel.initialize(window);
         nativeInputReady = nativeInput.initialize(window, [this](const auto& edit) { app->edit(edit); updateTextInput(); }, [this](const auto& key) { SDL_Event event{}; event.key = key; send(*app, event, inputX, inputY); updateTextInput(); }, [this](const auto& key) {
 #ifdef __EMSCRIPTEN__
             // The browser hands over clipboard shortcuts at once; the input queued before them comes first.
@@ -212,9 +212,23 @@ public:
             }
             if (dispatch(event)) dirty = stale = true;
         }
+        for (NativeWheel::Scroll scroll; wheel.next(scroll);) {
+            if (!resampler.active()) nextTick = 0;
+            resampler.add(pixelWheel(scroll.x, scroll.y, inputX, inputY), scroll.seconds);
+        }
 
         // 3. Animation.
         if (auto next = app->nextFrame(); next && drawable()) dirty |= *next <= ui::frameTime();
+        if (resampler.active()) {
+            auto now = SDL_NS_TO_SECONDS(double(SDL_GetTicksNS()));
+            if (now >= nextTick) {
+                if (auto scrolled = resampler.take(now)) {
+                    app->wheel(*scrolled);
+                    dirty = true;
+                }
+                nextTick = now + framePeriod() / 2;
+            }
+        }
 
         // 4. Present.
         if ((dirty || snapshotMode) && !draw()) return 1;
@@ -228,10 +242,17 @@ public:
         if (!options.snapshot.empty()) return 1;
         auto delay = app->delay();
         if (auto next = app->nextFrame(); next && drawable()) delay = std::min(delay, int(std::ceil(std::max(0.0, *next - ui::frameTime()) * 1000)));
+        if (resampler.active()) delay = std::min(delay, int(std::max(0.0, nextTick - SDL_NS_TO_SECONDS(double(SDL_GetTicksNS()))) * 1000));
         return delay;
     }
 
 private:
+    double framePeriod() const
+    {
+        auto mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+        return mode && mode->refresh_rate > 0 ? 1 / double(mode->refresh_rate) : 1.0 / 60;
+    }
+
     void showFileDialog(bool save, const storage::Path& initial, FileChosen done)
     {
         auto request = new DialogRequest{std::move(done), utf8(initial)};
@@ -263,9 +284,10 @@ private:
         if (event.type >= SDL_EVENT_WINDOW_FIRST && event.type <= SDL_EVENT_WINDOW_LAST) renderer.invalidate();
         bool handled = titleBarInput.event(event);
         if (!handled && nativeInputReady) handled = nativeInput.event(event);
+        if (!handled && event.type == SDL_EVENT_MOUSE_WHEEL && wheel.precise(event.wheel)) return false;
         if (!handled) {
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) SDL_CaptureMouse(true);
-            if (!send(*app, event, inputX, inputY, event.type == SDL_EVENT_MOUSE_WHEEL ? wheel.pixels(event.wheel) : 0)) return false;
+            if (!send(*app, event, inputX, inputY)) return false;
         }
         switch (event.type) {
             case SDL_EVENT_WINDOW_EXPOSED:
@@ -402,6 +424,8 @@ private:
     NativeTextInput nativeInput;
     NativeTitleBarInput titleBarInput;
     NativeWheel wheel;
+    WheelResampler resampler;
+    double nextTick = 0;
     bool nativeInputReady = false;
     std::unique_ptr<App> app;
     std::optional<WindowAction> pendingWindowAction;

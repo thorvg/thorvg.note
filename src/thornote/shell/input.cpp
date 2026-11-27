@@ -36,7 +36,21 @@ KeyEvent keyEvent(const SDL_KeyboardEvent& event)
     return result;
 }
 
-bool send(App& app, const SDL_Event& event, float sx, float sy, float wheelPixels)
+WheelEvent wheelEvent(const SDL_MouseWheelEvent& event, float sx, float sy, float wheelPixels)
+{
+    float direction = event.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1;
+    if (wheelPixels > 0) direction *= wheelPixels;
+    return {event.x * direction, event.y * direction, event.mouse_x * sx, event.mouse_y * sy, modifiers(SDL_GetModState()), wheelPixels > 0};
+}
+
+WheelEvent pixelWheel(float x, float y, float sx, float sy)
+{
+    float pointerX = 0, pointerY = 0;
+    SDL_GetMouseState(&pointerX, &pointerY);
+    return {x, y, pointerX * sx, pointerY * sy, modifiers(SDL_GetModState()), true};
+}
+
+bool send(App& app, const SDL_Event& event, float sx, float sy)
 {
     switch (event.type) {
         case SDL_EVENT_QUIT:
@@ -66,17 +80,40 @@ bool send(App& app, const SDL_Event& event, float sx, float sy, float wheelPixel
             else app.pointerUp(pointer);
             break;
         }
-        case SDL_EVENT_MOUSE_WHEEL: {
-            float direction = event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1;
+        case SDL_EVENT_MOUSE_WHEEL:
 #ifdef __EMSCRIPTEN__
-            wheelPixels = ui::wheelStepPixels;
+            app.wheel(wheelEvent(event.wheel, sx, sy, ui::wheelStepPixels));
+#else
+            app.wheel(wheelEvent(event.wheel, sx, sy, 0));
 #endif
-            if (wheelPixels > 0) direction *= wheelPixels;
-            app.wheel({event.wheel.x * direction, event.wheel.y * direction, event.wheel.mouse_x * sx, event.wheel.mouse_y * sy, modifiers(SDL_GetModState()), wheelPixels > 0});
             break;
-        }
         default: break;
     }
     return true;
+}
+void WheelResampler::add(const WheelEvent& event, double seconds)
+{
+    auto gap = seconds - previous;
+    auto duration = gap > 0.1 ? 1.0 / 120 : std::max(gap * 2, 1.0 / 240);
+    previous = seconds;
+    latest = event;
+    pending.push_back({event.x, event.y, seconds, duration, 0});
+}
+
+std::optional<WheelEvent> WheelResampler::take(double seconds)
+{
+    float x = 0, y = 0;
+    for (auto& share : pending) {
+        auto due = std::clamp((seconds - share.start) / share.duration, 0.0, 1.0);
+        x += share.x * float(due - share.taken);
+        y += share.y * float(due - share.taken);
+        share.taken = due;
+    }
+    std::erase_if(pending, [](const auto& share) { return share.taken >= 1; });
+    if (x == 0 && y == 0) return std::nullopt;
+    auto result = latest;
+    result.x = x;
+    result.y = y;
+    return result;
 }
 }  // namespace tn
