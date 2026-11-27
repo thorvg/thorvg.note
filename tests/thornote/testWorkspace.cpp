@@ -87,6 +87,34 @@ TEST_CASE_FIXTURE(PersistedWorkspace, "a_saved_copy_keeps_the_document_on_its_ow
     CHECK_FALSE(workspace.saveCopy(id, directory.file("note.md")));
 }
 
+TEST_CASE_FIXTURE(PersistedWorkspace, "a_moved_note_keeps_its_tab_and_saves_in_the_new_folder")
+{
+    auto folder = directory.path / "folder";
+    std::filesystem::create_directory(folder);
+    storage::test::write(directory.file("note.md"), "note");
+    auto id = workspace.open(directory.file("note.md"));
+    REQUIRE(wait([&] { return !workspace.find(id)->loading; }));
+    auto& tab = *workspace.find(id);
+    REQUIRE(workspace.move(id, folder));
+    REQUIRE(complete);
+    complete({});
+    CHECK(workspace.message == "Moved to folder");
+    CHECK(tab.path == folder / "note.md");
+    CHECK_FALSE(std::filesystem::exists(directory.file("note.md")));
+    REQUIRE(tab.document.text("edited"));
+    complete = {};
+    REQUIRE(workspace.save(id));
+    REQUIRE(wait([&] { return bool(complete); }));
+    complete({});
+    CHECK(storage::test::read(folder / "note.md") == "edited");
+    // A move never replaces a file at the destination.
+    storage::test::write(directory.file("note.md"), "taken");
+    CHECK_FALSE(workspace.move(id, directory.path));
+    CHECK(workspace.error.find("Move failed") == 0);
+    CHECK(tab.path == folder / "note.md");
+    CHECK(storage::test::read(directory.file("note.md")) == "taken");
+}
+
 TEST_CASE_FIXTURE(PersistedWorkspace, "opening_documents_keeps_the_current_document_until_ready")
 {
     auto previous = workspace.create().id;

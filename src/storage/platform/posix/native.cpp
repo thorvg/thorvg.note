@@ -200,7 +200,7 @@ Error syncDirectory(const StagingFile& staging)
     return syncFile(staging.directory);
 }
 
-Error changeName(const Path& source, const Path& filename, const FileInfo& expected)
+Error changeName(const Path& source, const Path& target, const FileInfo& expected)
 {
     NativeFile parent(::open(source.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
     if (parent.handle == -1) return systemError("cannot open source directory");
@@ -211,23 +211,33 @@ Error changeName(const Path& source, const Path& filename, const FileInfo& expec
         return systemError("cannot inspect source file", errno == ENOENT ? ErrorCode::Conflict : ErrorCode::Io);
     if (!S_ISREG(current.st_mode) || uint64_t(current.st_dev) != expected.device || uint64_t(current.st_ino) != expected.id || uint64_t(current.st_size) != expected.size)
         return failure(ErrorCode::Conflict, "source file changed");
-    if (filename.empty()) {
+    if (target.empty()) {
         if (unlinkat(directory, name.c_str(), 0)) return systemError("cannot delete file");
         return {};
     }
-    if (name == filename) return {};
+    if (target == source) return {};
+    // A move names its destination through that directory; a rename stays in the source one.
+    NativeFile other;
+    auto destination = directory;
+    if (target.parent_path() != source.parent_path()) {
+        other = NativeFile(::open(target.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+        if (other.handle == -1) return systemError("cannot open destination directory");
+        destination = fd(other);
+    }
+    auto filename = target.filename();
 #if defined(__APPLE__)
-    if (!renameatx_np(directory, name.c_str(), directory, filename.c_str(), RENAME_EXCL)) return {};
+    if (!renameatx_np(directory, name.c_str(), destination, filename.c_str(), RENAME_EXCL)) return {};
 #elif defined(__EMSCRIPTEN__)
     // The browser filesystem is private to this process.
-    if (!fstatat(directory, filename.c_str(), &current, AT_SYMLINK_NOFOLLOW)) errno = EEXIST;
-    else if (errno == ENOENT && !renameat(directory, name.c_str(), directory, filename.c_str())) return {};
+    if (!fstatat(destination, filename.c_str(), &current, AT_SYMLINK_NOFOLLOW)) errno = EEXIST;
+    else if (errno == ENOENT && !renameat(directory, name.c_str(), destination, filename.c_str())) return {};
 #elif defined(SYS_renameat2)
     constexpr unsigned noReplace = 1;
-    if (!syscall(SYS_renameat2, directory, name.c_str(), directory, filename.c_str(), noReplace)) return {};
+    if (!syscall(SYS_renameat2, directory, name.c_str(), destination, filename.c_str(), noReplace)) return {};
 #else
     errno = ENOTSUP;
 #endif
+    if (errno == EXDEV) return failure(ErrorCode::Io, "cannot move a file to another volume");
     return systemError(errno == EEXIST ? "destination already exists" : "cannot rename file", errno == EEXIST ? ErrorCode::Conflict : ErrorCode::Io);
 }
 }  // namespace storage::detail

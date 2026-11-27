@@ -421,15 +421,46 @@ SaveResult save(const Path& path, std::string_view lfText, SaveOptions options =
  *     }
  * @endcode
  *
- * @see load(), save(), remove()
+ * @see load(), save(), move(), remove()
  */
 Result<DiskStamp> rename(const Path& path, const Path& filename, const DiskStamp& expected);
+
+/**
+ * @brief Moves a regular file into another directory after verifying its disk baseline.
+ *
+ * The file keeps its filename, contents and identity. A destination occupied by
+ * another entry causes a conflict.
+ *
+ * @param[in] path Source regular file. The final path component must name the file itself.
+ * @param[in] directory Existing destination directory on the same volume.
+ * @param[in] expected Existing-file baseline from load(), save(), rename(), or a previous move().
+ *
+ * @return The baseline for the moved path on success, or an error.
+ *
+ * @retval ErrorCode::Conflict If the source differs from the baseline or another entry occupies the destination.
+ * @retval ErrorCode::InvalidPath If the source is invalid or is a symbolic link, or the destination is not a directory.
+ * @retval ErrorCode::NotFound If the baseline has no existing file, or the source or destination disappears during resolution.
+ * @retval ErrorCode::Io If inspecting or moving the file fails, including a destination on another volume.
+ *
+ * @note The source is checked without locking. A concurrent change can arrive between verification and move.
+ *
+ * @code
+ *     auto loaded = storage::load("notes/inbox/todo.md");
+ *     if (loaded) {
+ *         auto moved = storage::move(loaded.value.path, "notes/done", loaded.value.stamp);
+ *         if (moved) storage::save("notes/done/todo.md", "edited\n", {loaded.value.format, moved.value});
+ *     }
+ * @endcode
+ *
+ * @see load(), save(), rename(), remove()
+ */
+Result<DiskStamp> move(const Path& path, const Path& directory, const DiskStamp& expected);
 
 /**
  * @brief Permanently removes a regular file after verifying its disk baseline.
  *
  * @param[in] path Regular file to remove. The final path component must name the file itself.
- * @param[in] expected Existing-file baseline from load(), save(), or rename().
+ * @param[in] expected Existing-file baseline from load(), save(), rename(), or move().
  *
  * @return Empty error on success, or details of the failure.
  *

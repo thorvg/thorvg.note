@@ -14,9 +14,38 @@ void EditorApp::openNoteMenu(uint64_t id, ui::Rect anchor)
 {
     if (dialog || palette || prompt != Prompt::None || !layoutScript.menu("note-menu")) return;
     activateDocument(id);
+    syncMoveFolders();
     menuRoot = "note-menu";
     contextMenuAnchor = menuButton = anchor;
     openMenu("note-menu");
+}
+
+void EditorApp::syncMoveFolders()
+{
+    // Imported folders first, then the recent ones, as the sidebar lists them.
+    auto folders = recent.imported;
+    for (const auto& path : recent.rootDirectories())
+        if (std::find(folders.begin(), folders.end(), path) == folders.end()) folders.push_back(path);
+    if (folders.size() > RecentItems::fileLimit) folders.resize(RecentItems::fileLimit);
+    if (folders == moveFolders) return;
+    moveFolders = std::move(folders);
+    commands.release("note.move");
+    for (size_t i = 0; i < moveFolders.size(); ++i) {
+        const auto& path = moveFolders[i];
+        auto name = displayName(path);
+        commands.add({.id = "note.move/" + std::to_string(i), .title = "Move note to " + (name.empty() ? displayPath(path) : name), .category = "Notes", .run = [this, path] { moveNote(target()->id, path); }, .available = [this, path] { return fileOnDisk() && target()->path.parent_path().lexically_normal() != path; }, .unavailableReason = "A saved note from another folder must be open and ready", .owner = "note.move"});
+    }
+}
+
+void EditorApp::moveNote(uint64_t id, const storage::Path& directory)
+{
+    auto tab = workspace.find(id);
+    if (!tab) return;
+    auto before = tab->path;
+    if (!workspace.move(id, directory)) return;
+    std::erase(recent.files, before);
+    noteBrowser.fileAccessed(before, true);
+    workspace.fileAccessed(tab->path, true);
 }
 
 void EditorApp::refreshNoteFiles(bool force)

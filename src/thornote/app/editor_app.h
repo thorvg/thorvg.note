@@ -131,6 +131,9 @@ private:
     void openMenu(std::string_view);
     void closeMenu(bool preserveFolder = false);
     void openNoteMenu(uint64_t id, ui::Rect anchor);
+    // Registers a note.move/<index> command for each folder the note menu offers.
+    void syncMoveFolders();
+    void moveNote(uint64_t id, const storage::Path& directory);
     std::vector<DocumentTab*> filteredDocuments() const;
     bool browsingNoteFiles() const;
     void refreshNoteFiles(bool force = false);
@@ -140,6 +143,8 @@ private:
     std::array<std::string, 3> previewLines(std::string_view, float width);
     void drawPrompt(ui::Rect);
     DocumentTab* target() const;
+    // Whether the target is a saved file that can be renamed, moved or deleted now.
+    bool fileOnDisk() const;
     DocumentTab* visibleDocument() const;
     bool searchFocused() const;
     void editorCommand(ui::Key);
@@ -227,6 +232,7 @@ private:
     std::array<LayoutState, layoutCount> layouts = defaultLayouts;
     std::string menu, menuRoot;
     storage::Path menuFolder;
+    std::vector<storage::Path> moveFolders;
     std::optional<ui::Rect> contextMenuAnchor;
     ui::MenuDefinition menuDefinition;
     size_t menuSelection = 0, collectionOffset = 0, importedOffset = 0;

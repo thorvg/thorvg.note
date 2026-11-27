@@ -71,6 +71,7 @@ public:
 
     std::optional<ui::MenuDefinition> menuDefinition(std::string_view id) const { return app->layoutScript.menu(id); }
     void activate(uint64_t id) { app->activateDocument(id); }
+    void openNoteMenu(uint64_t id) { app->openNoteMenu(id, {20, 20, 1, 1}); }
     // An installed copy of the bundled layouts can predate the source tree.
     bool useSourceLayouts()
     {
@@ -403,14 +404,16 @@ TEST_CASE_FIXTURE(EditorTest, "right_clicking_a_draft_selects_it_and_opens_the_n
     std::vector<std::string> commands;
     for (const auto& item : definition->items)
         commands.push_back(item.command);
-    // The empty commands are separators.
-    CHECK(commands == std::vector<std::string>{"file.export", "", "file.new", "", "note.favorite.toggle", "note.duplicate", "file.rename", "", "file.delete"});
+    // The empty commands are separators and the Move Note submenu.
+    CHECK(commands == std::vector<std::string>{"file.export", "", "file.new", "", "note.favorite.toggle", "note.duplicate", "file.rename", "", "", "file.delete"});
+    CHECK(definition->items[7].title == "Move Note");
     CHECK(definition->items[4].title == "Favorite Note");
     REQUIRE(run("note.favorite.toggle"));
     draw();
     CHECK(menuDefinition("note-menu")->items[4].title == "Unfavorite Note");
-    // A draft has no file to rename or delete.
+    // A draft has no file to rename, move or delete.
     CHECK_FALSE(enabled("file.rename"));
+    CHECK_FALSE(enabled("note.move.choose"));
     CHECK_FALSE(enabled("file.delete"));
     REQUIRE(run("note.duplicate"));
     REQUIRE(app->workspace.documents().size() == 3);
@@ -444,6 +447,48 @@ TEST_CASE_FIXTURE(EditorTest, "note_menu_duplicates_a_saved_note_beside_it")
         CHECK(storage::test::read(directory.file(name)) == "body\r\n");
     }
     CHECK(storage::test::read(source) == "body\r\n");
+}
+
+TEST_CASE_FIXTURE(EditorTest, "note_menu_moves_a_saved_note_to_a_listed_or_chosen_folder")
+{
+    storage::test::Directory directory;
+    auto inbox = directory.path / "inbox", done = directory.path / "done", archive = directory.path / "archive";
+    for (const auto& folder : {inbox, done, archive})
+        std::filesystem::create_directory(folder);
+    storage::test::write(inbox / "note.md", "body");
+    app->openPath(done);
+    app->openPath(inbox);
+    REQUIRE(useSourceLayouts());
+    REQUIRE(wait([&] { return !browser().loading(); }));
+    REQUIRE(rightClickNote());
+    REQUIRE(wait([&] { return !app->workspace.busy(); }));
+    draw();
+    REQUIRE(menuDefinition("note-menu")->items[7].id == "note-menu/move");
+    auto move = menuDefinition("note-menu/move");
+    REQUIRE(move);
+    std::vector<std::string> titles;
+    for (const auto& item : move->items)
+        titles.push_back(item.title);
+    // Imported folders follow the folder dialog entry, most recent first.
+    CHECK(titles == std::vector<std::string>{"Choose Folder…", "", "inbox", "done"});
+    // A note does not move into its own folder.
+    CHECK_FALSE(enabled(move->items[2].command));
+    REQUIRE(run(move->items[3].command));
+    auto tab = app->workspace.active();
+    CHECK(tab->path == done / "note.md");
+    CHECK(storage::test::read(done / "note.md") == "body");
+    CHECK_FALSE(std::filesystem::exists(inbox / "note.md"));
+    app->chooseFolder = [&](const storage::Path& initial, const auto& chosen) {
+        CHECK(initial == done);
+        chosen({tn::utf8(archive)}, {});
+    };
+    REQUIRE(run("note.move.choose"));
+    CHECK(tab->path == archive / "note.md");
+    CHECK(storage::test::read(archive / "note.md") == "body");
+    // The chosen folder joins the recent ones when the menu opens again.
+    openNoteMenu(tab->id);
+    draw();
+    CHECK(menuDefinition("note-menu/move")->items.back().title == "archive");
 }
 
 TEST_CASE_FIXTURE(EditorTest, "exporting_a_note_writes_a_copy_to_the_chosen_file")

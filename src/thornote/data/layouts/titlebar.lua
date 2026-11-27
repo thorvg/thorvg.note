@@ -90,6 +90,11 @@ local definition = {
     if not state.customTitleBar or state.headerOnly then
       table.insert(left, 1, ui.view {id = "menu-gap", source = "window-drag", width = 4, height = 40})
     end
+    local move = {{text = "Choose Folder…", command = "note.move.choose"}}
+    for i, folder in ipairs(state.moveFolders or {}) do
+      if i == 1 then table.insert(move, {separator = true}) end
+      table.insert(move, {text = folder.name, command = folder.command})
+    end
     local function group(id, children)
       local width = 0
       for _, child in ipairs(children) do width = width + child.width end
@@ -113,6 +118,7 @@ local definition = {
           {text = state.favorite and "Unfavorite Note" or "Favorite Note", command = "note.favorite.toggle"},
           {text = "Duplicate Note", command = "note.duplicate"},
           {text = "Rename Note", command = "file.rename"},
+          {id = "move", text = "Move Note", items = move},
           {separator = true},
           {text = "Delete Note", command = "file.delete"},
         }},

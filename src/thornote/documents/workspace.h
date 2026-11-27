@@ -56,6 +56,8 @@ public:
     // Writes a copy of the document to another file; the tab stays on its own file.
     bool saveCopy(uint64_t id, const storage::Path&);
     bool rename(uint64_t id, const storage::Path& filename);
+    // Moves the saved file into another folder; the tab follows it.
+    bool move(uint64_t id, const storage::Path& directory);
     bool remove(uint64_t id);
     bool close(uint64_t id, bool discard = false);
     void select(uint64_t id);
@@ -71,6 +73,8 @@ public:
 
 private:
     void write(uint64_t id, const storage::Path&, storage::DiskStamp, std::string, storage::FileFormat);
+    // Renames the file to target within its folder, or moves it into the target folder.
+    bool relocate(uint64_t id, const storage::Path& target, bool rename);
     void erase(uint64_t id);
     std::vector<std::unique_ptr<DocumentTab>> tabs;
     uint64_t nextId = 1, selected = 0, pendingSelection = 0;

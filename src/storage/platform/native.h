@@ -76,7 +76,8 @@ Error createStaging(StagingFile& staging, const Path& target, bool existing);
 Error copyMetadata(const NativeFile& source, const NativeFile& output, const FileInfo& info);
 Error syncFile(const NativeFile& file);
 Error commit(StagingFile& staging, const Path& target, bool existing);
-Error changeName(const Path& source, const Path& filename, const FileInfo& expected);
+// Renames or moves the verified source to target without replacing an entry there; an empty target removes it.
+Error changeName(const Path& source, const Path& target, const FileInfo& expected);
 Error syncDirectory(const StagingFile& staging);
 Error writable(const Path& target, const FileInfo& info);
 Error createPrivateDirectory(const Path& path);

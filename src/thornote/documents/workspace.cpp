@@ -283,36 +283,46 @@ bool Workspace::saveCopy(uint64_t id, const storage::Path& path)
 
 bool Workspace::rename(uint64_t id, const storage::Path& filename)
 {
+    return relocate(id, filename, true);
+}
+
+bool Workspace::move(uint64_t id, const storage::Path& directory)
+{
+    return relocate(id, directory, false);
+}
+
+bool Workspace::relocate(uint64_t id, const storage::Path& target, bool rename)
+{
     auto tab = find(id);
     if (!tab || busy() || !tab->stamp.exists() || tab->uncertain || tab->persistenceFailed) return false;
-    auto destination = tab->path.parent_path() / filename;
-    auto title = displayName(destination);
-    auto destinationKey = key(destination);
+    // Opened files keep this form, so the moved file still matches its listing.
+    auto destination = key(rename ? tab->path.parent_path() / target : target / tab->path.filename());
     for (const auto& other : tabs) {
-        if (other->id != id && !other->path.empty() && key(other->path) == destinationKey) {
+        if (other->id != id && !other->path.empty() && key(other->path) == destination) {
             error = "The destination is already open in another tab.";
             return false;
         }
     }
-    auto result = storage::rename(tab->path, filename, tab->stamp);
+    auto result = rename ? storage::rename(tab->path, target, tab->stamp) : storage::move(tab->path, target, tab->stamp);
     if (!result) {
-        error = "Rename failed: " + result.error.message;
+        error = (rename ? "Rename failed: " : "Move failed: ") + result.error.message;
         return false;
     }
     error.clear();
+    auto done = rename ? "Renamed to " + displayName(destination) : "Moved to " + displayName(destination.parent_path());
     tab->path = std::move(destination);
-    tab->title = std::move(title);
+    tab->title = displayName(tab->path);
     tab->stamp = std::move(result.value);
     if (persist) {
         tab->saving = true;
-        persist([this, id](const std::string& failure) {
+        persist([this, id, rename, done = std::move(done)](const std::string& failure) {
             auto tab = find(id);
             tab->saving = false;
             tab->persistenceFailed = !failure.empty();
-            if (failure.empty()) message = "Renamed to " + tab->title;
-            else error = "File renamed, but storage could not be synchronized: " + failure;
+            if (failure.empty()) message = done;
+            else error = std::string(rename ? "File renamed" : "File moved") + ", but storage could not be synchronized: " + failure;
         });
-    } else message = "Renamed to " + tab->title;
+    } else message = std::move(done);
     return true;
 }
 

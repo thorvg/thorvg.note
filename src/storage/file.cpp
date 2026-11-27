@@ -271,7 +271,24 @@ Result<DiskStamp> rename(const Path& path, const Path& filename, const DiskStamp
         auto baseline = *detail::Access::get(expected);
         baseline.target = source.value.parent_path() / filename;
         auto stamp = detail::Access::stamp(std::move(baseline));
-        if (auto error = detail::changeName(source.value, filename, detail::Access::get(expected)->info)) return {{}, error};
+        if (auto error = detail::changeName(source.value, detail::Access::get(stamp)->target, detail::Access::get(expected)->info)) return {{}, error};
+        return {std::move(stamp), {}};
+    });
+}
+
+Result<DiskStamp> move(const Path& path, const Path& directory, const DiskStamp& expected)
+{
+    return detail::guarded<Result<DiskStamp>>([&]() -> Result<DiskStamp> {
+        auto source = detail::mutationTarget(path, expected);
+        if (!source) return {{}, source.error};
+        auto destination = detail::resolve(directory, false);
+        if (!destination) return {{}, destination.error};
+        std::error_code ec;
+        if (!std::filesystem::is_directory(destination.value, ec)) return {{}, detail::failure(ErrorCode::InvalidPath, "destination must name a directory", ec)};
+        auto baseline = *detail::Access::get(expected);
+        baseline.target = destination.value / source.value.filename();
+        auto stamp = detail::Access::stamp(std::move(baseline));
+        if (auto error = detail::changeName(source.value, detail::Access::get(stamp)->target, detail::Access::get(expected)->info)) return {{}, error};
         return {std::move(stamp), {}};
     });
 }

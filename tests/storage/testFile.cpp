@@ -257,6 +257,36 @@ TEST_CASE("create_conflict")
     CHECK_EQ(directory.entries(), 1);
 }
 
+TEST_CASE_FIXTURE(ExistingFile, "move")
+{
+    auto folder = directory.path / "folder";
+    std::filesystem::create_directory(folder);
+    auto target = folder / path.filename();
+
+    SUBCASE("baseline")
+    {
+        auto moved = move(path, folder, options.expected);
+        REQUIRE(moved);
+        CHECK_FALSE(std::filesystem::exists(path));
+        REQUIRE(save(target, "new", {options.format, moved.value}));
+        CHECK_EQ(test::read(target), "new");
+    }
+    SUBCASE("occupied")
+    {
+        test::write(target, "other");
+        CHECK(move(path, folder, options.expected).error.code == ErrorCode::Conflict);
+        CHECK_EQ(test::read(path), "original");
+        CHECK_EQ(test::read(target), "other");
+    }
+    SUBCASE("destination")
+    {
+        CHECK(move(path, directory.file("missing"), options.expected).error.code == ErrorCode::NotFound);
+        test::write(directory.file("plain"), "plain");
+        CHECK(move(path, directory.file("plain"), options.expected).error.code == ErrorCode::InvalidPath);
+        CHECK_EQ(test::read(path), "original");
+    }
+}
+
 TEST_CASE_FIXTURE(ExistingFile, "write_failures")
 {
     for (auto stage : {Stage::Create, Stage::Write, Stage::Metadata, Stage::FileSync, Stage::Close, Stage::Commit}) {

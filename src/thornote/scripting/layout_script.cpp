@@ -1,6 +1,7 @@
 #include "layout_script.h"
 #include <thornote/app/app_identity.h>
 #include <thornote/app/editor_app.h>
+#include <thornote/platform/display_text.h>
 #include <algorithm>
 #include <map>
 #include <set>
@@ -382,12 +383,18 @@ ui::lua::Values EditorApp::layoutScriptState() const
     for (const auto& document : workspace.documents()) {
         documents.push_back({{"id", double(document->id)}, {"title", document->displayTitle()}, {"path", utf8(document->path)}, {"dirty", document->dirty()}, {"loading", document->loading}, {"active", document.get() == tab}});
     }
+    std::vector<ui::lua::Record> moves;
+    for (size_t i = 0; i < moveFolders.size(); ++i) {
+        auto name = displayName(moveFolders[i]);
+        moves.push_back({{"name", name.empty() ? displayPath(moveFolders[i]) : name}, {"command", "note.move/" + std::to_string(i)}});
+    }
     // macOS hides its traffic lights in full screen, so their reserved area collapses.
     float controlsWidth = chrome.controls.systemDrawn() && chrome.window.fullscreen ? 0 : chrome.controls.width();
     return {{"mode", std::string(layoutId(composition))}, {"dark", dark}, {"themeName", themeProfiles.profile(dark).name}, {"width", double(width)}, {"height", double(height)}, {"customTitleBar", customTitleBarVisible()}, {"nativeTitleBar", nativeTitleBarVisible()}, {"windowTitle", title()}, {"headerOnly", false}, {"dialog", dialog}, {"sidebar", state.sidebar}, {"menu", menu}, {"menuRoot", menuRoot}, {"tabStyle", double(int(tabs.options.style))}, {"windowControlsLeading", chrome.controls.leading()}, {"windowControlsWidth", double(controlsWidth)}, {"chrome.window.maximized", chrome.window.maximized}, {"chrome.window.fullscreen", chrome.window.fullscreen}, {"chrome.focused", chrome.focused}, {"notes", notes}, {"navigation", navigation}, {"collections", notes && navigation}, {"settings", settings.active}, {"tabs", composition != Layout::Memo && !notes && (settings.open || workspace.documents().size() > 1)}, {"tabCount", double(workspace.documents().size() + settings.open)}, {"documentPath", tab ? utf8(tab->path) : std::string{}}, {"documents", std::move(documents)}, {"commands", commandList}, {"dirty", tab && tab->dirty()}, {"favorite", tab && favorites.count(tab->id) != 0}, {"documentReady", tab && !tab->loading}, {"sidebarWidth", double(state.sidebarWidth)}, {"documentWidth", double(notes ? state.notesWidth : commandList ? 260
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               : state.sidebarWidth)},
             {"lineNumbers", options.lineNumbers},
-            {"fontSize", double(options.fontSize)}};
+            {"fontSize", double(options.fontSize)},
+            {"moveFolders", std::move(moves)}};
 }
 
 void EditorApp::editLayoutScript(bool titlebar)

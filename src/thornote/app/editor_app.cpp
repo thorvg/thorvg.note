@@ -224,6 +224,12 @@ DocumentTab* EditorApp::target() const
     return palette ? workspace.find(paletteTarget) : visibleDocument();
 }
 
+bool EditorApp::fileOnDisk() const
+{
+    auto tab = target();
+    return tab && tab->stamp.exists() && !tab->uncertain && !tab->persistenceFailed && !workspace.busy() && !dialog && prompt == Prompt::None;
+}
+
 void EditorApp::configure(DocumentTab& tab)
 {
     prepareFont(tab);
@@ -386,8 +392,7 @@ void EditorApp::registerCommands()
         return target() && !target()->busy() && !dialog;
     };
     auto onDisk = [this] {
-        auto tab = target();
-        return tab && tab->stamp.exists() && !tab->uncertain && !tab->persistenceFailed && !workspace.busy() && !dialog && prompt == Prompt::None;
+        return fileOnDisk();
     };
     auto pickFolder = [this](const storage::Path& initial, std::function<void(const storage::Path&)> chosen) {
         dialog = true;
@@ -558,6 +563,9 @@ void EditorApp::registerCommands()
         if (collection == "favorites") favorites.insert(copy.id);
         if (!destination.empty()) workspace.saveAs(copy.id, destination);
         focusEditor(true); }, ready, "No document is ready");
+    add("note.move.choose", "Move note to folder...", "Notes", "", [this, pickFolder] {
+        auto tab = target();
+        pickFolder(tab->path.parent_path(), [this, id = tab->id](const storage::Path& path) { moveNote(id, path); }); }, [this, onDisk] { return onDisk() && chooseFolder; }, "A saved note must be open, and a folder dialog available");
     add("theme.light", "Use light appearance", "Appearance", "", [this] { dark = false; applyAppearance(); });
     add("theme.dark", "Use dark appearance", "Appearance", "", [this] { dark = true; applyAppearance(); });
     add("theme.toggle", "Switch light / dark theme", "Appearance", "", [this] { dark = !dark; applyAppearance(); });
@@ -592,6 +600,7 @@ void EditorApp::openPalette()
 {
     if ((palette && !recentPalette) || prompt != Prompt::None || dialog) return;
     if (!menu.empty()) closeMenu();
+    syncMoveFolders();
     paletteTarget = visibleDocument() ? visibleDocument()->id : 0;
     paletteState = {};
     palette = true;
