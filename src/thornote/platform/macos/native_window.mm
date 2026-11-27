@@ -343,7 +343,7 @@ bool updateNativeWindowChrome(SDL_Window* window, bool nativeTitleBar)
     auto native = (__bridge NSWindow*)SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
     auto flags = SDL_GetWindowFlags(window);
     bool fullscreen = (flags & SDL_WINDOW_FULLSCREEN) || (native.styleMask & NSWindowStyleMaskFullScreen);
-    if (!native) return fullscreen || SDL_SetWindowBordered(window, nativeTitleBar);
+    if (!native) return fullscreen || !(flags & SDL_WINDOW_BORDERLESS) == nativeTitleBar || SDL_SetWindowBordered(window, nativeTitleBar);
     ThorNoteTitleBarChrome* chrome = objc_getAssociatedObject(native, &titleBarChromeKey);
     if (!chrome) {
         chrome = [[ThorNoteTitleBarChrome alloc] initWithWindow:native];
