@@ -18,7 +18,7 @@ local definition = {
     end
     local content = {
       ui.view {id = "tabs", source = "tabs", height = 34, visible = state.tabs},
-      ui.view {id = "note-heading", source = "note-heading", height = 40, visible = state.notes and not state.settings},
+      ui.view {id = "note-heading", source = "note-heading", height = 40, visible = state.notes},
       ui.view {id = "content", source = "content"},
     }
     if state.mode == "note" then

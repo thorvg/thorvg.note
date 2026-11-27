@@ -15,6 +15,7 @@ constexpr ui::platform::KeyModifiers primary{.control = true};
 class EditorTest
 {
     Engine engine;
+    std::optional<storage::test::Directory> layouts;
 
 public:
     std::unique_ptr<EditorApp> app = std::make_unique<EditorApp>();
@@ -63,6 +64,7 @@ public:
     void drawAt(double seconds) { app->render(800, 600, seconds); }
     void prepareFont(DocumentTab& tab, std::string_view added) { app->prepareFont(tab, added); }
     bool editorFocused() const { return app->editorFocus; }
+    bool settingsOpen() const { return app->settings.open; }
     void focusEditor() { app->focusEditor(true); }
     const std::string& extensionError() const { return app->inputExtensions.error(); }
     void useExtensions(const storage::Path& path) { app->inputExtensions.setDirectory(path); }
@@ -70,7 +72,17 @@ public:
     std::optional<ui::MenuDefinition> menuDefinition(std::string_view id) const { return app->layoutScript.menu(id); }
     void activate(uint64_t id) { app->activateDocument(id); }
     // An installed copy of the bundled layouts can predate the source tree.
-    void useSourceLayouts() { app->setLayoutDirectory(utf8Path(THORNOTE_SOURCE_DATA) / "layouts"); }
+    bool useSourceLayouts()
+    {
+        auto source = utf8Path(THORNOTE_SOURCE_DATA) / "layouts";
+        layouts.emplace();
+        for (auto name : {"memo.lua", "note.lua"})
+            std::filesystem::copy_file(source / "workspace.lua", layouts->path / name);
+        std::filesystem::copy_file(source / "titlebar.lua", layouts->path / "titlebar.lua");
+        app->setLayoutDirectory(layouts->path);
+        draw();
+        return app->layoutScript.error().empty();
+    }
 
     // Right-clicks down the note list, from below its search field, until a note opens its menu.
     bool rightClickNote()
@@ -381,7 +393,7 @@ TEST_CASE_FIXTURE(EditorTest, "new_drafts_remain_in_all_notes")
 TEST_CASE_FIXTURE(EditorTest, "right_clicking_a_draft_selects_it_and_opens_the_note_menu")
 {
     app->setLayout(tn::Layout::Note);
-    useSourceLayouts();
+    REQUIRE(useSourceLayouts());
     auto& first = document("first note");
     document("second note");
     REQUIRE(rightClickNote());
@@ -413,7 +425,7 @@ TEST_CASE_FIXTURE(EditorTest, "note_menu_duplicates_a_saved_note_beside_it")
     auto source = directory.file("note.md");
     storage::test::write(source, "body\r\n");
     app->openPath(directory.path);
-    useSourceLayouts();
+    REQUIRE(useSourceLayouts());
     REQUIRE(wait([&] { return !browser().loading(); }));
     REQUIRE(rightClickNote());
     auto original = app->workspace.active();
@@ -731,6 +743,24 @@ TEST_CASE_FIXTURE(EditorTest, "file_commands_keep_the_buffer_on_rename_and_confi
     key(Key::Enter);
     CHECK_FALSE(std::filesystem::exists(destination));
     CHECK_FALSE(app->workspace.find(id));
+}
+
+TEST_CASE_FIXTURE(EditorTest, "note_heading_moves_the_window_and_closes_settings")
+{
+    app->setLayout(tn::Layout::Note);
+    REQUIRE(useSourceLayouts());
+    document("note");
+    draw();
+    auto content = editorBounds();
+    REQUIRE(content.w > 0);
+    float y = content.y - 20, button = content.x + content.w - 28;
+    CHECK(app->draggable(content.x + 40, y));
+    CHECK_FALSE(app->draggable(button, y));
+    REQUIRE(run("settings.open"));
+    draw();
+    CHECK(app->draggable(content.x + 40, y));
+    click({button - 1, y - 1, 2, 2});
+    CHECK_FALSE(settingsOpen());
 }
 
 TEST_CASE_FIXTURE(EditorTest, "settings_search_leaves_printable_native_keys_for_text_interpretation")

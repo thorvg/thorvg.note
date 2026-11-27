@@ -178,12 +178,23 @@ void EditorApp::drawDocuments(ui::Rect r, bool notes)
 void EditorApp::drawNoteHeading(ui::Rect r)
 {
     context.rect(r, theme.surface);
+    chrome.addDragArea(context, r);
     auto tab = visibleDocument();
     auto breadcrumb = settings.active ? "Settings" : !tab ? ""
         : tab->path.empty()                               ? "Unsaved / " + tab->displayTitle()
                                                           : displayName(tab->path.parent_path()) + " / " + tab->title;
     ui::Rect breadcrumbBounds{r.x + options.padding, r.y, r.w - options.padding - 92, r.h};
     context.text(breadcrumbBounds, context.elideText(breadcrumb, breadcrumbBounds.w - 6, 11), theme.muted, 11);
+    if (settings.active) {
+        ui::Rect close{r.x + r.w - 42, r.y + (r.h - 28) / 2, 28, 28};
+        auto state = context.control("note/settings/close", close, [this](const ui::Event& event) {
+            if (event.activated(false)) closeSettings(); });
+        if (state.hovered) context.rect(close, theme.raised, 5);
+        context.icon("note/settings/close/icon", close, "close", theme.muted, {state.hovered, state.pressed, false, true, state.focused});
+        if (state.focused) context.focusRing(close);
+        if (state.hovered) hint = {"Close Settings", close};
+        return;
+    }
     ui::Rect toggle{r.x + r.w - 78, r.y + (r.h - 28) / 2, 28, 28};
     bool enabled = tab && !tab->loading;
     auto state = context.control("note/lineNumbers", toggle, [this](const ui::Event& event) {
@@ -367,8 +378,8 @@ void EditorApp::render(float w, float h, double seconds)
         std::vector<ui::Element> children;
         if (!sidebarTitle) children.push_back(pane("titlebar", true, {}, ui::fixed(40)));
         std::vector<ui::Element> content{
-            pane("tabs", composition != Layout::Memo && (settings.open || (!notes && workspace.documents().size() > 1)), {}, ui::fixed(34)),
-            pane("note-heading", notes && !settings.active, {}, ui::fixed(40)),
+            pane("tabs", composition != Layout::Memo && !notes && (settings.open || workspace.documents().size() > 1), {}, ui::fixed(34)),
+            pane("note-heading", notes, {}, ui::fixed(40)),
             pane("content", true, {}),
         };
         if (composition == Layout::Note) content.push_back(pane("status", true, {}, ui::fixed(22)));
