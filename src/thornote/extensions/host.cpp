@@ -122,8 +122,10 @@ struct InputExtensions::Impl
         if (finishing) return false;
         finishing = true;
         bool changed = false;
+        // Editors observed together are not recursion, so only the work queued while finishing counts.
+        auto limit = events.size() + queuedCommands.size() + 128;
         size_t count = 0;
-        while ((!events.empty() || !queuedCommands.empty()) && count++ < 128) {
+        while ((!events.empty() || !queuedCommands.empty()) && count++ < limit) {
             if (!events.empty()) {
                 auto event = std::move(events.front());
                 events.pop_front();

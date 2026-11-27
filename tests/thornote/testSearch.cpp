@@ -64,6 +64,8 @@ public:
     void prepareFont(DocumentTab& tab, std::string_view added) { app->prepareFont(tab, added); }
     bool editorFocused() const { return app->editorFocus; }
     void focusEditor() { app->focusEditor(true); }
+    const std::string& extensionError() const { return app->inputExtensions.error(); }
+    void useExtensions(const storage::Path& path) { app->inputExtensions.setDirectory(path); }
 
     std::optional<ui::MenuDefinition> menuDefinition(std::string_view id) const { return app->layoutScript.menu(id); }
     void activate(uint64_t id) { app->activateDocument(id); }
@@ -578,6 +580,22 @@ TEST_CASE_FIXTURE(EditorTest, "font_size_reaches_a_hidden_document_when_it_is_sh
     // It keeps the caret where it was on screen.
     auto caret = hidden.editor.caretRect();
     CHECK(caret.y + caret.h / 2 == doctest::Approx(anchor.y + anchor.h / 2).epsilon(0.01));
+}
+
+TEST_CASE_FIXTURE(EditorTest, "extension_recursion_counts_only_work_queued_in_turn")
+{
+    // Many editors report at once without recursing.
+    for (int i = 0; i < 200; ++i)
+        document("note");
+    draw();
+    CHECK(extensionError().empty());
+    // A command that queues itself again still stops.
+    storage::test::Directory extensions;
+    storage::test::write(extensions.path / "loop.lua", "return {schema = 1, id = \"loop\", commands = {again = function(editor) editor:command(\"loop.again\") end}}");
+    useExtensions(extensions.path);
+    REQUIRE(extensionError().empty());
+    REQUIRE(run("loop.again"));
+    CHECK(extensionError().find("recursion") != std::string::npos);
 }
 
 TEST_CASE("fractional_font_sizes_survive_loading_preferences")
