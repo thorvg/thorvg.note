@@ -315,7 +315,7 @@ TEST_CASE_FIXTURE(Editor, "wheel_is_released_at_editor_scroll_boundaries")
     context.pointerMove(bounds.x + 20, bounds.y + 20);
     CHECK(!context.wheel(1));
     CHECK(context.wheel(-0.25f));
-    CHECK(editor.scrollY() == 0);
+    CHECK(editor.scrollY() == doctest::Approx(editor.caretRect().h * 0.25f));
     CHECK(context.wheel(-1000));
     CHECK(editor.scrollY() > 0);
     CHECK(!context.wheel(-1));

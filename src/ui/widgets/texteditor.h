@@ -157,7 +157,6 @@ struct TextEditor::Impl
     double vertical = 0;
     float width = 1, height = 1, horizontal = 0, gutter = 0, lineHeight = 24, boldAdvance = 0, widest = 0, digitWidth = 0;
     // Wheel lines not yet scrolled; fractional ticks wait until they add up to a whole line.
-    float wheelCarry = 0;
     bool viewportReady = false;
     std::optional<std::pair<float, double>> pendingScroll;
     bool dirty = true, layoutDirty = true, textContentDirty = true, hasFocus = false, dragging = false, previousCaretVisible = false;

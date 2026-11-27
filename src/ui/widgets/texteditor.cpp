@@ -264,28 +264,8 @@ void TextEditor::Impl::wheel(float y, float x)
 {
     if (!std::isfinite(y) || !std::isfinite(x)) return;
     relayout();
-    if (configuration.markdown) {
-        // Use the body line height so headings do not change wheel sensitivity.
-        vertical -= y * lineHeight;
-        horizontal += x * configuration.fontSize * 3;
-        wheelCarry = 0;
-        clampScroll();
-        invalidate();
-        return;
-    }
-    // One line a tick, counted from a line edge so the top line stays whole. Trackpads and
-    // high-resolution wheels send fractions, which carry over until they make a line; turning
-    // back drops what was carried the other way.
-    float lines = -y;
-    if (lines * wheelCarry < 0) wheelCarry = 0;
-    wheelCarry += lines;
-    float steps = std::trunc(wheelCarry);
-    wheelCarry -= steps;
-    if (steps != 0) {
-        double top = vertical / lineHeight, edge = std::round(top);
-        if (std::abs(top - edge) < lineEdge) top = edge;
-        vertical = (steps > 0 ? std::floor(top + steps) : std::ceil(top + steps)) * lineHeight;
-    }
+    // Use the body line height so headings do not change wheel sensitivity.
+    vertical -= y * lineHeight;
     horizontal += x * configuration.fontSize * 3;
     clampScroll();
     invalidate();
