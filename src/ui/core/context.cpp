@@ -429,7 +429,7 @@ void Context::scroll(std::string_view id, Rect bounds, float& x, float& y, float
     control(id, bounds, [&x, &y, limitX, limitY, bounds, options](const Event& event) {
         float dx = 0, dy = 0;
         if (event.type == EventType::Scroll) {
-            dx = -event.x * options.step;
+            dx = event.x * options.step;
             dy = -event.y * options.step;
         } else if (event.type == EventType::Key) {
             switch (event.key) {

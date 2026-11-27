@@ -489,7 +489,7 @@ enum class EventType
     Activate,     ///< The pointer was released over the control it pressed: a click.
     Key,          ///< A key for the focused control; carries key and modifiers.
     Text,         ///< Committed text for the focused control; carries text.
-    Scroll,       ///< The wheel moved over a Scrollable control; x/y carry the horizontal/vertical deltas.
+    Scroll,       ///< The wheel moved over a Scrollable control; positive x scrolls right and positive y scrolls up.
     Release,      ///< The pointer was released anywhere after pressing a Capture control; precedes Activate.
     Cancel,       ///< The press on a Capture control was abandoned, such as by Escape or Context::cancelPointer().
     ContextMenu,  ///< A menu was requested at the position through Context::contextMenu().

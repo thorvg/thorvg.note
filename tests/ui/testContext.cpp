@@ -246,7 +246,7 @@ TEST_CASE_FIXTURE(Frame, "two_axis_scroll_regions_handle_wheel_and_keyboard")
     context.scroll("page", {0, 0, 200, 100}, x, y, 100.0f, 300.0f);
     context.end();
     context.pointerPosition(10, 10);
-    CHECK(context.wheel(-1, -1));
+    CHECK(context.wheel(-1, 1));
     CHECK(x == 36);
     CHECK(y == 36);
     CHECK(context.scrollKey("page", Key::PageDown));
