@@ -28,6 +28,8 @@ public:
     bool enabled() const { return !filename.empty(); }
     const std::string& path() const { return filename; }
     const std::string& error() const;
+    // Host commands the script turned off in its latest build, if it declares them.
+    const std::optional<std::vector<std::string>>& disabledCommands() const;
     ui::Composition& view() { return composition; }
     const ui::Composition& view() const { return composition; }
     // Optional host constraints, checked before replacing the active tree or commands.

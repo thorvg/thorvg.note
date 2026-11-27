@@ -3,6 +3,10 @@
 ---@type ThorNote.UI.LayoutModule
 local definition = {
   schema = 1,
+  -- App commands this layout turns off. Memo opens files; folders belong to Note.
+  disabledCommands = function(state)
+    return state.mode == "memo" and {"folder.open"} or {}
+  end,
   build = function(state)
     local sidebarTitle = state.mode == "note" and state.navigation
     local categoryMinimum = state.customTitleBar and not state.windowControlsLeading and 200 or 150

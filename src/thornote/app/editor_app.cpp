@@ -378,9 +378,14 @@ void EditorApp::editorCommand(ui::Key key)
 
 void EditorApp::registerCommands()
 {
-    auto add = [&](const char* id, const char* title, const char* category, const char* shortcut, std::function<void()> run,
-                   std::function<bool()> available = {}, const char* reason = "") {
-        commands.add({id, title, category, shortcut, std::move(run), std::move(available), reason});
+    // The layout script may turn any of these commands off.
+    auto add = [this](std::string id, std::string title, std::string category, std::string shortcut, std::function<void()> run,
+                      std::function<bool()> available = {}, std::string reason = {}) {
+        if (!available && reason.empty()) reason = "Turned off in this layout";
+        auto allowed = [this, id, available = std::move(available)] {
+            return !layoutScript.disables(id) && (!available || available());
+        };
+        commands.add({std::move(id), std::move(title), std::move(category), std::move(shortcut), std::move(run), std::move(allowed), std::move(reason)});
     };
     auto ready = [this] {
         return target() && !target()->loading;
@@ -451,12 +456,10 @@ void EditorApp::registerCommands()
         if (command.modifier == Modifier::Alt) shortcut += "Alt+";
         if (command.modifier == Modifier::Shift) shortcut += "Shift+";
         shortcut += command.key;
-        commands.add({command.id, command.title, "Markdown", std::move(shortcut), [this, command] {
-                          auto& tab = *target();
-                          configure(tab);
-                          tab.editor.formatMarkdown(command.format, command.level);
-                      },
-                      markdown});
+        add(command.id, command.title, "Markdown", std::move(shortcut), [this, command] {
+                auto& tab = *target();
+                configure(tab);
+                tab.editor.formatMarkdown(command.format, command.level); }, markdown);
     }
     for (const auto& entry : std::vector<std::pair<const char*, ui::Key>>{{"copy", ui::Key::C}, {"cut", ui::Key::X}, {"paste", ui::Key::V}, {"selectAll", ui::Key::A}}) {
         auto key = entry.second;
@@ -471,7 +474,7 @@ void EditorApp::registerCommands()
             if ((key == ui::Key::X || key == ui::Key::V) && target()->editor.options().readOnly) return false;
             return (key != ui::Key::C && key != ui::Key::X) || !target()->editor.session().selection().empty();
         };
-        commands.add({std::string("edit.") + entry.first, title, "Edit", shortcut, [this, key] { editorCommand(key); }, available, "No document or text selection is available"});
+        add(std::string("edit.") + entry.first, title, "Edit", shortcut, [this, key] { editorCommand(key); }, available, "No document or text selection is available");
     }
     auto searchable = [this, ready] {
         return ready() && !target()->editor.composing();
@@ -524,7 +527,7 @@ void EditorApp::registerCommands()
         collectionOffset = 0;
         noteFileScroll = 0;
         refreshNoteFiles(true); }, [this] { return !menuFolder.empty(); }, "Right-click a folder in Note to choose an item");
-    add("folder.open", "Open folder...", "Folders", "", [this, pickFolder] { pickFolder(recent.directories.empty() ? storage::Path{} : recent.directories.front(), [this](const storage::Path& path) { openPath(path); }); }, [this] { return chooseFolder && !dialog; }, "No folder dialog is available");
+    add("folder.open", "Open folder...", "Folders", "", [this, pickFolder] { pickFolder(recent.directories.empty() ? storage::Path{} : recent.directories.front(), [this](const storage::Path& path) { openPath(path); }); }, [this] { return chooseFolder && !dialog; }, "Turned off in this layout, or no folder dialog is available");
     add("view.lineNumbers.toggle", "Toggle line numbers", "View", "", [this] { layout().lineNumbers = !layout().lineNumbers; applyAppearance(); });
     add("layout.memo", "Use Memo layout", "Layout", "", [this] { setLayout(Layout::Memo); });
     add("layout.note", "Use Note layout", "Layout", "", [this] { setLayout(Layout::Note); });

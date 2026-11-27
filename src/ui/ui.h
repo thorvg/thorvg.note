@@ -3166,6 +3166,21 @@ public:
     const std::vector<ImageFile>& images() const;
 
     /**
+     * @brief Returns the host command IDs the module turned off in the latest build(), if it declares disabledCommands.
+     *
+     * @code
+     * return {
+     *   schema = 1,
+     *   disabledCommands = function(state) return state.notes and {} or {"folder.open"} end,
+     *   build = function(state) return ui.view {source = "content"} end,
+     * }
+     * @endcode
+     *
+     * @note build(state) calls disabledCommands(state) after the tree, with the same state.
+     */
+    const std::optional<std::vector<std::string>>& disabledCommands() const;
+
+    /**
      * @brief Returns a counter advanced after each command; rebuild the tree when it changes.
      *
      * @code

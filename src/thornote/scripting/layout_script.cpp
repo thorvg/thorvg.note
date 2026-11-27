@@ -343,6 +343,13 @@ bool LayoutScript::hasView(Layout profile, std::string_view source) const
     return find(configuration.view().definition());
 }
 
+bool LayoutScript::disables(std::string_view command) const
+{
+    if (const auto& declared = configuration.disabledCommands()) return std::find(declared->begin(), declared->end(), command) != declared->end();
+    // Memo opens files, so folders belong to Note unless a script decides otherwise.
+    return current == Layout::Memo && command == "folder.open";
+}
+
 void LayoutScript::render(ui::Context& context, ui::Rect bounds, const std::vector<ui::ViewType>& types, const ui::CommandRegistry& commands)
 {
     auto& view = configuration.view();

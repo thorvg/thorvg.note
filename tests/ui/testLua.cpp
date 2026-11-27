@@ -127,6 +127,8 @@ TEST_CASE("invalid_modules_and_exhausted_limits_report_errors")
         {module("while true do end"), "Lua instruction budget exceeded", {}},
         {module("local ok = pcall(function() while true do end end) return ui.view {source = 'a'}"), "Lua instruction budget exceeded", {.instructions = 5000}},
         {module("return ui.label {text = string.rep('x', 8 * 1024 * 1024)}"), "not enough memory", {.memory = 1024 * 1024}},
+        {"return {schema = 1, disabledCommands = {}, build = function() return ui.view {source = 'a'} end}", "disabledCommands must be a function", {}},
+        {"return {schema = 1, disabledCommands = function() return {1} end, build = function() return ui.view {source = 'a'} end}", "must return command IDs", {}},
     };
     for (const auto& entry : cases) {
         CAPTURE(entry.source);
@@ -138,6 +140,25 @@ TEST_CASE("invalid_modules_and_exhausted_limits_report_errors")
         CHECK_MESSAGE(error.find(entry.message) != std::string::npos, error);
         CHECK(root.children.empty());
     }
+}
+
+TEST_CASE("modules_turn_host_commands_off_by_state")
+{
+    ui::CommandRegistry host;
+    ui::lua::Script script(host);
+    ui::Element root;
+    std::string error;
+    REQUIRE(script.load("return {schema = 1, disabledCommands = function(state) return state.notes and {} or {'folder.open'} end, build = function() return ui.view {source = 'content'} end}", "layout.lua", error));
+    CHECK_FALSE(script.disabledCommands());
+    REQUIRE(script.build({{"notes", false}}, root, error));
+    CHECK(script.disabledCommands() == std::vector<std::string>{"folder.open"});
+    REQUIRE(script.build({{"notes", true}}, root, error));
+    CHECK(script.disabledCommands() == std::vector<std::string>{});
+    // A module without the function leaves the choice to the host.
+    ui::lua::Script plain(host);
+    REQUIRE(plain.load(module("return ui.view {source = 'content'}"), "plain.lua", error));
+    REQUIRE(plain.build({}, root, error));
+    CHECK_FALSE(plain.disabledCommands());
 }
 
 TEST_SUITE_END();

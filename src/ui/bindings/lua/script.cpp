@@ -102,12 +102,13 @@ struct Script::Impl
 {
     const CommandRegistry& host;
     lua_State* state;
-    int builder = LUA_NOREF;
+    int builder = LUA_NOREF, disabler = LUA_NOREF;
     bool executing = false, dispatching = false;
     std::vector<std::string> queued;
     std::vector<Command> commands;
     std::vector<IconFile> icons;
     std::vector<ImageFile> images;
+    std::optional<std::vector<std::string>> disabled;
     uint64_t revision = 0;
     std::string message;
 
@@ -219,6 +220,14 @@ bool Script::load(std::string_view source, std::string_view name, std::string& e
         impl->commands.push_back(std::move(command));
         lua_pop(state, 1);
     }
+    field(state, module, "disabledCommands");
+    if (!lua_isnil(state, -1)) {
+        if (!lua_isfunction(state, -1)) {
+            error = "disabledCommands must be a function";
+            return false;
+        }
+        impl->disabler = luaL_ref(state, LUA_REGISTRYINDEX);
+    }
     field(state, module, "build");
     if (!lua_isfunction(state, -1)) {
         error = "script requires build(state)";
@@ -236,9 +245,35 @@ bool Script::build(const Values& state, Element& root, std::string& error)
         return false;
     }
     Stack stack(lua);
-    lua_rawgeti(lua, LUA_REGISTRYINDEX, impl->builder);
     Push{lua}.table(state);
-    return protectedCall(lua, 1, 1, error) && readElement(lua, -1, root, error);
+    auto values = lua_gettop(lua);
+    lua_rawgeti(lua, LUA_REGISTRYINDEX, impl->builder);
+    lua_pushvalue(lua, values);
+    Element tree;
+    if (!protectedCall(lua, 1, 1, error) || !readElement(lua, -1, tree, error)) return false;
+    std::optional<std::vector<std::string>> disabled;
+    if (impl->disabler != LUA_NOREF) {
+        lua_rawgeti(lua, LUA_REGISTRYINDEX, impl->disabler);
+        lua_pushvalue(lua, values);
+        size_t size = 0;
+        if (!protectedCall(lua, 1, 1, error) || !array(lua, -1, 128, "disabledCommands", size, error)) return false;
+        auto ids = lua_gettop(lua);
+        disabled.emplace();
+        for (size_t i = 1; i <= size; ++i) {
+            lua_rawgeti(lua, ids, lua_Integer(i));
+            size_t length = 0;
+            auto id = lua_type(lua, -1) == LUA_TSTRING ? lua_tolstring(lua, -1, &length) : nullptr;
+            if (!length) {
+                error = "disabledCommands must return command IDs";
+                return false;
+            }
+            disabled->emplace_back(id, length);
+            lua_pop(lua, 1);
+        }
+    }
+    root = std::move(tree);
+    impl->disabled = std::move(disabled);
+    return true;
 }
 
 std::vector<Command> Script::commands() const
@@ -254,6 +289,11 @@ const std::vector<IconFile>& Script::icons() const
 const std::vector<ImageFile>& Script::images() const
 {
     return impl->images;
+}
+
+const std::optional<std::vector<std::string>>& Script::disabledCommands() const
+{
+    return impl->disabled;
 }
 
 uint64_t Script::revision() const

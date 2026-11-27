@@ -18,6 +18,8 @@ public:
     std::filesystem::path edit(Layout, std::string& error);
     bool enabled() const;
     bool hasView(Layout, std::string_view source) const;
+    // Whether the current layout turns a host command off, as its script declares or by default.
+    bool disables(std::string_view command) const;
     void render(ui::Context&, ui::Rect, const std::vector<ui::ViewType>&, const ui::CommandRegistry&);
     bool refreshTitlebar(const ui::lua::Values&);
     std::filesystem::path editTitlebar(std::string& error);

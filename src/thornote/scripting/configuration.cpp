@@ -164,6 +164,12 @@ const std::string& Configuration::error() const
     return message.empty() && script ? script->error() : message;
 }
 
+const std::optional<std::vector<std::string>>& Configuration::disabledCommands() const
+{
+    static const std::optional<std::vector<std::string>> none;
+    return script ? script->disabledCommands() : none;
+}
+
 bool Configuration::check(const ui::Element& root, const std::vector<std::string>& types, const std::vector<ui::Command>& pending, const ui::Icons* icons)
 {
     if (!ui::validate(root, message)) return false;

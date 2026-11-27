@@ -84,6 +84,8 @@ public:
         draw();
         return app->layoutScript.error().empty();
     }
+    // Replaces a layout script copied by useSourceLayouts().
+    void writeLayout(const char* name, std::string_view source) { storage::test::write(layouts->path / name, source); }
 
     // Right-clicks down the note list, from below its search field, until a note opens its menu.
     bool rightClickNote()
@@ -389,6 +391,26 @@ TEST_CASE_FIXTURE(EditorTest, "new_drafts_remain_in_all_notes")
     REQUIRE(run("file.new"));
     CHECK(collection() == "all");
     CHECK(app->workspace.documents().size() == 2);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "layout_scripts_turn_commands_off_per_layout")
+{
+    app->chooseFolder = [](const storage::Path&, const auto&) {
+    };
+    REQUIRE(useSourceLayouts());
+    // Memo opens files, so folders belong to Note.
+    CHECK_FALSE(enabled("folder.open"));
+    CHECK(enabled("file.open"));
+    app->setLayout(tn::Layout::Note);
+    draw();
+    CHECK(enabled("folder.open"));
+    // A script declaring its own list replaces the default.
+    app->setLayout(tn::Layout::Memo);
+    writeLayout("memo.lua", "return {schema = 1, disabledCommands = function(state) return {'file.new'} end, build = function(state) return ui.view {source = 'content'} end}");
+    REQUIRE(run("layout.script.reload"));
+    draw();
+    CHECK(enabled("folder.open"));
+    CHECK_FALSE(enabled("file.new"));
 }
 
 TEST_CASE_FIXTURE(EditorTest, "right_clicking_a_draft_selects_it_and_opens_the_note_menu")
