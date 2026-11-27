@@ -480,9 +480,45 @@ Result<DiskStamp> move(const Path& path, const Path& directory, const DiskStamp&
  *     }
  * @endcode
  *
- * @see load(), rename()
+ * @see load(), rename(), trash()
  */
 Error remove(const Path& path, const DiskStamp& expected);
+
+/**
+ * @brief Moves a regular file to the system trash after verifying its disk baseline.
+ *
+ * The file keeps its contents and can be restored from the trash.
+ *
+ * @param[in] path Regular file to discard. The final path component must name the file itself.
+ * @param[in] expected Existing-file baseline from load(), save(), rename(), or move().
+ *
+ * @return The file's path inside the trash on success, or an error.
+ *
+ * @retval ErrorCode::Conflict If the file changed, was replaced or removed, or the baseline belongs to another path.
+ * @retval ErrorCode::InvalidPath If the path is invalid or its final component is a symbolic link or another non-regular entry.
+ * @retval ErrorCode::NotFound If the baseline has no existing file or the source disappears during resolution.
+ * @retval ErrorCode::Io If inspecting the file fails, or neither the platform nor the file's volume has a trash.
+ *
+ * @note The source is checked without locking. A concurrent change can arrive between verification and the move.
+ *
+ * @code
+ *     auto loaded = storage::load("note.txt");
+ *     if (loaded && storage::trashAvailable()) {
+ *         auto trashed = storage::trash(loaded.value.path, loaded.value.stamp);
+ *         if (!trashed) reportError(trashed.error);
+ *     }
+ * @endcode
+ *
+ * @see remove(), trashAvailable()
+ */
+Result<Path> trash(const Path& path, const DiskStamp& expected);
+
+/**
+ * @brief Returns whether the platform provides a system trash for trash().
+ *
+ * @return True on macOS and Linux; otherwise false, where remove() is the only way to delete a file.
+ */
+bool trashAvailable();
 
 /**
  * @brief Discovered regular file and optional timestamps.

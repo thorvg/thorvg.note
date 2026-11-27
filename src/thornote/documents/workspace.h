@@ -82,6 +82,8 @@ public:
     std::function<void(const storage::Path&, bool saved)> fileAccessed;
     // A backend can defer save completion until its durable storage has synchronized.
     std::function<void(std::function<void(std::string)>)> persist;
+    // Deleted files go to the system trash where the platform has one.
+    bool useTrash = storage::trashAvailable();
 
 private:
     void write(uint64_t id, const storage::Path&, storage::DiskStamp, std::string, storage::FileFormat);

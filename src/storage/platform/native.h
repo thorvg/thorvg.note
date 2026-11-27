@@ -78,6 +78,8 @@ Error syncFile(const NativeFile& file);
 Error commit(StagingFile& staging, const Path& target, bool existing);
 // Renames or moves the verified source to target without replacing an entry there; an empty target removes it.
 Error changeName(const Path& source, const Path& target, const FileInfo& expected);
+// Moves the verified source into the system trash and returns where it landed; only macOS and Linux provide one.
+Result<Path> moveToTrash(const Path& source, const FileInfo& expected);
 Error syncDirectory(const StagingFile& staging);
 Error writable(const Path& target, const FileInfo& info);
 Error createPrivateDirectory(const Path& path);

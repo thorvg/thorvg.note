@@ -869,7 +869,7 @@ void EditorApp::drawPrompt(ui::Rect viewport)
     context.rect(panel, theme.surface, theme.radius, theme.border);
     if (renaming || deleting) {
         auto contentWidth = panel.w - 44;
-        auto heading = renaming ? "Rename file" : "Permanently delete file?";
+        auto heading = renaming ? "Rename file" : (workspace.useTrash ? "Move file to Trash?" : "Permanently delete file?");
         context.text({panel.x + 22, panel.y + 16, contentWidth, 28}, heading, deleting ? theme.danger : theme.text, 16, true);
         context.text({panel.x + 22, panel.y + 45, contentWidth, 22}, context.elideText(displayPath(tab->path), contentWidth, 12), theme.muted, 12);
         auto enabled = !waitingSave && !workspace.busy();
@@ -886,7 +886,7 @@ void EditorApp::drawPrompt(ui::Rect viewport)
         auto buttonWidth = std::min(150.0f, (contentWidth - 8) / 2);
         auto confirmX = panel.x + panel.w - 22 - buttonWidth;
         ui::button(context, "prompt/cancel", {confirmX - 8 - buttonWidth, panel.y + 145, buttonWidth, 34}, "Cancel", [this] { cancelPrompt(); }, {.enabled = !waitingSave});
-        ui::button(context, "prompt/confirm", {confirmX, panel.y + 145, buttonWidth, 34}, renaming ? "Rename" : "Delete", [this] { finishFilePrompt(); },
+        ui::button(context, "prompt/confirm", {confirmX, panel.y + 145, buttonWidth, 34}, renaming ? "Rename" : (workspace.useTrash ? "Move to Trash" : "Delete"), [this] { finishFilePrompt(); },
                    {.style = renaming ? ui::ButtonStyle::Primary : ui::ButtonStyle::Default, .enabled = enabled});
         return;
     }

@@ -933,6 +933,9 @@ TEST_CASE_FIXTURE(EditorTest, "file_commands_keep_the_buffer_on_rename_and_confi
     CHECK_FALSE(std::filesystem::exists(source));
 
     REQUIRE(tab->editor.insert("more ", error));
+    // The system trash lies outside the test directory.
+    CHECK(app->workspace.useTrash == storage::trashAvailable());
+    app->workspace.useTrash = false;
     fromPalette("delete file");
     REQUIRE(app->context.focused() == "prompt/cancel");
     key(Key::Escape);

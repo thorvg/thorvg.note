@@ -346,12 +346,12 @@ bool Workspace::remove(uint64_t id)
 {
     auto tab = find(id);
     if (!tab || busy() || !tab->stamp.exists() || tab->uncertain || tab->persistenceFailed) return false;
-    if (auto failure = storage::remove(tab->path, tab->stamp)) {
+    if (auto failure = useTrash ? storage::trash(tab->path, tab->stamp).error : storage::remove(tab->path, tab->stamp)) {
         error = "Delete failed: " + failure.message;
         return false;
     }
     error.clear();
-    auto complete = [this, id](const std::string& failure) {
+    auto complete = [this, id, trashed = useTrash](const std::string& failure) {
         auto tab = find(id);
         tab->saving = false;
         if (!failure.empty()) {
@@ -359,7 +359,7 @@ bool Workspace::remove(uint64_t id)
             error = "File removed, but storage could not be synchronized: " + failure;
             return;
         }
-        message = "Deleted " + tab->title;
+        message = trashed ? "Moved " + tab->title + " to Trash" : "Deleted " + tab->title;
         erase(id);
     };
     if (persist) {

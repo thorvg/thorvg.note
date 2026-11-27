@@ -287,6 +287,65 @@ TEST_CASE_FIXTURE(ExistingFile, "move")
     }
 }
 
+TEST_CASE_FIXTURE(ExistingFile, "trash")
+{
+#if defined(__linux__)
+    // The home trash moves into the test directory.
+    auto data = directory.path / "data";
+    std::filesystem::create_directory(data);
+    REQUIRE_EQ(setenv("XDG_DATA_HOME", data.c_str(), 1), 0);
+#endif
+    SUBCASE("baseline")
+    {
+        auto trashed = trash(path, options.expected);
+#if defined(__APPLE__) || defined(__linux__)
+        CHECK(trashAvailable());
+        REQUIRE(trashed);
+        CHECK_FALSE(std::filesystem::exists(path));
+        CHECK_EQ(test::read(trashed.value), "original");
+#if defined(__APPLE__)
+        // The trash lies outside the test directory.
+        std::filesystem::remove(trashed.value);
+#else
+        CHECK(trashed.value == data / "Trash/files/sample.txt");
+        auto info = test::read(data / "Trash/info/sample.txt.trashinfo");
+        CHECK(info.find("[Trash Info]\nPath=" + path.native() + "\nDeletionDate=") == 0);
+        // A second file of the same name takes the next free one.
+        test::write(path, "second");
+        auto loaded = load(path);
+        REQUIRE(loaded);
+        auto again = trash(path, loaded.value.stamp);
+        REQUIRE(again);
+        CHECK(again.value == data / "Trash/files/sample 2.txt");
+        CHECK_EQ(test::read(again.value), "second");
+        CHECK(std::filesystem::exists(data / "Trash/info/sample 2.txt.trashinfo"));
+#endif
+#else
+        CHECK_FALSE(trashAvailable());
+        CHECK(trashed.error.code == ErrorCode::Io);
+        CHECK_EQ(test::read(path), "original");
+#endif
+    }
+    SUBCASE("conflict")
+    {
+        test::write(path, "external");
+        CHECK(trash(path, options.expected).error.code == ErrorCode::Conflict);
+        CHECK_EQ(test::read(path), "external");
+    }
+#if defined(__APPLE__) || defined(__linux__)
+    SUBCASE("replaced after verification")
+    {
+        test::write(directory.file("other"), "original");
+        std::filesystem::rename(directory.file("other"), path);
+        CHECK(detail::moveToTrash(path, detail::Access::get(options.expected)->info).error.code == ErrorCode::Conflict);
+        CHECK_EQ(test::read(path), "original");
+    }
+#endif
+#if defined(__linux__)
+    unsetenv("XDG_DATA_HOME");
+#endif
+}
+
 TEST_CASE_FIXTURE(ExistingFile, "write_failures")
 {
     for (auto stage : {Stage::Create, Stage::Write, Stage::Metadata, Stage::FileSync, Stage::Close, Stage::Commit}) {

@@ -301,4 +301,26 @@ Error remove(const Path& path, const DiskStamp& expected)
         return detail::changeName(source.value, {}, detail::Access::get(expected)->info);
     });
 }
+
+Result<Path> trash(const Path& path, const DiskStamp& expected)
+{
+    return detail::guarded<Result<Path>>([&]() -> Result<Path> {
+        auto source = detail::mutationTarget(path, expected);
+        if (!source) return source;
+#if defined(__APPLE__) || (defined(__linux__) && !defined(__EMSCRIPTEN__))
+        return detail::moveToTrash(source.value, detail::Access::get(expected)->info);
+#else
+        return {{}, detail::failure(ErrorCode::Io, "the platform has no system trash")};
+#endif
+    });
+}
+
+bool trashAvailable()
+{
+#if defined(__APPLE__) || (defined(__linux__) && !defined(__EMSCRIPTEN__))
+    return true;
+#else
+    return false;
+#endif
+}
 }  // namespace storage

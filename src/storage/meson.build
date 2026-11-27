@@ -18,6 +18,7 @@ storage_library = library(
   include_directories: src_inc,
   dependencies: storage_deps,
   override_options: ['cpp_std=c++20'],
+  objcpp_args: ['-std=c++20', '-fobjc-arc'],
 )
 storage_dep = declare_dependency(
   link_with: storage_library,
