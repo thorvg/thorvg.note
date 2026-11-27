@@ -4,7 +4,7 @@ self.addEventListener('install', function () { self.skipWaiting(); });
 self.addEventListener('fetch', function (event) {
     var request = event.request;
     var url = new URL(request.url);
-    var editor = request.destination === 'document' && /\/(editor|note)(\.html)?$/.test(url.pathname);
+    var editor = request.destination === 'document' && /\/((index|editor|note)(\.html)?)?$/.test(url.pathname);
     if (url.origin !== self.location.origin || !(editor || request.destination === 'worker')) return;
     event.respondWith(fetch(request).then(function (response) {
         // A redirect has no headers to extend; the browser follows it and asks again.
