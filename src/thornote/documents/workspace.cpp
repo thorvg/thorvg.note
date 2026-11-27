@@ -50,6 +50,7 @@ DocumentTab& Workspace::create()
 {
     auto id = nextId++;
     tabs.push_back(std::make_unique<DocumentTab>(id, "Untitled " + std::to_string(id)));
+    tabs.back()->layouts = 1 << size_t(layout);
     selected = id;
     pendingSelection = 0;
     return *tabs.back();
@@ -66,9 +67,23 @@ void Workspace::select(uint64_t id)
 {
     auto tab = find(id);
     if (!tab) return;
+    tab->layouts |= 1 << size_t(layout);
     auto current = active();
     pendingSelection = tab->loading && current && !current->loading ? id : 0;
     if (!pendingSelection) selected = id;
+}
+
+void Workspace::show(Layout next)
+{
+    if (next == layout) return;
+    selections[size_t(layout)] = pendingSelection ? pendingSelection : selected;
+    layout = next;
+    pendingSelection = 0;
+    auto tab = find(selections[size_t(next)]);
+    selected = tab && tab->in(next) ? tab->id : 0;
+    // The selected document closed while hidden, so the latest one of the layout follows.
+    for (auto other = tabs.rbegin(); !selected && other != tabs.rend(); ++other)
+        if ((*other)->in(next)) selected = (*other)->id;
 }
 
 bool Workspace::busy() const
@@ -129,9 +144,10 @@ void Workspace::restore(SessionDocument state)
     if (!state.content.originalPath.empty()) tab.path = key(state.content.originalPath);
     if (!tab.document.text(state.content.text)) return;
     tab.format = state.content.format;
+    tab.layouts = state.layouts ? state.layouts : 1 << size_t(layout);
     tab.restoreView = DocumentTab::ViewRestore{state.anchor, state.caret, state.scrollX, state.scrollY};
     nextId = std::max(nextId, state.id + 1);
-    selected = tab.id;
+    if (tab.in(layout)) selected = tab.id;
     tabs.push_back(std::move(restored));
     if (tab.path.empty()) return;
     tab.loading = true;
@@ -353,20 +369,38 @@ bool Workspace::remove(uint64_t id)
     return true;
 }
 
+void Workspace::deselect(uint64_t id)
+{
+    if (selected != id) return;
+    auto index = size_t(std::find_if(tabs.begin(), tabs.end(), [=](const auto& tab) { return tab->id == id; }) - tabs.begin());
+    selected = 0;
+    // The next document follows, or the previous one at the end.
+    for (auto i = index + 1; !selected && i < tabs.size(); ++i)
+        if (tabs[i]->in(layout)) selected = tabs[i]->id;
+    for (auto i = index; !selected && i-- > 0;)
+        if (tabs[i]->in(layout)) selected = tabs[i]->id;
+}
+
 void Workspace::erase(uint64_t id)
 {
     auto found = std::find_if(tabs.begin(), tabs.end(), [=](const auto& tab) { return tab->id == id; });
     if (found == tabs.end()) return;
-    auto index = size_t(found - tabs.begin());
+    deselect(id);
     tabs.erase(found);
     if (pendingSelection == id) pendingSelection = 0;
-    if (selected == id) selected = tabs.empty() ? 0 : tabs[std::min(index, tabs.size() - 1)]->id;
 }
 
 bool Workspace::close(uint64_t id, bool discard)
 {
     auto tab = find(id);
-    if (!tab || tab->busy() || (tab->dirty() && !discard)) return false;
+    if (!tab || tab->busy()) return false;
+    // Another layout keeps the document with its changes.
+    if (tab->layouts & ~(1 << size_t(layout))) {
+        deselect(id);
+        tab->layouts &= ~(1 << size_t(layout));
+        return true;
+    }
+    if (tab->dirty() && !discard) return false;
     erase(id);
     return true;
 }

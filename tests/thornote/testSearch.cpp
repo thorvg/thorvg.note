@@ -393,6 +393,61 @@ TEST_CASE_FIXTURE(EditorTest, "new_drafts_remain_in_all_notes")
     CHECK(app->workspace.documents().size() == 2);
 }
 
+TEST_CASE_FIXTURE(EditorTest, "notes_open_one_at_a_time_and_only_the_focused_one_follows_to_memo")
+{
+    storage::test::Directory directory;
+    for (auto name : {"a.md", "b.md", "c.md"})
+        storage::test::write(directory.file(name), name);
+    auto& memo = document("memo");
+    app->openPath(directory.path);
+    CHECK(app->workspace.active() == &memo);
+    auto open = [&](const char* name) {
+        auto id = app->workspace.open(directory.file(name), false);
+        REQUIRE(wait([&] { return !app->workspace.busy(); }));
+        draw();
+        return id;
+    };
+    auto a = open("a.md");
+    // Memo keeps the unsaved draft, so Note lets it go.
+    CHECK_FALSE(memo.in(tn::Layout::Note));
+    REQUIRE(app->workspace.find(a)->document.text("edited"));
+    auto b = open("b.md");
+    REQUIRE(run("note.favorite.toggle"));
+    auto c = open("c.md");
+    CHECK(app->workspace.active()->id == c);
+    // The note left behind closes, unless it has changes or is a favorite.
+    CHECK(open("a.md") == a);
+    CHECK_FALSE(app->workspace.find(c));
+    CHECK(app->workspace.find(b));
+    app->setLayout(tn::Layout::Memo);
+    CHECK(app->workspace.active()->id == a);
+    CHECK_FALSE(app->workspace.find(b)->in(tn::Layout::Memo));
+    CHECK(memo.in(tn::Layout::Memo));
+    activate(memo.id);
+    app->setLayout(tn::Layout::Note);
+    CHECK(app->workspace.active() == &memo);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "closing_a_memo_tab_leaves_its_changes_with_note")
+{
+    auto& shared = document("shared");
+    auto& other = document("other");
+    app->setLayout(tn::Layout::Note);
+    activate(shared.id);
+    app->setLayout(tn::Layout::Memo);
+    CHECK(app->workspace.active() == &shared);
+    REQUIRE(shared.document.text("edited"));
+    // Note holds the document as well, so the tab closes without asking.
+    REQUIRE(run("file.close"));
+    CHECK_FALSE(shared.in(tn::Layout::Memo));
+    CHECK(app->workspace.active() == &other);
+    app->setLayout(tn::Layout::Note);
+    draw();
+    CHECK(app->workspace.active() == &other);
+    CHECK(shared.in(tn::Layout::Note));
+    CHECK(shared.document.text() == "edited");
+}
+
 TEST_CASE_FIXTURE(EditorTest, "layout_scripts_turn_commands_off_per_layout")
 {
     app->chooseFolder = [](const storage::Path&, const auto&) {

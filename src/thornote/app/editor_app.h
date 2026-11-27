@@ -87,7 +87,9 @@ private:
     void registerCommands();
     void focusEditor(bool focus);
     void openPalette();
-    bool welcomeVisible() const { return workspace.documents().empty() && !settings.active && (composition != Layout::Note || !folderWorkspace); }
+    bool welcomeVisible() const { return !documentCount() && !settings.active && (composition != Layout::Note || !folderWorkspace); }
+    // Documents of the shown layout.
+    size_t documentCount() const;
     void requestClose(uint64_t id);
     void requestQuit();
     // A relative path when the document has no file.

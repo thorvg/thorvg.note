@@ -4,6 +4,7 @@
 #include <storage/storage.h>
 #include <task/task.h>
 #include <thornote/path.h>
+#include <thornote/preferences/layout.h>
 #include <array>
 #include <functional>
 #include <map>
@@ -17,6 +18,8 @@ struct SessionDocument
     storage::RecoverySnapshot content;
     std::array<uint8_t, 32> diskDigest{};
     bool hadFile = false, dirty = false, uncertain = false, favorite = false;
+    // Layouts holding the document, one bit each; none in sessions that predate layouts.
+    uint8_t layouts = 0;
     size_t anchor = 0, caret = 0;
     float scrollX = 0;
     double scrollY = 0;
@@ -25,7 +28,8 @@ struct SessionDocument
 struct SessionState
 {
     std::vector<SessionDocument> documents;
-    uint64_t active = 0;
+    // The document each layout selected; older sessions selected one for every layout.
+    std::array<uint64_t, layoutCount> selections{};
     float width = 1080, height = 720;
     bool settingsOpen = false, settingsActive = false, commands = false;
     bool folderWorkspace = false;

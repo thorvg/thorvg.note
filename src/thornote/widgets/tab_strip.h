@@ -26,6 +26,7 @@ public:
 private:
     const Workspace& workspace;
     ui::CommandRegistry& commands;
+    std::vector<const DocumentTab*> documents;  // Of the shown layout, kept to reuse its storage.
     float x = 0, width = 0, origin = 0, limit = 0;
     size_t count = 0;
     uint64_t selected = 0, pressed = 0;

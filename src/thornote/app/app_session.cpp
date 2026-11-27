@@ -15,7 +15,7 @@ std::optional<ui::Rect> EditorApp::restoreSession()
         // Older versions created and checkpointed an empty startup document automatically.
         if (only.content.originalPath.empty() && only.content.text.empty() && !only.dirty && !only.favorite && !only.uncertain) {
             saved.documents.clear();
-            saved.active = 0;
+            saved.selections = {};
         }
     }
     if (!session.error().empty()) workspace.error = session.error();
@@ -32,11 +32,18 @@ std::optional<ui::Rect> EditorApp::restoreSession()
 #ifdef __EMSCRIPTEN__
         browserRestoreFile(record.content);
 #endif
+        // Older sessions showed every document as a Memo tab, while Note listed the favorites with the selected one.
+        bool note = record.favorite || record.id == saved.selections[size_t(Layout::Note)];
+        if (!record.layouts) record.layouts = uint8_t(1 << size_t(Layout::Memo) | note << size_t(Layout::Note));
         if (record.favorite) favorites.insert(record.id);
         workspace.restore(std::move(record));
         if (!workspace.error.empty()) session.disable();
     }
-    if (saved.active) workspace.select(saved.active);
+    for (size_t i = 0; i < layoutCount; ++i) {
+        workspace.show(Layout(i));
+        workspace.select(saved.selections[i]);
+    }
+    workspace.show(composition);
     if (saved.settingsActive) openSettings();
     return ui::Rect{0, 0, restoredWidth, restoredHeight};
 }
@@ -44,7 +51,8 @@ std::optional<ui::Rect> EditorApp::restoreSession()
 SessionState EditorApp::captureSession(bool contents) const
 {
     SessionState result;
-    result.active = workspace.active() ? workspace.active()->id : 0;
+    for (size_t i = 0; i < layoutCount; ++i)
+        result.selections[i] = workspace.selection(Layout(i));
     result.width = width > 0 ? width : restoredWidth;
     result.height = height > 0 ? height : restoredHeight;
     result.settingsOpen = settings.open;
@@ -67,6 +75,7 @@ SessionState EditorApp::captureSession(bool contents) const
         doc.dirty = tab->dirty();
         doc.uncertain = tab->uncertain;
         doc.favorite = favorites.count(tab->id);
+        doc.layouts = tab->layouts;
         auto selection = tab->editor.session().selection();
         doc.anchor = selection.anchor;
         doc.caret = selection.caret;

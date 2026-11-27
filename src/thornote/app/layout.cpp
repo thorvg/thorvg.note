@@ -32,6 +32,7 @@ std::vector<DocumentTab*> EditorApp::filteredDocuments() const
         return hit.second;
     };
     for (const auto& tab : workspace.documents()) {
+        if (!tab->in(composition)) continue;
         if (composition == Layout::Note && !commandList) {
             if (collection == "favorites" && !favorites.count(tab->id)) continue;
             if (collection == "unsaved" && !tab->path.empty()) continue;
@@ -51,11 +52,18 @@ DocumentTab* EditorApp::visibleDocument() const
     return std::find(documents.begin(), documents.end(), active) != documents.end() ? active : nullptr;
 }
 
+size_t EditorApp::documentCount() const
+{
+    const auto& documents = workspace.documents();
+    return size_t(std::count_if(documents.begin(), documents.end(), [this](const auto& tab) { return tab->in(composition); }));
+}
+
 void EditorApp::drawCollections(ui::Rect r)
 {
     context.rect(r, theme.surface);
     size_t favoriteCount = 0, unsaved = 0;
     for (const auto& tab : workspace.documents()) {
+        if (!tab->in(Layout::Note)) continue;
         favoriteCount += favorites.count(tab->id);
         if (tab->path.empty()) ++unsaved;
     }
@@ -262,8 +270,8 @@ void EditorApp::drawEditor(ui::Rect r)
     auto tab = visibleDocument();
     editorBounds = r;
     if (!tab || tab->loading) {
-        context.text(r, tab ? "Opening file…" : composition == Layout::Note && !workspace.documents().empty() ? "No matching notes"
-                                                                                                              : "Create a document or open a file",
+        context.text(r, tab ? "Opening file…" : composition == Layout::Note && documentCount() ? "No matching notes"
+                                                                                               : "Create a document or open a file",
                      theme.muted, 16, false, ui::Align::Center);
         return;
     }
@@ -301,6 +309,13 @@ void EditorApp::render(float w, float h, double seconds)
     if (!settings.active && composition == Layout::Note && !commandList && !browsingNoteFiles() && w >= 660) {
         auto documents = filteredDocuments();
         if (!documents.empty() && std::find(documents.begin(), documents.end(), workspace.active()) == documents.end()) workspace.select(documents.front()->id);
+    }
+    if (composition == Layout::Note) {
+        // Note keeps one document open besides the favorites it lists. Closing keeps the changes no other layout holds.
+        for (size_t i = workspace.documents().size(); i-- > 0;) {
+            const auto& tab = *workspace.documents()[i];
+            if (tab.in(Layout::Note) && &tab != workspace.active() && !favorites.count(tab.id)) workspace.close(tab.id);
+        }
     }
     syncInputExtensions();
     auto active = visibleDocument();
@@ -404,7 +419,7 @@ void EditorApp::render(float w, float h, double seconds)
         std::vector<ui::Element> children;
         if (!sidebarTitle) children.push_back(pane("titlebar", true, {}, ui::fixed(40)));
         std::vector<ui::Element> content{
-            pane("tabs", composition != Layout::Memo && !notes && (settings.open || workspace.documents().size() > 1), {}, ui::fixed(34)),
+            pane("tabs", composition != Layout::Memo && !notes && (settings.open || documentCount() > 1), {}, ui::fixed(34)),
             pane("note-heading", notes, {}, ui::fixed(40)),
             pane("content", true, {}),
         };

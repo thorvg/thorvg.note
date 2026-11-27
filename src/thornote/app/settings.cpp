@@ -59,16 +59,18 @@ void EditorApp::editTheme()
 
 void EditorApp::cycleTabs(int direction)
 {
-    auto& documents = workspace.documents();
+    std::vector<uint64_t> documents;
+    for (const auto& tab : workspace.documents())
+        if (tab->in(composition)) documents.push_back(tab->id);
     size_t total = documents.size() + settings.open;
     if (!total) return;
     size_t selected = documents.size();
     if (!settings.active)
         for (size_t i = 0; i < documents.size(); ++i)
-            if (documents[i].get() == workspace.active()) selected = i;
+            if (documents[i] == workspace.selection(composition)) selected = i;
     auto next = size_t((int(selected) + direction + int(total)) % int(total));
     if (next == documents.size()) openSettings();
-    else activateDocument(documents[next]->id);
+    else activateDocument(documents[next]);
 }
 
 bool EditorApp::selectFont(const FontChoice& choice)

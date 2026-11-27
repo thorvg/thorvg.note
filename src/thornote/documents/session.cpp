@@ -39,14 +39,17 @@ std::string encodeSession(const SessionState& value)
 {
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<double>::max_digits10);
-    out << "thornote-session 1\nactive " << value.active << "\nwindow " << value.width << ' ' << value.height
+    out << "thornote-session 1\nselections";
+    for (auto id : value.selections)
+        out << ' ' << id;
+    out << "\nwindow " << value.width << ' ' << value.height
         << "\nsettings " << value.settingsOpen << ' ' << value.settingsActive << ' ' << value.settingsCategory
         << "\nnotes " << value.commands << ' ' << std::quoted(value.collection) << ' ' << std::quoted(value.noteQuery) << '\n';
     if (value.folderWorkspace) out << "folders 1\n";
     for (const auto& doc : value.documents) {
         out << "document " << doc.id << ' ' << std::quoted(doc.content.id) << ' ' << std::quoted(utf8(doc.content.originalPath)) << ' '
             << std::quoted(doc.content.title) << ' ' << doc.content.revision << ' ' << int(doc.content.format.ending) << ' ' << doc.content.format.bom << ' '
-            << doc.hadFile << ' ' << doc.dirty << ' ' << doc.uncertain << ' ' << doc.favorite << ' ' << 0 << ' '
+            << doc.hadFile << ' ' << doc.dirty << ' ' << doc.uncertain << ' ' << doc.favorite << ' ' << unsigned(doc.layouts) << ' '
             << doc.anchor << ' ' << doc.caret << ' ' << doc.scrollX << ' ' << doc.scrollY;
         for (auto byte : doc.diskDigest)
             out << ' ' << unsigned(byte);
@@ -67,7 +70,13 @@ bool decodeSession(std::string_view text, SessionState& result)
     std::set<storage::Path> paths;
     while (in >> key) {
         if (key == "active") {
-            if (!(in >> value.active)) return false;
+            // Sessions before layouts selected one document for every layout.
+            uint64_t id;
+            if (!(in >> id)) return false;
+            value.selections.fill(id);
+        } else if (key == "selections") {
+            for (auto& id : value.selections)
+                if (!(in >> id)) return false;
         } else if (key == "window") {
             if (!(in >> value.width >> value.height) || !std::isfinite(value.width) || !std::isfinite(value.height) || value.width < 1 || value.height < 1 || value.width > 32768 || value.height > 32768) return false;
         } else if (key == "settings") {
@@ -81,10 +90,11 @@ bool decodeSession(std::string_view text, SessionState& result)
             SessionDocument doc;
             std::string path;
             int ending;
-            bool retiredPreview;  // Reserved field in the existing session format.
+            unsigned layouts;
             if (!(in >> doc.id >> std::quoted(doc.content.id) >> std::quoted(path) >> std::quoted(doc.content.title) >> doc.content.revision >> ending >> doc.content.format.bom
-                  >> doc.hadFile >> doc.dirty >> doc.uncertain >> doc.favorite >> retiredPreview >> doc.anchor >> doc.caret >> doc.scrollX >> doc.scrollY)) return false;
-            if (!doc.id || doc.id >= std::numeric_limits<uint64_t>::max() - 1 || !ids.insert(doc.id).second || doc.content.id.size() != 32 || doc.content.id.find_first_not_of("0123456789abcdef") != std::string::npos || !snapshots.insert(doc.content.id).second || ending < 0 || ending > 3 || value.documents.size() >= 2048 || !std::isfinite(doc.scrollX) || !std::isfinite(doc.scrollY) || doc.scrollX < 0 || doc.scrollY < 0) return false;
+                  >> doc.hadFile >> doc.dirty >> doc.uncertain >> doc.favorite >> layouts >> doc.anchor >> doc.caret >> doc.scrollX >> doc.scrollY)) return false;
+            if (!doc.id || doc.id >= std::numeric_limits<uint64_t>::max() - 1 || !ids.insert(doc.id).second || doc.content.id.size() != 32 || doc.content.id.find_first_not_of("0123456789abcdef") != std::string::npos || !snapshots.insert(doc.content.id).second || ending < 0 || ending > 3 || layouts >> layoutCount || value.documents.size() >= 2048 || !std::isfinite(doc.scrollX) || !std::isfinite(doc.scrollY) || doc.scrollX < 0 || doc.scrollY < 0) return false;
+            doc.layouts = uint8_t(layouts);
             doc.content.originalPath = utf8Path(path);
             if (!path.empty() && (!doc.content.originalPath.is_absolute() || !paths.insert(doc.content.originalPath.lexically_normal()).second)) return false;
             doc.content.format.ending = storage::LineEnding(ending);
@@ -96,7 +106,7 @@ bool decodeSession(std::string_view text, SessionState& result)
             value.documents.push_back(std::move(doc));
         } else return false;
     }
-    if (!in.eof() || (value.active && !ids.count(value.active))) return false;
+    if (!in.eof() || std::any_of(value.selections.begin(), value.selections.end(), [&](auto id) { return id && !ids.count(id); })) return false;
     result = std::move(value);
     return true;
 }
@@ -153,7 +163,8 @@ SessionState SessionStore::load(const storage::Path& path)
         blobs.emplace(doc.id, metadata(doc));
         result.documents.push_back(std::move(doc));
     }
-    if (result.active && std::none_of(result.documents.begin(), result.documents.end(), [&](const auto& doc) { return doc.id == result.active; })) result.active = 0;
+    for (auto& id : result.selections)
+        if (std::none_of(result.documents.begin(), result.documents.end(), [&](const auto& doc) { return doc.id == id; })) id = 0;
     lastSucceeded = autosave.enabled = writable;
     return result;
 }

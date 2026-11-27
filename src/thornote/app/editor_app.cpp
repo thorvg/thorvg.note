@@ -122,6 +122,7 @@ EditorApp::EditorApp(const std::function<void()>& wake, const storage::Path& set
         tabs.options.style = ui::TabStyle(saved.tabStyle);
         layouts = saved.layouts;
         composition = saved.composition;
+        workspace.show(composition);
         recent = std::move(saved.recent);
     }
     preferenceFile.track(preferences());
@@ -290,7 +291,11 @@ void EditorApp::focusEditor(bool focus)
 
 void EditorApp::setLayout(Layout value)
 {
+    auto previous = composition;
     composition = value;
+    workspace.show(value);
+    // The focused document follows the switch, while each layout keeps its own documents.
+    if (value != previous) workspace.select(workspace.selection(previous));
     commandList = false;
     documentScroll = 0;
     collectionOffset = 0;
@@ -543,7 +548,11 @@ void EditorApp::registerCommands()
     add("extensions.disable", "Disable input extensions", "Input extensions", "", [this] { inputExtensions.setEnabled(false); });
     add("extensions.enable", "Enable input extensions", "Input extensions", "", [this] { inputExtensions.setEnabled(true); });
     add("note.favorite.toggle", "Add / remove favorite", "Notes", "", [this] {
-        if (auto tab = target()) { if (!favorites.erase(tab->id)) favorites.insert(tab->id); }
+        // Note lists the favorites, so it holds them.
+        if (auto tab = target(); tab && !favorites.erase(tab->id)) {
+            favorites.insert(tab->id);
+            tab->layouts |= 1 << size_t(Layout::Note);
+        }
         focusEditor(true); }, ready, "No document is ready");
     add("note.duplicate", "Duplicate note", "Notes", "", [this] {
         auto source = target();
@@ -563,7 +572,7 @@ void EditorApp::registerCommands()
         auto& copy = workspace.create();
         copy.document.text(source->document.text());
         copy.format = source->format;
-        if (collection == "favorites") favorites.insert(copy.id);
+        if (composition == Layout::Note && collection == "favorites") favorites.insert(copy.id);
         if (!destination.empty()) workspace.saveAs(copy.id, destination);
         focusEditor(true); }, ready, "No document is ready");
     add("note.move.choose", "Move note to folder...", "Notes", "", [this, pickFolder] {
@@ -584,8 +593,8 @@ void EditorApp::registerCommands()
     add("editor.font.increase", "Increase editor font size", "Appearance", "Mod++", [this] { setFontSize(options.fontSize + 1); }, [this] { return options.fontSize < ui::TextEditorOptions::maxFontSize; });
     add("editor.font.decrease", "Decrease editor font size", "Appearance", "Mod+-", [this] { setFontSize(options.fontSize - std::min(1.0f, options.fontSize / 2)); });
     add("editor.font.reset", "Reset editor font size", "Appearance", "Mod+0", [this] { setFontSize(16); });
-    add("tab.next", "Next tab", "Tabs", "Mod+Tab", [this] { cycleTabs(1); }, [this] { return workspace.documents().size() + settings.open > 1; }, "Only one tab is open");
-    add("tab.previous", "Previous tab", "Tabs", "Mod+Shift+Tab", [this] { cycleTabs(-1); }, [this] { return workspace.documents().size() + settings.open > 1; }, "Only one tab is open");
+    add("tab.next", "Next tab", "Tabs", "Mod+Tab", [this] { cycleTabs(1); }, [this] { return documentCount() + settings.open > 1; }, "Only one tab is open");
+    add("tab.previous", "Previous tab", "Tabs", "Mod+Shift+Tab", [this] { cycleTabs(-1); }, [this] { return documentCount() + settings.open > 1; }, "Only one tab is open");
     add("file.lineEndings.lf", "Convert output line endings to LF", "File", "", [this] { if (auto tab = target()) tab->format.ending = storage::LineEnding::Lf; }, ready, "No document is ready");
 }
 
@@ -688,7 +697,8 @@ void EditorApp::requestClose(uint64_t id)
 {
     auto tab = workspace.find(id);
     if (!tab || tab->busy()) return;
-    if (!tab->dirty()) {
+    // Another layout holding the document keeps its changes.
+    if (!tab->dirty() || tab->layouts & ~(1 << size_t(composition))) {
         workspace.close(id);
         focusEditor(true);
         return;

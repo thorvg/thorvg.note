@@ -11,7 +11,9 @@ void TabStrip::draw(ui::Context& context, ui::Rect r, bool titlebar, bool settin
         context.rect(r, theme.surface);
         context.line(r.x, r.y + r.h - 1, r.x + r.w, r.y + r.h - 1, theme.border);
     }
-    const auto& documents = workspace.documents();
+    documents.clear();
+    for (const auto& tab : workspace.documents())
+        if (tab->in(workspace.shown())) documents.push_back(tab.get());
     size_t total = documents.size() + settingsOpen;
     float edge = options.style == ui::TabStyle::Connected ? std::max(6.0f, options.shoulder) : 6;
     auto add = [&](float x) {
@@ -33,7 +35,7 @@ void TabStrip::draw(ui::Context& context, ui::Rect r, bool titlebar, bool settin
     size_t current = settingsActive ? documents.size() : 0;
     size_t held = pressed == 0 && settingsOpen ? documents.size() : total;
     for (size_t i = 0; i < documents.size(); ++i) {
-        if (!settingsActive && documents[i].get() == workspace.active()) current = i;
+        if (!settingsActive && documents[i] == workspace.active()) current = i;
         if (documents[i]->id == pressed) held = i;
     }
     float content = total * cellWidth;
@@ -84,7 +86,7 @@ void TabStrip::draw(ui::Context& context, ui::Rect r, bool titlebar, bool settin
     context.scroll("tabs/scroll", strip, x, limit, {.step = 48, .horizontal = true, .enabled = enabled});
     context.clip({r.x, r.y, strip.w, r.h}, [&] {
         for (size_t i = first; i < end; ++i) {
-            auto tab = i < documents.size() ? documents[i].get() : nullptr;
+            auto tab = i < documents.size() ? documents[i] : nullptr;
             uint64_t id = tab ? tab->id : 0;
             std::string key = tab ? std::to_string(id) : "settings";
             ui::Rect cell{r.x + edge + i * cellWidth - x, r.y + top, cellWidth - 2, r.h - top - (options.style == ui::TabStyle::Segmented ? 2 : 0)};

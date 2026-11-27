@@ -174,7 +174,8 @@ TEST_CASE("session_round_trip_preserves_fractional_positions_in_large_documents"
 {
     tn::SessionState state;
     tn::SessionDocument document;
-    document.id = state.active = 1;
+    document.id = 1;
+    state.selections.fill(1);
     document.content.id = std::string(32, 'a');
     document.content.title = "Large.md";
     document.scrollY = 64427259.779846191;
@@ -183,4 +184,54 @@ TEST_CASE("session_round_trip_preserves_fractional_positions_in_large_documents"
     REQUIRE(tn::decodeSession(tn::encodeSession(state), restored));
     REQUIRE(restored.documents.size() == 1);
     CHECK(restored.documents[0].scrollY == document.scrollY);
+}
+
+TEST_CASE("session_keeps_the_layouts_of_documents_and_reads_one_older_selection")
+{
+    tn::SessionState state;
+    for (uint8_t id : {1, 2}) {
+        tn::SessionDocument document;
+        document.id = id;
+        document.content.id = std::string(32, char('a' + id));
+        document.layouts = id;
+        state.documents.push_back(document);
+    }
+    state.selections = {1, 2};
+    auto text = tn::encodeSession(state);
+    tn::SessionState restored;
+    REQUIRE(tn::decodeSession(text, restored));
+    CHECK(restored.selections == state.selections);
+    CHECK(restored.documents[1].layouts == 2);
+    // Older sessions selected one document for every layout.
+    text.replace(text.find("selections 1 2"), 14, "active 2");
+    REQUIRE(tn::decodeSession(text, restored));
+    CHECK(restored.selections == std::array<uint64_t, tn::layoutCount>{2, 2});
+    state.documents[0].layouts = 1 << tn::layoutCount;
+    CHECK_FALSE(tn::decodeSession(tn::encodeSession(state), restored));
+}
+
+TEST_CASE_FIXTURE(PersistedWorkspace, "layouts_select_and_close_their_own_documents")
+{
+    auto first = workspace.create().id, second = workspace.create().id;
+    workspace.show(tn::Layout::Note);
+    CHECK_FALSE(workspace.active());
+    auto note = workspace.create().id;
+    // A document both layouts hold leaves one without closing.
+    workspace.select(first);
+    REQUIRE(workspace.find(first)->document.text("changed"));
+    workspace.show(tn::Layout::Memo);
+    CHECK(workspace.active()->id == second);
+    CHECK_FALSE(workspace.find(note)->in(tn::Layout::Memo));
+    workspace.select(first);
+    REQUIRE(workspace.close(first));
+    CHECK(workspace.active()->id == second);
+    workspace.show(tn::Layout::Note);
+    CHECK(workspace.active()->id == first);
+    CHECK_FALSE(workspace.close(first));
+    CHECK(workspace.close(note));
+    CHECK_FALSE(workspace.find(note));
+    // The last layout holding changes closes them only when discarded.
+    CHECK(workspace.close(first, true));
+    CHECK_FALSE(workspace.find(first));
+    CHECK_FALSE(workspace.active());
 }
