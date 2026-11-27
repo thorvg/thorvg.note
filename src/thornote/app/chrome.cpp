@@ -15,6 +15,12 @@ void EditorApp::drawTitleBar(ui::Rect r, bool headerOnly)
     state["titlebarWidth"] = double(r.w);
     layoutScript.refreshTitlebar(state);
     context.rect(r, theme.surface);
+    // A bar taller than its 40 point row keeps the row at the bottom and drags the window above it.
+    if (auto band = r.h - 40; band > 0) {
+        chrome.drawDragArea(context, {r.x, r.y, r.w, band});
+        r.y += band;
+        r.h -= band;
+    }
     auto& bar = layoutScript.titlebar();
     auto types = windowViewTypes(false);
     bar.render(context, "titlebar", r, types, commands);

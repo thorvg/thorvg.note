@@ -51,7 +51,8 @@ local definition = {
       table.insert(children, ui.view {id = "status", source = "status", height = 22})
     end
     if not sidebarTitle then
-      table.insert(children, 1, ui.view {id = "titlebar", source = "titlebar", height = 40})
+      -- The memo bar rises above its 40 point row, giving the window a little more to drag.
+      table.insert(children, 1, ui.view {id = "titlebar", source = "titlebar", height = state.mode == "memo" and 46 or 40})
     end
     return ui.column {id = "workspace", children = children}
   end,

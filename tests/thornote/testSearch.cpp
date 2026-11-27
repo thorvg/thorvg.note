@@ -949,6 +949,23 @@ TEST_CASE_FIXTURE(EditorTest, "file_commands_keep_the_buffer_on_rename_and_confi
     CHECK_FALSE(app->workspace.find(id));
 }
 
+TEST_CASE_FIXTURE(EditorTest, "memo_title_bar_drags_above_its_row")
+{
+    app->setLayout(tn::Layout::Memo);
+    REQUIRE(useSourceLayouts());
+    document("first");
+    document("second");
+    draw();
+    REQUIRE(editorBounds().y >= 46);
+    // The tabs and buttons keep their row at the bottom of the bar, under a band that moves the window.
+    float control = -1;
+    for (float x = 4; x < 800 && control < 0; x += 4)
+        if (!app->draggable(x, 26) && !app->draggable(x, 8)) control = x;
+    REQUIRE(control >= 0);
+    CHECK(app->draggable(control, 3));
+    CHECK_FALSE(app->draggable(control, 44));
+}
+
 TEST_CASE_FIXTURE(EditorTest, "note_heading_moves_the_window_and_closes_settings")
 {
     app->setLayout(tn::Layout::Note);
