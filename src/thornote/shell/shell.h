@@ -117,6 +117,8 @@ public:
     virtual bool busy() const = 0;
 
     virtual void window(const WindowState&) = 0;
+    // How many times larger than the platform size the content is drawn.
+    virtual float zoom() const = 0;
     virtual std::string title() const = 0;
     virtual ui::Cursor cursor() const = 0;
     // Whether a press at the point moves the window instead of reaching the content.

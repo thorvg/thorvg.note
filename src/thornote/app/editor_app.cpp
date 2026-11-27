@@ -118,6 +118,7 @@ EditorApp::EditorApp(const std::function<void()>& wake, const storage::Path& set
     if (preferenceFile.load(settingsDirectory.empty() ? storage::Path{} : settingsDirectory / "settings.conf", saved)) {
         selectFont(saved.font);
         options.fontSize = saved.fontSize;
+        uiZoom = saved.zoom;
         dark = saved.dark;
         tabs.options.style = ui::TabStyle(saved.tabStyle);
         layouts = saved.layouts;
@@ -330,6 +331,14 @@ void EditorApp::setFontSize(float size)
     if (size <= 0 || size == options.fontSize) return;
     options.fontSize = size;
     applyEditorOptions();
+}
+
+void EditorApp::stepZoom(int direction)
+{
+    auto level = std::lower_bound(std::begin(zoomLevels), std::end(zoomLevels), uiZoom - 0.001f);
+    if (direction > 0) level = std::upper_bound(level, std::end(zoomLevels), uiZoom + 0.001f);
+    else if (level != std::begin(zoomLevels)) --level;
+    if (level != std::end(zoomLevels)) uiZoom = *level;
 }
 
 void EditorApp::applyEditorOptions()
@@ -593,6 +602,9 @@ void EditorApp::registerCommands()
     add("editor.font.increase", "Increase editor font size", "Appearance", "Mod++", [this] { setFontSize(options.fontSize + 1); }, [this] { return options.fontSize < ui::TextEditorOptions::maxFontSize; });
     add("editor.font.decrease", "Decrease editor font size", "Appearance", "Mod+-", [this] { setFontSize(options.fontSize - std::min(1.0f, options.fontSize / 2)); });
     add("editor.font.reset", "Reset editor font size", "Appearance", "Mod+0", [this] { setFontSize(16); });
+    add("view.zoom.in", "Zoom in", "Appearance", "Mod+Alt++", [this] { stepZoom(1); }, [this] { return uiZoom < maxZoom; });
+    add("view.zoom.out", "Zoom out", "Appearance", "Mod+Alt+-", [this] { stepZoom(-1); }, [this] { return uiZoom > minZoom; });
+    add("view.zoom.reset", "Reset zoom", "Appearance", "Mod+Alt+0", [this] { uiZoom = 1; });
     add("tab.next", "Next tab", "Tabs", "Mod+Tab", [this] { cycleTabs(1); }, [this] { return documentCount() + settings.open > 1; }, "Only one tab is open");
     add("tab.previous", "Previous tab", "Tabs", "Mod+Shift+Tab", [this] { cycleTabs(-1); }, [this] { return documentCount() + settings.open > 1; }, "Only one tab is open");
     add("file.lineEndings.lf", "Convert output line endings to LF", "File", "", [this] { if (auto tab = target()) tab->format.ending = storage::LineEnding::Lf; }, ready, "No document is ready");

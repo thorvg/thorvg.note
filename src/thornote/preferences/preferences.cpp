@@ -19,7 +19,7 @@ std::string encodePreferences(const Preferences& value)
 {
     std::ostringstream out;
     out << "thornote-settings 1\nfont " << std::quoted(utf8(value.font.path)) << ' ' << value.font.index << ' ' << std::quoted(value.font.name)
-        << "\nfont-size " << value.fontSize << "\ndark " << value.dark << "\ntabs " << value.tabStyle << "\ncomposition " << storedLayout(value.composition) << '\n';
+        << "\nfont-size " << value.fontSize << "\nzoom " << value.zoom << "\ndark " << value.dark << "\ntabs " << value.tabStyle << "\ncomposition " << storedLayout(value.composition) << '\n';
     for (size_t i = 0; i < value.layouts.size(); ++i) {
         const auto& state = value.layouts[i];
         out << "layout " << storedLayout(Layout(i)) << ' ' << state.sidebar << ' ' << state.properties << ' ' << state.lineNumbers << ' '
@@ -48,6 +48,8 @@ bool decodePreferences(std::string_view text, Preferences& result)
             value.font.path = utf8Path(path);
         } else if (key == "font-size") {
             if (!(in >> value.fontSize) || !std::isfinite(value.fontSize) || value.fontSize <= 0) return false;
+        } else if (key == "zoom") {
+            if (!(in >> value.zoom) || !(value.zoom >= minZoom && value.zoom <= maxZoom)) return false;
         } else if (key == "dark") {
             if (!(in >> value.dark)) return false;
         } else if (key == "tabs") {

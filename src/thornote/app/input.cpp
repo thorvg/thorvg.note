@@ -9,6 +9,29 @@ namespace tn
 {
 namespace
 {
+const char* zoomCommand(const KeyEvent& event)
+{
+    if (!event.modifiers.alt || event.altGr) return nullptr;
+    enum : uint32_t
+    {
+        Zero = 39,
+        Minus = 45,
+        Equals = 46,
+        KeypadMinus = 86,
+        KeypadPlus = 87,
+        KeypadZero = 98
+    };
+    switch (event.scancode) {
+        case Equals:
+        case KeypadPlus: return "view.zoom.in";
+        case Minus:
+        case KeypadMinus: return "view.zoom.out";
+        case Zero:
+        case KeypadZero: return "view.zoom.reset";
+        default: return nullptr;
+    }
+}
+
 ui::Key uiKey(Key key)
 {
     switch (key) {
@@ -170,6 +193,10 @@ bool EditorApp::key(const KeyEvent& event)
     }
     if (mods.primary) {
         if (!searchFocused() && markdownShortcut(event)) return true;
+        if (auto command = zoomCommand(event)) {
+            commands.execute(command);
+            return true;
+        }
         const char* command = nullptr;
         switch (uint32_t(event.key)) {
             case 'n': command = "file.new"; break;

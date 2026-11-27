@@ -358,7 +358,7 @@ private:
         Geometry value;
         SDL_GetWindowSize(window, &value.windowWidth, &value.windowHeight);
         SDL_GetWindowSizeInPixels(window, &value.pixelWidth, &value.pixelHeight);
-        value.scale = SDL_GetWindowDisplayScale(window);
+        value.scale = SDL_GetWindowDisplayScale(window) * app->zoom();
         value.flags = SDL_GetWindowFlags(window) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_HIDDEN);
         SDL_GetWindowSafeArea(window, &value.safeArea);
         return value;
@@ -391,6 +391,7 @@ private:
         auto flags = SDL_GetWindowFlags(window);
         auto scale = SDL_GetWindowDisplayScale(window);
         if (scale <= 0) scale = 1;
+        scale *= app->zoom();
         app->window({custom, bool(flags & SDL_WINDOW_MAXIMIZED), bool(flags & SDL_WINDOW_FULLSCREEN), scale});
         if (!updateNativeWindowChrome(window, !custom)) return false;
         titleBarInput.update(custom, flags & SDL_WINDOW_INPUT_FOCUS);

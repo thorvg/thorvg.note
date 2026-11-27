@@ -55,6 +55,7 @@ public:
     bool done() const override { return exiting; }
     bool busy() const override { return workspace.busy() || noteBrowser.loading(); }
     void window(const WindowState& state) override { chrome.window = state; }
+    float zoom() const override { return uiZoom; }
     std::string title() const override;
     ui::Cursor cursor() const override { return context.cursor(); }
     bool draggable(float x, float y) const override;
@@ -104,6 +105,7 @@ private:
     void applyEditorOptions();
     void applyEditorOptions(DocumentTab&);
     void setFontSize(float size);
+    void stepZoom(int direction);
     void zoom(int direction, const KeyEvent&);
     void editTheme();
     void configure(DocumentTab&);
@@ -248,6 +250,7 @@ private:
     bool folderWorkspace = false;
     std::set<uint64_t> favorites;
     bool revealDocument = true;
+    float uiZoom = 1;
     bool dark = false, commandList = false, palette = false, dialog = false;
     // Whether the visible document editor owns keyboard input; mirrors the context focus on "editor".
     bool editorFocus = false;

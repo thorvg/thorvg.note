@@ -13,10 +13,15 @@ namespace tn
 inline constexpr const char* preferencesOrganization = "ThorVG";
 inline constexpr const char* preferencesAppId = "ThorNote";
 
+// Interface sizes the zoom commands step through, relative to the platform size.
+inline constexpr float zoomLevels[] = {0.5f, 0.67f, 0.75f, 0.8f, 0.9f, 1, 1.1f, 1.25f, 1.5f, 1.75f, 2};
+inline constexpr float minZoom = zoomLevels[0], maxZoom = zoomLevels[std::size(zoomLevels) - 1];
+
 struct Preferences
 {
     FontChoice font;
     float fontSize = 16;
+    float zoom = 1;
     bool dark = false;
     int tabStyle = 1;
     std::array<LayoutState, layoutCount> layouts = defaultLayouts;

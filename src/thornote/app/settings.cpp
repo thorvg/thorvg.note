@@ -99,7 +99,7 @@ bool EditorApp::selectFont(const FontChoice& choice)
 
 Preferences EditorApp::preferences() const
 {
-    return {fontChoice, options.fontSize, dark, int(tabs.options.style), layouts, composition, recent};
+    return {fontChoice, options.fontSize, uiZoom, dark, int(tabs.options.style), layouts, composition, recent};
 }
 
 bool EditorApp::flushPreferences(bool force)
@@ -144,7 +144,7 @@ void EditorApp::drawSettings(ui::Rect r)
     settings.fontSearchBounds = {};
     auto query = lower(settings.search.value());
     bool sections[]{query.empty() ? settings.category == 0 : std::string("editor font family size zoom preview line numbers height position offset").find(query) != std::string::npos,
-                    query.empty() ? settings.category == 1 : std::string("appearance theme light dark tab style connected segmented underline").find(query) != std::string::npos,
+                    query.empty() ? settings.category == 1 : std::string("appearance theme light dark tab style connected segmented underline interface size zoom scale").find(query) != std::string::npos,
                     query.empty() ? settings.category == 2 : std::string("layout script lua memo note editor").find(query) != std::string::npos};
     auto choiceColumns = [&](size_t count) {
         auto capacity = std::max(size_t(1), std::min(count, size_t(std::max(1.0f, (body.w + 8) / 118))));
@@ -155,7 +155,7 @@ void EditorApp::drawSettings(ui::Rect r)
         return (count + choiceColumns(count) - 1) / choiceColumns(count);
     };
     float editorHeight = 550 + (body.w < 390 ? 32 : 0);
-    float appearanceHeight = 350 + (choiceRows(2) + choiceRows(3) - 2) * 48;
+    float appearanceHeight = 398 + (choiceRows(2) + choiceRows(3) - 2) * 48 + (body.w < 390 ? 32 : 0);
     float layoutHeight = 296 + (choiceRows(layoutCount) - 1) * 48;
     float total = (sections[0] ? editorHeight : 0) + (sections[1] ? appearanceHeight : 0) + (sections[2] ? layoutHeight : 0);
     float limit = std::max(0.0f, total - body.h);
@@ -255,6 +255,13 @@ void EditorApp::drawSettings(ui::Rect r)
                                                                                                                                                                                 : 2,
                     [this](int value) { tabs.options.style = value == 0 ? ui::TabStyle::Connected : value == 1 ? ui::TabStyle::Segmented
                                                                                                                : ui::TabStyle::Underline; });
+            context.text({body.x, y, 120, 32}, "Interface size", theme.text, 12, true);
+            if (body.w < 390) y += 32;
+            float x = body.x + (body.w < 390 ? 0 : std::min(150.0f, body.w - 260));
+            ui::button(context, "settings/zoom/decrease", {x, y, 32, 32}, "", [this] { commands.execute("view.zoom.out"); }, {.icon = "minus", .enabled = uiZoom > minZoom});
+            context.text({x + 40, y, 64, 32}, std::to_string(int(std::lround(uiZoom * 100))) + "%", theme.text, 12, false, ui::Align::Center);
+            ui::button(context, "settings/zoom/increase", {x + 112, y, 32, 32}, "", [this] { commands.execute("view.zoom.in"); }, {.icon = "plus", .enabled = uiZoom < maxZoom});
+            ui::button(context, "settings/zoom/reset", {x + 156, y, 82, 32}, "Reset", [this] { commands.execute("view.zoom.reset"); }, {.style = ui::ButtonStyle::Quiet});
             y = top + appearanceHeight;
         }
         if (sections[2]) {

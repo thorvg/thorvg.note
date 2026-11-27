@@ -65,6 +65,7 @@ public:
     void prepareFont(DocumentTab& tab, std::string_view added) { app->prepareFont(tab, added); }
     bool editorFocused() const { return app->editorFocus; }
     bool settingsOpen() const { return app->settings.open; }
+    tn::Preferences preferences() const { return app->preferences(); }
     void focusEditor() { app->focusEditor(true); }
     const std::string& extensionError() const { return app->inputExtensions.error(); }
     void useExtensions(const storage::Path& path) { app->inputExtensions.setDirectory(path); }
@@ -885,6 +886,35 @@ TEST_CASE("fractional_font_sizes_survive_loading_preferences")
     REQUIRE(decodePreferences("thornote-settings 1\nfont-size 0.125\ndark 1\n", decoded));
     CHECK(decoded.fontSize == 0.125f);
     CHECK(decoded.dark);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "interface_zoom_steps_through_levels_and_is_saved")
+{
+    auto zoomKey = [&](uint32_t scancode) {
+        auto modifiers = primary;
+        modifiers.alt = true;
+        app->keyDown({.key = Key('='), .scancode = scancode, .modifiers = modifiers});
+    };
+    document("note");
+    draw();
+    CHECK(app->zoom() == 1);
+    zoomKey(46);
+    CHECK(app->zoom() == 1.1f);
+    REQUIRE(run("view.zoom.out"));
+    REQUIRE(run("view.zoom.out"));
+    CHECK(app->zoom() == 0.9f);
+    for (int i = 0; i < 20; ++i)
+        run("view.zoom.out");
+    CHECK(app->zoom() == tn::minZoom);
+    CHECK(!enabled("view.zoom.out"));
+    zoomKey(39);
+    CHECK(app->zoom() == 1);
+    REQUIRE(run("view.zoom.in"));
+
+    tn::Preferences decoded;
+    REQUIRE(decodePreferences(encodePreferences(preferences()), decoded));
+    CHECK(decoded.zoom == 1.1f);
+    CHECK(!decodePreferences("thornote-settings 1\nzoom 9\n", decoded));
 }
 
 TEST_CASE_FIXTURE(EditorTest, "find_field_undo_and_redo_do_not_change_the_document")
