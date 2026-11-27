@@ -403,11 +403,12 @@ TEST_CASE_FIXTURE(EditorTest, "right_clicking_a_draft_selects_it_and_opens_the_n
     std::vector<std::string> commands;
     for (const auto& item : definition->items)
         commands.push_back(item.command);
-    CHECK(commands == std::vector<std::string>{"note.favorite.toggle", "file.new", "note.duplicate", "file.rename", "file.delete"});
-    CHECK_FALSE(definition->items[0].checked);
+    // The empty commands are separators.
+    CHECK(commands == std::vector<std::string>{"file.export", "", "file.new", "", "note.favorite.toggle", "note.duplicate", "file.rename", "", "file.delete"});
+    CHECK(definition->items[4].title == "Favorite Note");
     REQUIRE(run("note.favorite.toggle"));
     draw();
-    CHECK(menuDefinition("note-menu")->items[0].checked);
+    CHECK(menuDefinition("note-menu")->items[4].title == "Unfavorite Note");
     // A draft has no file to rename or delete.
     CHECK_FALSE(enabled("file.rename"));
     CHECK_FALSE(enabled("file.delete"));
@@ -443,6 +444,23 @@ TEST_CASE_FIXTURE(EditorTest, "note_menu_duplicates_a_saved_note_beside_it")
         CHECK(storage::test::read(directory.file(name)) == "body\r\n");
     }
     CHECK(storage::test::read(source) == "body\r\n");
+}
+
+TEST_CASE_FIXTURE(EditorTest, "exporting_a_note_writes_a_copy_to_the_chosen_file")
+{
+    storage::test::Directory directory;
+    auto destination = directory.file("export.txt");
+    auto& draft = document("draft note");
+    app->chooseFile = [&](bool save, const storage::Path&, const auto& done) {
+        CHECK(save);
+        done({tn::utf8(destination)}, {});
+    };
+    app->workspace.message.clear();
+    REQUIRE(run("file.export"));
+    REQUIRE(wait([&] { return !app->workspace.message.empty() || !app->workspace.error.empty(); }));
+    CHECK(app->workspace.error.empty());
+    CHECK(storage::test::read(destination) == "draft note");
+    CHECK(draft.path.empty());
 }
 
 TEST_CASE_FIXTURE(EditorTest, "note_previews_reuse_wrapping_and_follow_content_width_and_font_changes")

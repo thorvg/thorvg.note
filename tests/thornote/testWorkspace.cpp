@@ -68,6 +68,25 @@ TEST_CASE_FIXTURE(PersistedWorkspace, "failed_browser_persistence_remains_modifi
     CHECK(workspace.error.empty());
 }
 
+TEST_CASE_FIXTURE(PersistedWorkspace, "a_saved_copy_keeps_the_document_on_its_own_file")
+{
+    storage::test::write(directory.file("note.md"), "note\r\n");
+    auto id = workspace.open(directory.file("note.md"));
+    REQUIRE(wait([&] { return !workspace.find(id)->loading; }));
+    auto& tab = *workspace.find(id);
+    REQUIRE(tab.document.text("edited\n"));
+    workspace.message.clear();
+    REQUIRE(workspace.saveCopy(id, directory.file("copy.md")));
+    REQUIRE(wait([&] { return !workspace.message.empty() || !workspace.error.empty(); }));
+    CHECK(workspace.error.empty());
+    CHECK(storage::test::read(directory.file("copy.md")) == "edited\r\n");
+    CHECK(storage::test::read(directory.file("note.md")) == "note\r\n");
+    CHECK(tab.path.filename() == "note.md");
+    CHECK(tab.dirty());
+    // A file open in a tab is never overwritten by a copy.
+    CHECK_FALSE(workspace.saveCopy(id, directory.file("note.md")));
+}
+
 TEST_CASE_FIXTURE(PersistedWorkspace, "opening_documents_keeps_the_current_document_until_ready")
 {
     auto previous = workspace.create().id;

@@ -53,6 +53,8 @@ public:
     void restore(SessionDocument);
     bool save(uint64_t id);
     bool saveAs(uint64_t id, const storage::Path&);
+    // Writes a copy of the document to another file; the tab stays on its own file.
+    bool saveCopy(uint64_t id, const storage::Path&);
     bool rename(uint64_t id, const storage::Path& filename);
     bool remove(uint64_t id);
     bool close(uint64_t id, bool discard = false);

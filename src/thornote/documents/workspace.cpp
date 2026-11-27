@@ -256,6 +256,31 @@ bool Workspace::saveAs(uint64_t id, const storage::Path& path)
     return true;
 }
 
+bool Workspace::saveCopy(uint64_t id, const storage::Path& path)
+{
+    auto tab = find(id);
+    if (!tab || tab->loading || path.empty()) return false;
+    auto destination = key(path);
+    for (const auto& other : tabs) {
+        if (!other->path.empty() && key(other->path) == destination) {
+            error = "The destination is already open in a tab.";
+            return false;
+        }
+    }
+    error.clear();
+    files.open(path, {true, fileLimit}, [this, path, text = tab->document.text(), format = tab->format](storage::Result<storage::LoadedFile> result) mutable {
+        if (!result) {
+            error = "Export failed: " + result.error.message;
+            return;
+        }
+        files.save(path, std::move(text), {format, std::move(result.value.stamp), fileLimit}, [this, path](const storage::SaveResult& saved) {
+            if (saved) message = "Exported to " + displayName(path);
+            else error = "Export failed: " + displayPath(path) + ": " + saved.error.message;
+        });
+    });
+    return true;
+}
+
 bool Workspace::rename(uint64_t id, const storage::Path& filename)
 {
     auto tab = find(id);

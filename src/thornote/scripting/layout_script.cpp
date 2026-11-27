@@ -369,9 +369,7 @@ std::optional<ui::MenuDefinition> LayoutScript::menu(std::string_view id) const
         }
         return menu;
     }
-    for (const auto& fallback : fallbackMenus)
-        if (fallback.id == id) return fallback;
-    return std::nullopt;
+    return id == "folder-menu" ? fallbackFolderMenu : std::nullopt;
 }
 
 ui::lua::Values EditorApp::layoutScriptState() const

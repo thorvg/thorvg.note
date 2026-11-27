@@ -34,8 +34,7 @@ private:
     std::string message;
     tn::Configuration configuration;
     tn::Configuration titlebarConfiguration;
-    // The bundled context menus, for title bar scripts that do not define them.
-    std::vector<ui::MenuDefinition> fallbackMenus;
+    std::optional<ui::MenuDefinition> fallbackFolderMenu;
     std::string titlebarMessage;
     std::filesystem::path titlebarWatched;
     std::filesystem::file_time_type titlebarModified{};

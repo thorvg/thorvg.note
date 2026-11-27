@@ -172,6 +172,18 @@ EditorApp::EditorApp(const std::function<void()>& wake, const storage::Path& set
     exportFile = [this](uint64_t id) {
         if (auto tab = workspace.find(id)) browserExport(utf8(suggestedSavePath(id).filename()), tab->document.text(), tab->format);
     };
+#else
+    exportFile = [this](uint64_t id) {
+        if (dialog || !chooseFile) return;
+        dialog = true;
+        focusEditor(false);
+        chooseFile(true, suggestedSavePath(id), [this, id](const std::vector<std::string>& paths, const std::string& error) {
+            dialog = false;
+            if (!error.empty()) workspace.error = error;
+            else if (!paths.empty()) workspace.saveCopy(id, utf8Path(paths.front()));
+            focusEditor(prompt == Prompt::None && !palette);
+        });
+    };
 #endif
 }
 
@@ -407,9 +419,7 @@ void EditorApp::registerCommands()
         palette = recentPalette = true;
         focusEditor(false);
         context.focus("palette/search"); }, [this] { return !dialog; });
-#ifdef __EMSCRIPTEN__
     add("file.export", "Export document...", "File", "", [this] { exportFile(target()->id); }, [this, ready] { return ready() && bool(exportFile); }, "No document is ready");
-#endif
     add("file.save", "Save document", "File", "Mod+S", [this] { if (auto tab = target()) save(tab->id); }, writable, "No document is ready, or a file operation is pending");
     add("file.saveAs", "Save document as...", "File", "Mod+Shift+S", [this] { if (auto tab = target()) save(tab->id, true); }, writable, "No document is ready, or a file operation is pending");
     add("file.rename", "Rename file...", "File", "", [this] { requestFilePrompt(Prompt::Rename); }, onDisk, "A saved file must be open and ready");

@@ -22,15 +22,7 @@ bool LayoutScript::loadTitlebar(const ui::lua::Values& state, bool checkFile, bo
             titlebarMessage = titlebarConfiguration.error();
             return previous != titlebarMessage;
         }
-        fallbackMenus.clear();
-        for (auto id : {"folder-menu", "note-menu"}) {
-            auto found = titlebarConfiguration.view().menu(id);
-            if (!found) continue;
-            // A kept copy cannot follow the state, so it shows no check marks.
-            for (auto& item : found->items)
-                item.checked = false;
-            fallbackMenus.push_back(std::move(*found));
-        }
+        fallbackFolderMenu = titlebarConfiguration.view().menu("folder-menu");
         changed = true;
     }
     if (checkFile || force || titlebarWatched.empty()) {
