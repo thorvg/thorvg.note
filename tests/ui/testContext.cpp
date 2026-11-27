@@ -226,11 +226,15 @@ TEST_CASE_FIXTURE(Frame, "scroll_regions_support_rows_and_horizontal_strips")
     context.end();
     context.pointerPosition(10, 10);
     CHECK(context.wheel(-0.1f));
+    CHECK(row == 0);
+    CHECK(context.wheel(-0.25f));
     CHECK(row == 1);
     CHECK(context.wheel(-2));
     CHECK(row == 5);
     CHECK(!context.wheel(-1));
     CHECK(context.wheel(0.1f));
+    CHECK(row == 5);
+    CHECK(context.wheel(0.25f));
     CHECK(row == 4);
     context.pointerPosition(110, 10);
     CHECK(context.wheel(-1));

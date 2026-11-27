@@ -111,6 +111,8 @@ struct Context::Impl
     std::vector<Control> controls;
     std::string focusId, pressedId, savedFocus;
     float pointerX = -1, pointerY = -1;
+    const void* carryRegion = nullptr;
+    float carry = 0;
     bool modalActive = false, modalFrame = false;
     std::function<void()> dismissModal;
 
@@ -458,6 +460,18 @@ void Context::scroll(std::string_view id, Rect bounds, float& x, float& y, float
         bool horizontal = scrollOffset(x, limitX, dx);
         bool vertical = scrollOffset(y, limitY, dy);
         event.handled = horizontal || vertical; }, options.enabled && (limitX > 0 || limitY > 0), ControlFlag::Scrollable);
+}
+
+float Context::wholeRows(const void* region, float rows)
+{
+    auto& state = *impl;
+    if (!std::isfinite(rows)) return 0;
+    if (state.carryRegion != region || (state.carry < 0) != (rows < 0)) state.carry = 0;
+    state.carryRegion = region;
+    state.carry += rows;
+    auto whole = std::trunc(state.carry);
+    state.carry -= whole;
+    return whole;
 }
 
 bool Context::scrollKey(std::string_view id, Key key)

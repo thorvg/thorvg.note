@@ -571,10 +571,10 @@ enum class ControlFlag : uint8_t
     Hover = 16       ///< Receives Hover events from Context::pointerMove().
 };
 
-/** @brief Wheel behavior for a scroll region; offsets and limits use the same units. */
 /** @brief Pixels a browser reports for one wheel step; converts pixel deltas for regions that move in rows. */
 constexpr float wheelStepPixels = 100;
 
+/** @brief Wheel behavior for a scroll region; offsets and limits use the same units. */
 struct ScrollOptions
 {
     float step = 36;
@@ -1186,18 +1186,21 @@ public:
 
     /**
      * @brief Registers a scroll region and clamps its retained offset to the current limit.
-     * @note Offset must remain alive until the next begin(). Integral offsets advance in whole steps.
+     * @note Offset must remain alive until the next begin(). Integral offsets gather fractional input until it makes whole rows.
      * Empty regions and exhausted directions release the wheel to enclosing regions or the host.
      */
     template<typename T>
     void scroll(std::string_view id, Rect bounds, T& offset, T limit, ScrollOptions options = {})
     {
         offset = std::clamp(offset, T(0), std::max(T(0), limit));
-        control(id, bounds, [&offset, limit, options](const Event& event) {
+        control(id, bounds, [this, &offset, limit, options](const Event& event) {
             if (event.type != EventType::Scroll) return;
             float delta = options.horizontal ? (std::abs(event.x) > std::abs(event.y) ? event.x : -event.y) : -event.y;
-            if (event.pixels && std::is_integral_v<T>) delta /= wheelStepPixels;
-            event.handled = scrollOffset(offset, limit, event.pixels && !std::is_integral_v<T> ? delta : delta * options.step); }, options.enabled && limit > 0, ControlFlag::Scrollable);
+            if constexpr (std::is_integral_v<T>) {
+                if (event.pixels) delta /= wheelStepPixels;
+                event.handled = delta < 0 ? offset > 0 : delta > 0 && offset < limit;
+                scrollOffset(offset, limit, wholeRows(&offset, delta * options.step));
+            } else event.handled = scrollOffset(offset, limit, event.pixels ? delta : delta * options.step); }, options.enabled && limit > 0, ControlFlag::Scrollable);
     }
 
     /** @brief Registers both axes of a scroll region; horizontal and vertical deltas stay independent. */
@@ -1371,13 +1374,13 @@ public:
     void focusRing(Rect bounds);
 
 private:
+    float wholeRows(const void* region, float rows);
+
     template<typename T>
     static bool scrollOffset(T& offset, T limit, float delta)
     {
         if (!std::isfinite(delta) || delta == 0) return false;
-        double amount = delta;
-        if constexpr (std::is_integral_v<T>) amount = std::copysign(std::max(1.0, std::floor(std::abs(amount))), amount);
-        auto next = static_cast<T>(std::clamp(double(offset) + amount, 0.0, double(limit)));
+        auto next = static_cast<T>(std::clamp(double(offset) + delta, 0.0, double(limit)));
         bool changed = next != offset;
         offset = next;
         return changed;
