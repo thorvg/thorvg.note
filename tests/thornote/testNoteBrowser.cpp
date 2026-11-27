@@ -53,6 +53,47 @@ TEST_CASE("file_previews_load_without_opening_documents_and_refresh_after_edits"
     REQUIRE(wait([&] { return browser.preview(0) == "Updated preview"; }));
 }
 
+TEST_CASE("file_previews_reload_only_after_their_files_are_modified")
+{
+    storage::test::Directory directory;
+    auto first = directory.file("first.md"), second = directory.file("second.md");
+    storage::test::write(first, "# First\n\nFirst preview\n");
+    storage::test::write(second, "# Second\n\nSecond preview\n");
+    tn::NoteBrowser browser;
+    auto wait = [&](const auto& complete) {
+        auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!complete() && std::chrono::steady_clock::now() < end) {
+            browser.poll();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return complete();
+    };
+    auto preview = [&](const storage::Path& path) {
+        auto found = std::find_if(browser.files().begin(), browser.files().end(), [&](const auto& file) { return file.path == path; });
+        return found == browser.files().end() ? std::string{} : browser.preview(size_t(found - browser.files().begin()));
+    };
+    browser.show({directory.path});
+    REQUIRE(wait([&] { return !browser.loading(); }));
+    REQUIRE(wait([&] { return preview(first) == "First preview"; }));
+
+    // Opening the note and refreshing the list keep the preview while the modification time stays.
+    auto stamp = std::filesystem::last_write_time(first);
+    storage::test::write(first, "# First\n\nChanged preview\n");
+    std::filesystem::last_write_time(first, stamp);
+    browser.fileAccessed(first, false);
+    browser.show({directory.path}, true);
+    REQUIRE(wait([&] { return !browser.loading(); }));
+    // Previews load in order, so any reload of the first lands before the second.
+    REQUIRE(wait([&] { return preview(second) == "Second preview"; }));
+    CHECK(preview(first) == "First preview");
+
+    std::filesystem::last_write_time(first, stamp + std::chrono::seconds(10));
+    browser.fileAccessed(first, true);
+    browser.show({directory.path});
+    REQUIRE(wait([&] { return !browser.loading(); }));
+    REQUIRE(wait([&] { return preview(first) == "Changed preview"; }));
+}
+
 TEST_CASE("preview_row_heights_update_scroll_geometry")
 {
     std::vector<storage::DirectoryEntry> files{{"first.md", {}}, {"second.md", {}}, {"third.md", {}}};

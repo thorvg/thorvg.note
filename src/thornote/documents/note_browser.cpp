@@ -11,7 +11,7 @@ namespace tn
 {
 void NoteBrowser::fileAccessed(const storage::Path& path, bool saved)
 {
-    snippets.erase(path);
+    // A save moves the modification time, so the refreshed listing reloads that preview alone.
     if (saved || std::none_of(entries.begin(), entries.end(), [&](const auto& file) { return file.path == path; })) needsRefresh = true;
 }
 
@@ -23,16 +23,14 @@ void NoteBrowser::show(const std::vector<storage::Path>& paths, bool force)
     if (!force && !needsRefresh && roots == folders) return;
     needsRefresh = false;
     service.cancel();
-    previews.cancel();
     if (roots != folders) {
+        previews.cancel();
         snippets.clear();
         entries.clear();
         ++filesVersion;
     }
     folders = std::move(roots);
     auto version = ++generation;
-    for (const auto& snippet : snippets)
-        loadPreview(snippet.first);
     incoming.clear();
     message.clear();
     pending = folders.size();
@@ -67,16 +65,19 @@ bool NoteBrowser::poll()
 
 const std::string& NoteBrowser::preview(size_t index)
 {
-    const auto& path = entries[index].path;
-    auto [found, inserted] = snippets.try_emplace(path);
-    if (inserted) loadPreview(path);
-    return found->second;
+    const auto& file = entries[index];
+    auto [found, inserted] = snippets.try_emplace(file.path);
+    // The previous text stays while the new one loads, so the row keeps its height.
+    if (inserted || found->second.modifiedAt != file.modifiedAt) {
+        found->second.modifiedAt = file.modifiedAt;
+        loadPreview(file.path);
+    }
+    return found->second.text;
 }
 
 void NoteBrowser::loadPreview(const storage::Path& path)
 {
-    auto version = generation;
-    previews.submit([this, path, version](task::TaskContext& context) -> task::TaskQueue::Completion {
+    previews.submit([this, path](task::TaskContext& context) -> task::TaskQueue::Completion {
         if (context.cancelled()) return {};
         std::ifstream input(path, std::ios::binary);
         char buffer[1028];
@@ -86,8 +87,8 @@ void NoteBrowser::loadPreview(const storage::Path& path)
         while (length < count && length && (uint8_t(buffer[length]) & 0xc0) == 0x80)
             --length;
         auto snippet = documentPreview(std::string_view(buffer, length));
-        return [this, path, version, snippet = std::move(snippet)]() mutable {
-            if (version == generation) snippets[path] = std::move(snippet);
+        return [this, path, snippet = std::move(snippet)]() mutable {
+            snippets[path].text = std::move(snippet);
         };
     });
 }

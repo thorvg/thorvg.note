@@ -159,11 +159,9 @@ void EditorApp::drawNoteFiles(ui::Rect r)
         auto start = bounds.x + context.textWidth(label, 10, true) + 8;
         if (start < bounds.x + bounds.w) context.line(start, bounds.y + 12, bounds.x + bounds.w, bounds.y + 12, theme.border);
     };
+    // A note shows its saved preview, so opening or editing it leaves the rows in place until a save.
     auto linesFor = [&](size_t file) {
-        const auto& path = noteBrowser.files()[file].path;
-        auto opened = std::find_if(workspace.documents().begin(), workspace.documents().end(), [&](const auto& tab) { return tab->path == path && !tab->loading; });
-        auto detail = opened != workspace.documents().end() ? documentPreview((*opened)->document.text()) : noteBrowser.preview(file);
-        return previewLines(detail, body.w - 20);
+        return previewLines(noteBrowser.preview(file), body.w - 20);
     };
     auto firstRow = noteFiles.visibleRows(noteFileScroll - draftHeight, body.h).first;
     for (size_t i = firstRow; i < noteFiles.rows().size() && noteFiles.rows()[i].top + draftHeight < noteFileScroll + body.h; ++i) {

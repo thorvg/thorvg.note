@@ -23,6 +23,12 @@ public:
     void fileAccessed(const storage::Path&, bool saved);
 
 private:
+    // A preview reloads only when its file's modification time moves.
+    struct Snippet
+    {
+        std::optional<int64_t> modifiedAt;
+        std::string text;
+    };
     void loadPreview(const storage::Path&);
     std::vector<storage::Path> folders;
     std::vector<storage::DirectoryEntry> entries, incoming;
@@ -31,7 +37,7 @@ private:
     uint64_t generation = 0;
     uint64_t filesVersion = 1;
     bool needsSort = false, needsRefresh = false;
-    std::map<storage::Path, std::string> snippets;
+    std::map<storage::Path, Snippet> snippets;
     // Join the worker before destroying captured state.
     storage::FileService service;
     task::TaskQueue previews;

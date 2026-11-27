@@ -86,6 +86,13 @@ public:
     }
     // Replaces a layout script copied by useSourceLayouts().
     void writeLayout(const char* name, std::string_view source) { storage::test::write(layouts->path / name, source); }
+    // Height of the row listing the file in the note browser, or zero when it is not listed.
+    float noteRowHeight(const storage::Path& path) const
+    {
+        for (const auto& row : app->noteFiles.rows())
+            if (row.file && app->noteBrowser.files()[*row.file].path == path) return row.height;
+        return 0;
+    }
 
     // Right-clicks down the note list, from below its search field, until a note opens its menu.
     bool rightClickNote()
@@ -426,6 +433,60 @@ TEST_CASE_FIXTURE(EditorTest, "notes_open_one_at_a_time_and_only_the_focused_one
     activate(memo.id);
     app->setLayout(tn::Layout::Note);
     CHECK(app->workspace.active() == &memo);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "a_note_left_behind_keeps_its_preview_in_the_list")
+{
+    storage::test::Directory directory;
+    auto a = directory.file("a.md"), b = directory.file("b.md");
+    for (const auto& path : {a, b})
+        storage::test::write(path, "# Title\n\nBody preview\n");
+    app->openPath(directory.path);
+    REQUIRE(wait([&] { return !browser().loading(); }));
+    REQUIRE(wait([&] {
+        draw();
+        return noteRowHeight(a) > 40 && noteRowHeight(b) > 40;
+    }));
+    auto height = noteRowHeight(a);
+    auto opened = app->workspace.open(a, false);
+    activate(opened);
+    REQUIRE(wait([&] { return !app->workspace.busy(); }));
+    draw();
+    activate(app->workspace.open(b, false));
+    REQUIRE(wait([&] { return !app->workspace.busy(); }));
+    draw();
+    // The note closes behind, while its row keeps the preview so the rows below stay in place.
+    CHECK_FALSE(app->workspace.find(opened));
+    CHECK(noteRowHeight(a) == height);
+}
+
+TEST_CASE_FIXTURE(EditorTest, "note_rows_keep_the_saved_preview_until_the_note_is_saved")
+{
+    storage::test::Directory directory;
+    // The first line runs past the bytes read for a preview.
+    auto path = directory.file("long.md");
+    storage::test::write(path, std::string(1200, 'a') + "\n");
+    app->openPath(directory.path);
+    REQUIRE(wait([&] { return !browser().loading(); }));
+    REQUIRE(wait([&] {
+        draw();
+        return noteRowHeight(path) > 40;
+    }));
+    auto height = noteRowHeight(path);
+    auto id = app->workspace.open(path, false);
+    activate(id);
+    REQUIRE(wait([&] { return !app->workspace.busy(); }));
+    draw();
+    CHECK(noteRowHeight(path) == height);
+    app->edit({id, 0, 0, 0, "# Title\n\nShort\n", false});
+    draw();
+    CHECK(noteRowHeight(path) == height);
+    key(Key('s'), primary);
+    REQUIRE(wait([&] { return !app->workspace.busy(); }));
+    CHECK(wait([&] {
+        draw();
+        return noteRowHeight(path) == 56;
+    }));
 }
 
 TEST_CASE_FIXTURE(EditorTest, "closing_a_memo_tab_leaves_its_changes_with_note")
