@@ -1662,6 +1662,59 @@ TEST_CASE_FIXTURE(Editor, "horizontal_extent_tracks_duplicate_widths_and_discard
     CHECK(editor.scrollX() == doctest::Approx(maximum));
 }
 
+TEST_CASE_FIXTURE(Editor, "opened_long_row_lays_out_across_frames_before_showing_its_scrollbar")
+{
+    std::string text = "short\n";
+    for (size_t i = 0; text.size() < 700'000; ++i)
+        text += "word" + std::to_string(i % 97) + (i % 9 ? " " : "\t");
+    // A caret at the end needs the whole row at once, which makes the reference.
+    tn::Document whole;
+    ui::TextEditor reference{whole};
+    reference.font(fonts.plain);
+    REQUIRE(whole.text(text));
+    reference.select(text.size(), text.size());
+    render([&] { reference.render(context, "reference", bounds); });
+    auto end = reference.caretRect().x + reference.scrollX();
+    reference.scroll(1e9f, 0);
+    auto limit = reference.scrollX();
+    REQUIRE(limit > 100000);
+    REQUIRE(document.text(text));
+    draw();
+    CHECK(context.nextFrame().has_value());
+    SUBCASE("frames")
+    {
+        auto x = bounds.x + bounds.w / 2, y = bounds.y + bounds.h - 2;
+        size_t frames = 1;
+        for (; context.nextFrame() && frames < 100; ++frames) {
+            draw();
+            context.pointerMove(x, y);
+            CHECK(context.cursor() == ui::Cursor::Text);
+        }
+        CHECK(frames > 2);
+        draw();
+        context.pointerMove(x, y);
+        CHECK(context.cursor() == ui::Cursor::Default);
+    }
+    SUBCASE("scroll")
+    {
+        editor.scroll(1e9f, 0);
+        CHECK(editor.scrollX() == limit);
+    }
+    SUBCASE("edit")
+    {
+        editor.select(0, 0);
+        std::string error;
+        REQUIRE(editor.insert("a", error));
+        draw();
+        CHECK_FALSE(context.nextFrame().has_value());
+    }
+    auto size = document.text().size();
+    editor.select(size, size);
+    CHECK(editor.caretRect().x + editor.scrollX() == end);
+    draw();
+    CHECK_FALSE(context.nextFrame().has_value());
+}
+
 TEST_CASE_FIXTURE(Editor, "composition_commit_retains_unaffected_markdown_paints")
 {
     bounds.h = 280;

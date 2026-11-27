@@ -35,6 +35,22 @@ struct TextEditor::Impl
         RenderRun() { text->ref(); }
         ~RenderRun() { text->unref(); }
     };
+    // A row laid out up to offset; a long row continues from here in later frames.
+    struct RowLayout
+    {
+        TextLine line;
+        std::string shown;
+        std::vector<Run> runs;
+        std::vector<Widget> widgets;  // All widgets of a continued row.
+        Format current;
+        tvg::TextMetrics fontMetrics{};
+        double x = 0;
+        size_t offset = 0, column = 0, widget = 0;
+        float rowHeight = 0, unitsPerEm = 1000;
+        FontId font = 0;
+        uint32_t previous = 0;
+        bool kerned = false, leading = true, widgetBreak = false;
+    };
     struct RenderLine
     {
         tvg::Text* body = tvg::Text::gen();
@@ -49,6 +65,7 @@ struct TextEditor::Impl
         std::vector<Run> styles;
         std::vector<Widget> widgets;
         bool assigned = false, measured = false;
+        std::unique_ptr<RowLayout> pending;  // Set while the row shows a measured prefix.
         std::vector<std::unique_ptr<RenderRun>> runs;
         float bodyLeft = 0, numberWidth = 0;
         RenderLine()
@@ -145,6 +162,7 @@ struct TextEditor::Impl
     std::optional<std::pair<float, double>> pendingScroll;
     bool dirty = true, layoutDirty = true, textContentDirty = true, hasFocus = false, dragging = false, previousCaretVisible = false;
     bool restartCaret = true, plainMarkdown = false;
+    bool deferLayout = false;  // A document just opened lays out its long rows across frames.
     double seconds = 0, caretEpoch = 0;
     std::optional<double> nextBlink;  // Set while a visible caret waits for its next phase.
     std::optional<Axis> scrollAxis;
@@ -192,11 +210,16 @@ struct TextEditor::Impl
     float measure(std::string_view text, FontId font = 0, float scale = 1) const;
     void cacheTabs(RenderLine& line, std::string_view source);
     float prepareText(tvg::Text* text, const RenderLine& line, const Run* run = nullptr);
-    std::vector<TextLine> layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& runs, std::vector<Widget>* widgets = nullptr, bool composed = false);
+    std::vector<TextLine> layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& runs, std::vector<Widget>* widgets = nullptr, bool composed = false, RowLayout* resume = nullptr, size_t limit = size_t(-1));
     void parseMarkdown(size_t& start, size_t& end, bool incremental);
     size_t markdownBlock(size_t offset) const;
     const std::vector<Format>& blockFormats(size_t block);
     void measureLine(size_t row);
+    void placeLine(size_t row, std::vector<TextLine> lines, std::string display, std::vector<Run> runs, std::string_view source);
+    size_t continueLine(size_t row, size_t bytes);
+    void continueLayout(bool finish = false);
+    void measureTo(size_t offset);
+    bool layingOut() const;
     void updateWidth(float before, float after);
     std::vector<TextLine> rowMetadata(std::string_view text, size_t base);
     void prepareRuns(RenderLine& line);

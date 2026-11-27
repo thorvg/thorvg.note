@@ -89,6 +89,7 @@ size_t TextEditor::Impl::widgetBoundary(size_t offset, bool forward)
     if (widgetRules.empty() || !preedit.empty()) return offset;
     auto row = editing.document().lineAt(offset);
     measureLine(row);
+    measureTo(offset);
     const auto& line = view.line(row);
     auto at = std::lower_bound(line.offsets.begin(), line.offsets.end(), offset - line.start());
     if (at == line.offsets.end() || at == line.offsets.begin() || *at == offset - line.start()) return offset;

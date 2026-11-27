@@ -7,6 +7,8 @@ namespace ui
 namespace
 {
 constexpr float fontPointsPerLogicalPixel = 72.0f / 96.0f;
+// An opened document lays out rows longer than this a slice per frame, after a prefix past the caret.
+constexpr size_t deferredLength = 512 * 1024, deferredSlice = 256 * 1024, deferredReach = 64 * 1024;
 uint32_t codepoint(std::string_view text)
 {
     auto first = static_cast<unsigned char>(text.front());
@@ -66,7 +68,7 @@ float TextEditor::Impl::measure(std::string_view text, FontId font, float scale)
     return width;
 }
 
-std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& styles, std::vector<Widget>* widgets, bool composed)
+std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t base, std::vector<std::string>& display, std::vector<std::vector<Run>>& styles, std::vector<Widget>* widgets, bool composed, RowLayout* resume, size_t limit)
 {
     auto* fonts = documentFont ? &detail::fontManager() : nullptr;
     std::vector<TextLine> lines;
@@ -104,29 +106,38 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         auto rowFormat = formatAt(base + begin);
         float sizeScale = headingScale[std::min(rowFormat.heading, 6u)];
         float size = configuration.fontSize * sizeScale;
-        float rowHeight = lineHeight * sizeScale;
-        TextLine line;
-        std::string shown;
-        std::vector<Run> runs;
-        Format current;
-        FontId font = documentFont;
-        tvg::TextMetrics fontMetrics{};
-        float unitsPerEm = 1000;
-        bool kerned = false, leading = true;
-        uint32_t previous = 0;
+        // A resumed row carries on from its last slice; others start here.
+        RowLayout fresh;
+        auto& row = resume ? *resume : fresh;
+        if (row.line.offsets.empty()) {
+            row.offset = begin;
+            row.font = documentFont;
+            row.rowHeight = lineHeight * sizeScale;
+            row.line.base = base + begin;
+            row.line.length = stop - begin;
+            row.line.offsets.reserve(stop - begin + 1);
+            row.line.x.reserve(stop - begin + 1);
+            row.shown.reserve(stop - begin);
+            row.line.offsets.push_back(0);
+            row.line.x.push_back(0);
+        }
+        auto& line = row.line;
+        auto& shown = row.shown;
+        auto& runs = row.runs;
+        auto& current = row.current;
+        auto& font = row.font;
+        auto& fontMetrics = row.fontMetrics;
+        auto& rowHeight = row.rowHeight;
+        auto& unitsPerEm = row.unitsPerEm;
+        auto& kerned = row.kerned;
+        auto& leading = row.leading;
+        auto& previous = row.previous;
         // Accumulate precisely because these positions also anchor visible text slices.
-        double x = 0;
-        size_t column = 0;
+        auto& x = row.x;
+        auto& column = row.column;
         auto firstWidget = widget;
-        bool widgetBreak = false;
-        line.base = base + begin;
-        line.length = stop - begin;
-        line.offsets.reserve(stop - begin + 1);
-        line.x.reserve(stop - begin + 1);
-        shown.reserve(stop - begin);
-        line.offsets.push_back(0);
-        line.x.push_back(0);
-        measurer->font(fonts ? fonts->textFont(font) : themeTokens.font.c_str());
+        auto& widgetBreak = row.widgetBreak;
+        measurer->font(fonts ? fonts->textFont(documentFont) : themeTokens.font.c_str());
         measurer->size(size * fontPointsPerLogicalPixel);
         tvg::GlyphMetrics space{};
         glyphMetrics(measurer.get(), " ", space);
@@ -171,7 +182,14 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 runs.back().width = x - runs.back().left;
             }
         };
-        for (size_t offset = begin; offset < stop;) {
+        if (resume) {
+            // A resumed row measures on in the face of its last run.
+            widget = resume->widget;
+            measurer->font(fonts ? fonts->textFont(font) : themeTokens.font.c_str());
+            measurer->size(size * fontPointsPerLogicalPixel);
+        }
+        for (auto& offset = row.offset; offset < stop;) {
+            if (offset >= limit) break;
             auto item = widgets && widget < widgets->size() ? &(*widgets)[widget] : nullptr;
             if (item && offset == item->range.start && item->range.display == TextWidget::Replace) {
                 auto width = item->range.width * size;
@@ -257,6 +275,10 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                 widgetBreak = true;
                 ++widget;
             }
+        }
+        if (row.offset < stop) {
+            resume->widget = widget;
+            break;
         }
         for (auto& run : runs)
             run.top = (rowHeight - run.top) / 2;
@@ -371,18 +393,88 @@ void TextEditor::Impl::measureLine(size_t row)
     std::vector<std::string> display;
     std::vector<std::vector<Run>> styles;
     matchWidgets(cached->widgets, source, sourceBase);
+    if (deferLayout && source.size() > deferredLength) {
+        // An opened document lays out a long row a little past the caret now, and all of it across later frames.
+        auto caret = editing.selection().caret;
+        auto cut = deferredReach + (caret >= sourceBase && caret - sourceBase <= source.size() ? caret - sourceBase : 0);
+        while (cut < source.size() && (static_cast<unsigned char>(source[cut]) & 0xc0) == 0x80)
+            ++cut;
+        // A cut outside widgets lays out the prefix just as within the whole row.
+        for (const auto& item : cached->widgets)
+            if (item.range.start < cut && cut < item.range.end) cut = item.range.end;
+        if (cut < source.size()) {
+            cached->pending = std::make_unique<RowLayout>();
+            cached->pending->widgets = cached->widgets;
+            std::erase_if(cached->widgets, [&](const auto& item) { return item.range.start >= cut; });
+            source = source.substr(0, cut);
+        }
+    }
     auto lines = layoutRows(source, sourceBase, display, styles, &cached->widgets);
+    if (cached->pending) {
+        // Meanwhile the row shows the prefix, whose last offset still ends the whole row.
+        lines[0].length = old.length;
+        lines[0].offsets.push_back(old.length);
+        lines[0].x.push_back(lines[0].x.back());
+    }
+    placeLine(row, std::move(lines), std::move(display[0]), std::move(styles[0]), source);
+}
+
+void TextEditor::Impl::placeLine(size_t row, std::vector<TextLine> lines, std::string display, std::vector<Run> runs, std::string_view source)
+{
+    const auto& old = view.line(row);
+    auto& cached = *linePaints[row];
     lines[0].base = old.base;
     lines[0].top = old.y();
     lines[0].bounds.y = old.bounds.y;
     auto displacement = double(lines[0].bounds.h) - old.bounds.h;
     updateWidth(old.bounds.w, lines[0].bounds.w);
-    cached->assigned = false;
-    cacheTabs(*cached, source);
-    cached->display = std::move(display[0]);
-    cached->styles = std::move(styles[0]);
-    cached->measured = true;
+    cached.assigned = false;
+    cacheTabs(cached, source);
+    cached.display = std::move(display);
+    cached.styles = std::move(runs);
+    cached.measured = true;
     view.layout(row, 1, std::move(lines), 0, displacement);
+}
+
+size_t TextEditor::Impl::continueLine(size_t row, size_t bytes)
+{
+    auto& cached = *linePaints[row];
+    auto& pending = *cached.pending;
+    const auto& line = view.line(row);
+    auto source = std::string_view(editing.document().text()).substr(line.start(), line.length);
+    auto from = pending.offset;
+    std::vector<std::string> display;
+    std::vector<std::vector<Run>> styles;
+    auto lines = layoutRows(source, line.start(), display, styles, &pending.widgets, false, &pending, bytes < source.size() - from ? from + bytes : source.size());
+    if (lines.empty()) return pending.offset - from;
+    cached.widgets = std::move(pending.widgets);
+    cached.pending.reset();
+    placeLine(row, std::move(lines), std::move(display[0]), std::move(styles[0]), source);
+    textContentDirty = dirty = true;
+    if (!layingOut()) deferLayout = false;
+    return source.size() - from;
+}
+
+void TextEditor::Impl::continueLayout(bool finish)
+{
+    auto bytes = finish ? size_t(-1) : deferredSlice;
+    for (auto& [row, cached] : linePaints)
+        if (cached->pending && bytes) bytes -= std::min(bytes, continueLine(row, bytes));
+}
+
+void TextEditor::Impl::measureTo(size_t offset)
+{
+    if (!deferLayout) return;
+    auto found = linePaints.find(editing.document().lineAt(offset));
+    if (found == linePaints.end() || !found->second->pending) return;
+    // Geometry past the measured prefix needs the whole row.
+    const auto& line = view.line(found->first);
+    if (offset >= line.base + line.offsets[line.offsets.size() - 2]) continueLine(found->first, size_t(-1));
+}
+
+bool TextEditor::Impl::layingOut() const
+{
+    return deferLayout && std::any_of(linePaints.begin(), linePaints.end(), [](const auto& item) { return item.second->pending != nullptr; });
 }
 
 size_t TextEditor::Impl::replaceRows(size_t first, size_t count, std::string_view text, size_t base, bool composed)
@@ -485,6 +577,17 @@ void TextEditor::Impl::relayout()
     }
     bool markdownChanged = configuration.markdown && markdownRevision != document.revision();
     bool full = layoutDirty || change == tn::ChangeStatus::Untracked || font != documentFont || reset != measuredFontReset || bold != boldDocumentFont || (composedRows && measuredRevision != document.revision());
+    // A document just opened lays out its long rows across frames until an edit.
+    if (change == tn::ChangeStatus::Untracked) deferLayout = true;
+    else if (change == tn::ChangeStatus::Changed || recompose) deferLayout = false;
+    // Rows still laying out start over, since what they measured so far may no longer hold.
+    if (!full)
+        for (auto& [row, paint] : linePaints)
+            if (paint->pending) {
+                paint->pending.reset();
+                view.discard(row);
+                paint->measured = paint->assigned = false;
+            }
     if (!full && generation != measuredFontGeneration) {
         // Appending a font affects only rows that previously had an unsupported glyph.
         for (auto& [row, paint] : linePaints) {
@@ -655,6 +758,8 @@ TextEditor::Impl::RenderLine& TextEditor::Impl::prepareLine(size_t row)
     auto* fonts = documentFont ? &detail::fontManager() : nullptr;
     measureLine(row);
     auto& cached = linePaints[row];
+    // A viewport past the measured prefix of a row still laying out needs the whole row.
+    if (cached->pending && view.line(row).bounds.w <= horizontal + textArea().w + view.line(row).textHeight * 2) continueLine(row, size_t(-1));
     if (!cached->assigned) cached->number->text(std::to_string(row + 1).c_str());
     const auto& geometry = view.line(row);
     // Keep boundary kerning and glyph overhang outside the visible clip.

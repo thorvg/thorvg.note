@@ -118,7 +118,8 @@ Rect TextEditor::Impl::scrollTrack(Axis axis) const
         float w = std::min(width, 8.0f);
         return {width - w, area.y, w, area.h};
     }
-    if (maxHorizontalScroll() == 0) return {};
+    // A row still laying out has no full width to scroll through yet.
+    if (maxHorizontalScroll() == 0 || layingOut()) return {};
     float h = std::min(height, scrollbarHeight);
     return {area.x, height - h, area.w, h};
 }
@@ -144,6 +145,8 @@ double TextEditor::Impl::maxVerticalScroll() const
 
 void TextEditor::Impl::clampScroll()
 {
+    // Scrolling past the rows still laying out finishes them first.
+    if (horizontal > maxHorizontalScroll() && layingOut()) continueLayout(true);
     horizontal = std::clamp(horizontal, 0.0f, maxHorizontalScroll());
     vertical = std::clamp(vertical, 0.0, maxVerticalScroll());
 }
@@ -167,6 +170,7 @@ Rect TextEditor::Impl::logicalCaret() const
 void TextEditor::Impl::ensureCaret()
 {
     relayout();
+    measureTo(editing.selection().caret);
     view.origin(vertical);
     auto caret = logicalCaret();
     auto area = textArea();
@@ -411,6 +415,7 @@ bool TextEditor::Impl::key(Key key, Modifiers mods)
 Rect TextEditor::caretRect()
 {
     impl->relayout();
+    impl->measureTo(impl->editing.selection().caret);
     auto area = impl->textArea();
     impl->view.origin(impl->vertical);
     auto caret = impl->logicalCaret();
@@ -476,6 +481,7 @@ void TextEditor::render(Context& host, std::string_view id, Rect bounds)
     host.add(scene);
     impl->update(host.time());
     impl->paintWidgets(host, id, bounds);
+    if (impl->layingOut()) host.requestAnimationFrame();
     if (!impl->nextBlink) return;
     auto caret = caretRect();
     caret.x += bounds.x;
@@ -489,6 +495,7 @@ bool TextEditor::Impl::update(double now)
     seconds = std::max(seconds, now);
     bool restyled = layoutDirty || preedit != measuredPreedit || preeditCursor != measuredCursor;
     relayout();
+    if (layingOut()) continueLayout();
     auto current = editing.selection();
     if (restyled || current.anchor != paintedSelection.anchor || current.caret != paintedSelection.caret) {
         ensureCaret();
