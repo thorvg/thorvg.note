@@ -40,4 +40,20 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl;
 };
+
+// Tells wheel steps from the pixel deltas of precise devices such as trackpads.
+class NativeWheel
+{
+public:
+    NativeWheel();
+    ~NativeWheel();
+    bool initialize();
+    // Pixels per wheel unit of a precise device's event, or 0 when the event counts wheel steps.
+    float pixels(const SDL_MouseWheelEvent&);
+    void stop();
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
 }  // namespace tn

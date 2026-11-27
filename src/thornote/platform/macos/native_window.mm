@@ -386,4 +386,58 @@ bool updateNativeWindowChrome(SDL_Window* window, bool nativeTitleBar)
         native.titlebarSeparatorStyle = nativeTitleBar ? NSTitlebarSeparatorStyleAutomatic : NSTitlebarSeparatorStyleNone;
     return true;
 }
+
+struct NativeWheel::Impl
+{
+    id monitor = nil;
+    bool precise = false, watching = false;
+    std::deque<Uint64> preciseEvents;
+    static constexpr float pixelsPerUnit = 10;
+
+    static bool SDLCALL watch(void* data, SDL_Event* event)
+    {
+        auto self = static_cast<Impl*>(data);
+        if (SDL_IsMainThread() && event->type == SDL_EVENT_MOUSE_WHEEL && self->precise) self->preciseEvents.push_back(event->wheel.timestamp);
+        return true;
+    }
+};
+
+NativeWheel::NativeWheel() :
+    impl(std::make_unique<Impl>()) {}
+NativeWheel::~NativeWheel()
+{
+    stop();
+}
+bool NativeWheel::initialize()
+{
+    stop();
+    auto self = impl.get();
+    self->monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel
+                                                          handler:^NSEvent*(NSEvent* event) {
+                                                            self->precise = event.hasPreciseScrollingDeltas;
+                                                            return event;
+                                                          }];
+    self->watching = self->monitor && SDL_AddEventWatch(Impl::watch, self);
+    if (!self->watching) stop();
+    return self->watching;
+}
+float NativeWheel::pixels(const SDL_MouseWheelEvent& event)
+{
+    auto& events = impl->preciseEvents;
+    while (!events.empty() && events.front() < event.timestamp)
+        events.pop_front();
+    if (events.empty() || events.front() != event.timestamp) return 0;
+    events.pop_front();
+    return Impl::pixelsPerUnit;
+}
+void NativeWheel::stop()
+{
+    auto& state = *impl;
+    if (state.watching) SDL_RemoveEventWatch(Impl::watch, &state);
+    state.watching = false;
+    if (state.monitor) [NSEvent removeMonitor:state.monitor];
+    state.monitor = nil;
+    state.precise = false;
+    state.preciseEvents.clear();
+}
 }  // namespace tn

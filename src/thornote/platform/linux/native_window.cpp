@@ -83,4 +83,19 @@ void NativeTitleBarInput::stop()
 {
     impl->input.reset();
 }
+
+struct NativeWheel::Impl
+{
+};
+NativeWheel::NativeWheel() = default;
+NativeWheel::~NativeWheel() = default;
+bool NativeWheel::initialize()
+{
+    return false;
+}
+float NativeWheel::pixels(const SDL_MouseWheelEvent&)
+{
+    return 0;
+}
+void NativeWheel::stop() {}
 }  // namespace tn

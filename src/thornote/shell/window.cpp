@@ -86,6 +86,7 @@ public:
     {
         SDL_RemoveEventWatch(exposeWatch, this);
         titleBarInput.stop();
+        wheel.stop();
         nativeInput.stop();
         cursors.clear();
         {
@@ -114,6 +115,7 @@ public:
             SDL_ClearError();
         }
 #endif
+        wheel.initialize();
         nativeInputReady = nativeInput.initialize(window, [this](const auto& edit) { app->edit(edit); updateTextInput(); }, [this](const auto& key) { SDL_Event event{}; event.key = key; send(*app, event, inputX, inputY); updateTextInput(); }, [this](const auto& key) {
 #ifdef __EMSCRIPTEN__
             // The browser hands over clipboard shortcuts at once; the input queued before them comes first.
@@ -263,7 +265,7 @@ private:
         if (!handled && nativeInputReady) handled = nativeInput.event(event);
         if (!handled) {
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) SDL_CaptureMouse(true);
-            if (!send(*app, event, inputX, inputY)) return false;
+            if (!send(*app, event, inputX, inputY, event.type == SDL_EVENT_MOUSE_WHEEL ? wheel.pixels(event.wheel) : 0)) return false;
         }
         switch (event.type) {
             case SDL_EVENT_WINDOW_EXPOSED:
@@ -399,6 +401,7 @@ private:
     tn::Cursors cursors;
     NativeTextInput nativeInput;
     NativeTitleBarInput titleBarInput;
+    NativeWheel wheel;
     bool nativeInputReady = false;
     std::unique_ptr<App> app;
     std::optional<WindowAction> pendingWindowAction;

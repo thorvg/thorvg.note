@@ -36,7 +36,7 @@ KeyEvent keyEvent(const SDL_KeyboardEvent& event)
     return result;
 }
 
-bool send(App& app, const SDL_Event& event, float sx, float sy)
+bool send(App& app, const SDL_Event& event, float sx, float sy, float wheelPixels)
 {
     switch (event.type) {
         case SDL_EVENT_QUIT:
@@ -69,12 +69,10 @@ bool send(App& app, const SDL_Event& event, float sx, float sy)
         case SDL_EVENT_MOUSE_WHEEL: {
             float direction = event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1;
 #ifdef __EMSCRIPTEN__
-            direction *= ui::wheelStepPixels;
-            bool pixels = true;
-#else
-            bool pixels = false;
+            wheelPixels = ui::wheelStepPixels;
 #endif
-            app.wheel({event.wheel.x * direction, event.wheel.y * direction, event.wheel.mouse_x * sx, event.wheel.mouse_y * sy, modifiers(SDL_GetModState()), pixels});
+            if (wheelPixels > 0) direction *= wheelPixels;
+            app.wheel({event.wheel.x * direction, event.wheel.y * direction, event.wheel.mouse_x * sx, event.wheel.mouse_y * sy, modifiers(SDL_GetModState()), wheelPixels > 0});
             break;
         }
         default: break;

@@ -55,4 +55,19 @@ bool NativeTitleBarInput::initialize(SDL_Window*, std::function<bool(float, floa
     return false;
 }
 void NativeTitleBarInput::stop() {}
+
+struct NativeWheel::Impl
+{
+};
+NativeWheel::NativeWheel() = default;
+NativeWheel::~NativeWheel() = default;
+bool NativeWheel::initialize()
+{
+    return false;
+}
+float NativeWheel::pixels(const SDL_MouseWheelEvent&)
+{
+    return 0;
+}
+void NativeWheel::stop() {}
 }  // namespace tn
