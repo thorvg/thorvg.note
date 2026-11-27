@@ -888,6 +888,22 @@ TEST_CASE("fractional_font_sizes_survive_loading_preferences")
     CHECK(decoded.dark);
 }
 
+TEST_CASE_FIXTURE(EditorTest, "only_the_shown_document_is_configured")
+{
+    auto& hidden = document("hidden 한글");
+    auto& shown = document("shown");
+    activate(shown.id);
+    draw();
+    CHECK(shown.configured);
+    CHECK(!hidden.configured);
+    CHECK(hidden.codepoints.empty());
+    activate(hidden.id);
+    draw();
+    CHECK(hidden.configured);
+    CHECK(!hidden.codepoints.empty());
+    CHECK(hidden.editor.options().fontSize == shown.editor.options().fontSize);
+}
+
 TEST_CASE_FIXTURE(EditorTest, "interface_zoom_steps_through_levels_and_is_saved")
 {
     auto zoomKey = [&](uint32_t scancode) {

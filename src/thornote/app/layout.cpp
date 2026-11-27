@@ -275,6 +275,7 @@ void EditorApp::drawEditor(ui::Rect r)
                      theme.muted, 16, false, ui::Align::Center);
         return;
     }
+    configure(*tab);
     applyEditorOptions(*tab);
     if (tab->restoreView) {
         auto saved = *tab->restoreView;
@@ -303,9 +304,6 @@ void EditorApp::render(float w, float h, double seconds)
             tab->editor.theme(theme);
         if (amount == 1) themeTransition.reset();
     }
-    for (const auto& tab : workspace.documents()) {
-        configure(*tab);
-    }
     if (!settings.active && composition == Layout::Note && !commandList && !browsingNoteFiles() && w >= 660) {
         auto documents = filteredDocuments();
         if (!documents.empty() && std::find(documents.begin(), documents.end(), workspace.active()) == documents.end()) workspace.select(documents.front()->id);
@@ -319,6 +317,7 @@ void EditorApp::render(float w, float h, double seconds)
     }
     syncInputExtensions();
     auto active = visibleDocument();
+    if (active) configure(*active);
     auto id = active ? active->id : 0;
     if (lastActive != id) {
         lastActive = id;
