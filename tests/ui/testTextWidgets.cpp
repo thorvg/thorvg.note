@@ -148,6 +148,71 @@ TEST_CASE_FIXTURE(Widgets, "replacement_and_after_widgets_preserve_source_geomet
     CHECK(document.text() == "A done V\nnext");
 }
 
+TEST_CASE_FIXTURE(Widgets, "inline_widgets_stand_as_tall_as_a_capital_on_the_baseline")
+{
+    REQUIRE(document.text("A :ok:"));
+    auto options = editor.options();
+    options.fontSize = 40;
+    options.lineNumbers = false;
+    editor.options(options);
+    auto definition = rule();
+    SUBCASE("replacement") {}
+    SUBCASE("after")
+    {
+        definition = rule(ui::TextWidget::After);
+    }
+    definition.activate = [](ui::TextEditor& editor, const ui::TextWidgetEvent& event) {
+        std::string error;
+        CHECK(editor.replaceWidget(event, "done", error));
+    };
+    REQUIRE(editor.widgets("test", std::move(definition)));
+    draw();
+    std::vector<uint32_t> pixels(400 * 300);
+    std::unique_ptr<tvg::SwCanvas> canvas(tvg::SwCanvas::gen());
+    REQUIRE(canvas->target(pixels.data(), 400, 400, 300, tvg::ColorSpace::ARGB8888) == tvg::Result::Success);
+    REQUIRE(canvas->add(context.scene()) == tvg::Result::Success);
+    REQUIRE(canvas->update() == tvg::Result::Success);
+    REQUIRE(canvas->draw(true) == tvg::Result::Success);
+    REQUIRE(canvas->sync() == tvg::Result::Success);
+    auto glyph = editor.rangeRects(0, 1).front();
+    auto left = int(bounds.x + glyph.x), right = int(bounds.x + glyph.x + glyph.w), first = int(bounds.y + glyph.y), last = int(bounds.y + glyph.y + glyph.h);
+    auto background = pixels[first * 400 + left];
+    int top = last, bottom = first;
+    for (int y = first; y < last; ++y)
+        for (int x = left; x < right; ++x)
+            if (pixels[y * 400 + x] != background) {
+                top = std::min(top, y);
+                bottom = std::max(bottom, y + 1);
+            }
+    REQUIRE(bottom - top > 20);
+    CHECK(std::abs(anchor.y - top) <= 1);
+    CHECK(std::abs(anchor.y + anchor.h - bottom) <= 1);
+    // The row above the box still reaches the widget.
+    REQUIRE(anchor.y - 4 > bounds.y + glyph.y);
+    click(anchor.x + anchor.w / 2, anchor.y - 4);
+    CHECK(document.text() == "A done");
+}
+
+TEST_CASE_FIXTURE(Widgets, "scaled_inline_widgets_stay_centred_on_the_capital_within_the_row")
+{
+    REQUIRE(document.text("A :ok:"));
+    auto definition = rule();
+    REQUIRE(editor.widgets("test", definition));
+    draw();
+    auto capital = anchor;
+    definition.scale = 1.15f;
+    REQUIRE(editor.widgets("test", definition));
+    draw();
+    CHECK(anchor.h == doctest::Approx(capital.h * 1.15f));
+    CHECK(anchor.y + anchor.h / 2 == doctest::Approx(capital.y + capital.h / 2));
+    definition.scale = 10;
+    REQUIRE(editor.widgets("test", definition));
+    draw();
+    auto row = editor.rangeRects(0, 1).front();
+    CHECK(anchor.h == doctest::Approx(row.h));
+    CHECK(anchor.y == doctest::Approx(bounds.y + row.y));
+}
+
 TEST_CASE_FIXTURE(Widgets, "replacement_widgets_have_atomic_caret_stops_selection_and_deletion")
 {
     REQUIRE(document.text("A :ok: V"));
@@ -344,6 +409,9 @@ TEST_CASE_FIXTURE(Widgets, "invalid_widget_ranges_are_ignored_and_rule_updates_a
     CHECK_FALSE(editor.widgets("test", invalid));
     invalid = definition;
     invalid.popupWidth = std::numeric_limits<float>::quiet_NaN();
+    CHECK_FALSE(editor.widgets("test", invalid));
+    invalid = definition;
+    invalid.scale = 0;
     CHECK_FALSE(editor.widgets("test", invalid));
     definition.match = [](std::string_view, size_t, std::vector<ui::TextWidget>& result) {
         result = {{1, 2}, {0, 500}, {0, 0}, {4, 8, ui::TextWidget::Replace, -1}};

@@ -7,7 +7,7 @@ namespace ui
 
 bool TextEditor::widgets(std::string_view owner, TextWidgetRule rule)
 {
-    if (owner.empty() || !rule.match || !rule.draw || !std::isfinite(rule.popupWidth) || !std::isfinite(rule.popupHeight) || !std::isfinite(rule.popupPadding) || rule.popupWidth < 32 || rule.popupHeight < 32 || rule.popupPadding < 0 || rule.popupPadding * 2 >= std::min(rule.popupWidth, rule.popupHeight) || (rule.suggest && !rule.popup)) return false;
+    if (owner.empty() || !rule.match || !rule.draw || !std::isfinite(rule.popupWidth) || !std::isfinite(rule.popupHeight) || !std::isfinite(rule.popupPadding) || !std::isfinite(rule.scale) || rule.scale <= 0 || rule.popupWidth < 32 || rule.popupHeight < 32 || rule.popupPadding < 0 || rule.popupPadding * 2 >= std::min(rule.popupWidth, rule.popupHeight) || (rule.suggest && !rule.popup)) return false;
     auto& rules = impl->widgetRules;
     auto found = std::find_if(rules.begin(), rules.end(), [&](const auto& entry) { return entry.owner == owner; });
     if (found == rules.end()) rules.push_back({std::string(owner), std::move(rule)});
@@ -237,7 +237,13 @@ void TextEditor::Impl::paintWidgets(Context& host, std::string_view id, Rect bou
                 auto rect = item.bounds;
                 rect.x += area.x - horizontal;
                 rect.y += area.y + float(line.y() - vertical);
-                auto hit = rect.intersect(area).intersect(host.clip());
+                // Inline widgets take clicks across the text row, since their box is only as tall as a capital.
+                auto target = rect;
+                if (item.range.display != TextWidget::Below) {
+                    target.y = area.y + float(line.y() - vertical);
+                    target.h = line.textHeight;
+                }
+                auto hit = target.intersect(area).intersect(host.clip());
                 if (hit.w <= 0 || hit.h <= 0) continue;
                 TextWidgetEvent event{sourceOffset(line.start() + item.range.start), sourceOffset(line.start() + item.range.end), revision, rect, {}};
                 event.value = document.text().substr(event.start, event.end - event.start);

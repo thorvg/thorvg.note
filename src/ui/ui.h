@@ -2546,6 +2546,8 @@ struct TextWidgetEvent
  * Match receives one measured source line and its document byte offset. Emit nonempty,
  * UTF-8-aligned ranges within that line. Earlier registered rules win overlaps.
  * Drawing runs only for visible widgets; use stable instance IDs for retained animations.
+ * Replace and After widgets draw in a box sized from a capital letter on the baseline (see scale)
+ * and take clicks across the height of their text row.
  * Below ranges preserve the source line and reserve height beneath it. Their rule must
  * set block so row metadata includes the extra height before the line becomes visible.
  * Render callbacks must not edit the document; event handlers use replaceWidget().
@@ -2566,6 +2568,7 @@ struct TextWidgetRule
     std::function<std::string(std::string_view)> clipboard;  ///< External text for a fully selected widget.
     float popupWidth = 256, popupHeight = 180;
     float popupPadding = 12;
+    float scale = 1;     ///< Inline box height over a capital's, centred on it and capped by the row height.
     bool code = false;   ///< Whether matches are allowed in Markdown code spans.
     bool block = false;  ///< Match during row layout to reserve below-source space.
 };

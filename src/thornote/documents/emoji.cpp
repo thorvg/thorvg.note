@@ -82,7 +82,7 @@ void matchEmoji(std::string_view text, size_t base, std::vector<ui::TextWidget>&
             }
         }
         if (matched) {
-            ranges.push_back({base + at, base + at + matched, ui::TextWidget::Replace, 1.5f});
+            ranges.push_back({base + at, base + at + matched, ui::TextWidget::Replace, 1.0f});
             at += matched;
         } else {
             ++at;

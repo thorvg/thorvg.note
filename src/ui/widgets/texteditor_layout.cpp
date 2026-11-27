@@ -131,6 +131,13 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
         tvg::GlyphMetrics space{};
         glyphMetrics(measurer.get(), " ", space);
         line.breakWidth = space.advance;
+        // Inline widgets stand as tall as a capital letter on the body baseline.
+        tvg::GlyphMetrics capital{};
+        tvg::TextMetrics body{};
+        if (widgets && widget < widgets->size() && (*widgets)[widget].range.start < stop) {
+            if (!glyphMetrics(measurer.get(), "A", capital)) capital.max.y = size * .7f;
+            measurer->metrics(body);
+        }
         auto append = [&](std::string_view value, uint32_t cp, uint32_t glyph, bool caret) {
             tvg::GlyphMetrics metrics{};
             auto byte = static_cast<unsigned char>(value.front());
@@ -263,8 +270,10 @@ std::vector<TextLine> TextEditor::Impl::layoutRows(std::string_view text, size_t
                     below += h + configuration.fontSize;
                     continue;
                 }
-                item.bounds.h = std::min(rowHeight, size * 1.25f);
-                item.bounds.y = (rowHeight - item.bounds.h) / 2;
+                auto height = std::min((capital.max.y - capital.min.y) * widgetRules[item.rule].rule.scale, rowHeight);
+                auto middle = (rowHeight + body.ascent + body.descent) / 2 - (capital.max.y + capital.min.y) / 2;
+                item.bounds.h = height;
+                item.bounds.y = std::clamp(middle - height / 2, 0.0f, rowHeight - height);
             }
         line.textHeight = rowHeight;
         line.bounds = {0, 0, float(x), rowHeight + below};

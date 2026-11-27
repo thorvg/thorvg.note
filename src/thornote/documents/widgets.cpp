@@ -101,15 +101,15 @@ void DocumentWidgets::attach(ui::TextEditor& editor)
             if (color(text.substr(at, end - at), parsed)) {
                 ui::Color ink{parsed.r, parsed.g, parsed.b};
                 ui::Color background{uint8_t(255 - parsed.r), uint8_t(255 - parsed.g), uint8_t(255 - parsed.b), 28};
-                ranges.push_back({base + at, base + end, ui::TextWidget::After, 1.5f, ink, background});
+                ranges.push_back({base + at, base + end, ui::TextWidget::After, 1.0f, ink, background});
             }
         }
     };
     colors.draw = [](ui::Context& context, std::string_view, ui::Rect bounds, ui::State state, std::string_view source) {
         ui::Color value;
         if (!color(source, value)) return;
-        auto side = std::min(bounds.w - 6, bounds.h - 4);
-        ui::Rect swatch{bounds.x + 3, bounds.y + (bounds.h - side) / 2, side, side};
+        auto side = std::min(bounds.w, bounds.h);
+        ui::Rect swatch{bounds.x + (bounds.w - side) / 2, bounds.y + (bounds.h - side) / 2, side, side};
         context.rect(swatch, context.theme().background, 3, state.hovered ? context.theme().accent : context.theme().border);
         context.rect(swatch.inset(2), value, 1);
     };
@@ -121,12 +121,12 @@ void DocumentWidgets::attach(ui::TextEditor& editor)
     ui::TextWidgetRule tasks;
     tasks.match = [](std::string_view text, size_t base, std::vector<ui::TextWidget>& ranges) {
         auto at = task(text);
-        if (at != text.npos) ranges.push_back({base + at, base + at + 3, ui::TextWidget::Replace, 1.4f});
+        if (at != text.npos) ranges.push_back({base + at, base + at + 3, ui::TextWidget::Replace, 1.0f});
     };
     tasks.draw = [](ui::Context& context, std::string_view id, ui::Rect bounds, ui::State state, std::string_view source) {
         bool checked = source[1] != ' ';
-        auto side = std::min(bounds.w - 4, bounds.h - 4);
-        ui::Rect box{bounds.x + 2, bounds.y + (bounds.h - side) / 2, side, side};
+        auto side = std::min(bounds.w, bounds.h);
+        ui::Rect box{bounds.x + (bounds.w - side) / 2, bounds.y + (bounds.h - side) / 2, side, side};
         const auto& theme = context.theme();
         context.rect(box, checked ? theme.accent : theme.background, 3, state.hovered ? theme.accent : theme.border);
         if (checked) context.icon(std::string(id) + "/check", box, "check", theme.accentText, {.hovered = state.hovered, .pressed = state.pressed}, side * 0.9f);
@@ -137,6 +137,8 @@ void DocumentWidgets::attach(ui::TextEditor& editor)
     editor.widgets("task", std::move(tasks));
 
     ui::TextWidgetRule emojis;
+    // The artwork leaves a margin inside its canvas, so a face matches a capital when the canvas grows.
+    emojis.scale = 1.15f;
     emojis.popupWidth = 232;
     emojis.popupHeight = 48;
     emojis.popupPadding = 6;
