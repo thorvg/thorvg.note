@@ -29,6 +29,8 @@ std::string encodePreferences(const Preferences& value)
         out << "recent-file " << std::quoted(utf8(path)) << '\n';
     for (const auto& path : value.recent.directories)
         out << "recent-directory " << std::quoted(utf8(path)) << '\n';
+    for (const auto& path : value.recent.imported)
+        out << "imported-directory " << std::quoted(utf8(path)) << '\n';
     return out.str();
 }
 
@@ -63,12 +65,13 @@ bool decodePreferences(std::string_view text, Preferences& result)
                 if (!std::isfinite(width) || width < 100 || width > 1000) return false;
             if (index == 0) value.layouts[size_t(Layout::Memo)] = state;
             else if (index == 2) value.layouts[size_t(Layout::Note)] = state;
-        } else if (key == "recent-file" || key == "recent-directory") {
+        } else if (key == "recent-file" || key == "recent-directory" || key == "imported-directory") {
             std::string text;
             if (!(in >> std::quoted(text))) return false;
             auto path = utf8Path(text).lexically_normal();
             if (path.empty() || !path.is_absolute()) return false;
-            auto& entries = key == "recent-file" ? value.recent.files : value.recent.directories;
+            auto& entries = key == "recent-file" ? value.recent.files : key == "recent-directory" ? value.recent.directories
+                                                                                                  : value.recent.imported;
             if ((key != "recent-file" || entries.size() < RecentItems::fileLimit) && std::find(entries.begin(), entries.end(), path) == entries.end()) entries.push_back(std::move(path));
         } else {
             std::string ignored;

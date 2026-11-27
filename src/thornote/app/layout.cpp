@@ -73,27 +73,53 @@ void EditorApp::drawCollections(ui::Rect r)
         auto documents = filteredDocuments();
         if (!documents.empty() && std::find(documents.begin(), documents.end(), workspace.active()) == documents.end()) workspace.select(documents.front()->id);
         focusEditor(true); }, 36);
-    context.text({r.x + 16, r.y + 130, r.w - 32, 24}, "RECENT FOLDERS", theme.muted, 10, true);
-    folderItems.clear();
-    ui::Rect body{r.x + 6, r.y + 162, r.w - 12, std::max(0.0f, r.h - 174)};
-    size_t count = std::max(size_t(1), size_t(body.h / 36));
-    const auto& folders = recent.rootDirectories();
-    size_t limit = folders.size() > count ? folders.size() - count : 0;
-    context.scroll("collections/scroll", body, collectionOffset, limit, {.step = 3, .enabled = !dialog});
-    if (!folders.empty()) {
-        for (size_t i = collectionOffset; i < folders.size() && i < collectionOffset + count; ++i) {
-            const auto& path = folders[i];
+    const auto& imported = recent.imported;
+    auto isImported = [&](const storage::Path& path) {
+        return std::find(imported.begin(), imported.end(), path) != imported.end();
+    };
+    auto current = collection.compare(0, 7, "folder:") == 0 ? utf8Path(collection.substr(7)) : storage::Path{};
+    const auto& roots = recent.rootDirectories();
+    bool recentFolders = std::any_of(roots.begin(), roots.end(), [&](const auto& path) { return !isImported(path); });
+    auto drawFolders = [&](const char* id, ui::Rect body, const std::vector<storage::Path>& folders, bool skipImported, std::vector<ui::ListItem>& items, ui::ListState& state, size_t& offset, const std::string& selected) {
+        auto count = std::max(size_t(1), size_t(body.h / 36));
+        auto total = size_t(std::count_if(folders.begin(), folders.end(), [&](const auto& path) { return !skipImported || !isImported(path); }));
+        context.scroll(std::string(id) + "/scroll", body, offset, total > count ? total - count : 0, {.step = 3, .enabled = !dialog});
+        items.clear();
+        size_t index = 0;
+        for (const auto& path : folders) {
+            if ((skipImported && isImported(path)) || index++ < offset) continue;
+            if (items.size() == count) break;
             auto name = displayName(path);
-            folderItems.push_back({utf8(path), name.empty() ? displayPath(path) : name, {}, "folder", 0, !dialog});
+            items.push_back({utf8(path), name.empty() ? displayPath(path) : name, {}, "folder", 0, !dialog});
         }
-        auto selected = collection.compare(0, 7, "folder:") == 0 ? utf8(recent.rootDirectory(utf8Path(collection.substr(7)))) : std::string{};
-        ui::list(context, "folders", body, folderItems, selected, folderList, [this](const std::string& path) { selectNoteFolder(utf8Path(path)); }, 36, [this](const std::string& path, ui::Rect anchor) {
+        ui::list(context, id, body, items, selected, state, [this](const std::string& path) { selectNoteFolder(utf8Path(path)); }, 36, [this](const std::string& path, ui::Rect anchor) {
             if (dialog || palette || prompt != Prompt::None || !layoutScript.menu("folder-menu")) return;
             menuFolder = utf8Path(path);
             menuRoot = "folder-menu";
             contextMenuAnchor = menuButton = anchor;
             openMenu("folder-menu"); });
-    } else context.text(body, "Open a file to add\nits folder here", theme.muted, 11);
+    };
+    float top = r.y + 130;
+    if (chooseFolder || !imported.empty()) {
+        context.text({r.x + 16, top, r.w - 56, 24}, "IMPORTED FOLDERS", theme.muted, 10, true);
+        if (chooseFolder) {
+            ui::Rect button{r.x + r.w - 40, top - 3, 30, 30};
+            auto state = ui::button(context, "folders/import", button, "", [this] { commands.execute("folder.open"); },
+                                    {.style = ui::ButtonStyle::Quiet, .icon = "plus", .enabled = !dialog});
+            if (state.hovered) hint = {"Open folder", button};
+        }
+        auto rows = std::clamp(imported.size(), size_t(1), std::max(size_t(1), size_t((r.y + r.h - top - 86) / (recentFolders ? 72 : 36))));
+        ui::Rect body{r.x + 6, top + 32, r.w - 12, rows * 36.0f};
+        if (imported.empty()) context.text(body.inset(10), "Open a folder with +", theme.muted, 11);
+        else drawFolders("imported", body, imported, false, importedItems, importedList, importedOffset, isImported(current) ? utf8(current) : std::string{});
+        top = body.y + body.h + 10;
+    }
+    if (recentFolders) {
+        context.text({r.x + 16, top, r.w - 32, 24}, "RECENT FOLDERS", theme.muted, 10, true);
+        ui::Rect body{r.x + 6, top + 32, r.w - 12, std::max(0.0f, r.y + r.h - top - 44)};
+        auto selected = current.empty() || isImported(current) ? std::string{} : utf8(recent.rootDirectory(current));
+        drawFolders("folders", body, roots, true, folderItems, folderList, collectionOffset, selected);
+    }
     context.line(r.x + r.w - 1, r.y, r.x + r.w - 1, r.y + r.h, theme.border);
 }
 

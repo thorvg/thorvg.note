@@ -102,3 +102,20 @@ TEST_CASE("note_roots_resolve_directory_aliases_before_opening_files")
     CHECK(recent.rootDirectory(notes) == notes);
     CHECK(recent.rootDirectory(alias) == notes);
 }
+
+TEST_CASE("imported_folders_stay_among_directories_until_removed")
+{
+    storage::test::Directory directory;
+    auto opened = directory.path / "opened";
+    auto imported = directory.path / "imported";
+    std::filesystem::create_directory(opened);
+    std::filesystem::create_directory(imported);
+    tn::RecentItems recent;
+    recent.rememberDirectory(opened);
+    recent.importDirectory(imported);
+    CHECK(recent.imported == std::vector<storage::Path>{imported});
+    CHECK(recent.directories == std::vector<storage::Path>{imported, opened});
+    recent.removeDirectory(imported);
+    CHECK(recent.imported.empty());
+    CHECK(recent.directories == std::vector<storage::Path>{opened});
+}

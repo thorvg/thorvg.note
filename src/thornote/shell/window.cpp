@@ -145,6 +145,12 @@ public:
         app->chooseFile = [this](bool save, const storage::Path& initial, FileChosen done) {
             showFileDialog(save, initial, std::move(done));
         };
+#ifndef __EMSCRIPTEN__
+        app->chooseFolder = [this](const storage::Path& initial, FileChosen done) {
+            auto request = new DialogRequest{std::move(done), utf8(initial)};
+            SDL_ShowOpenFolderDialog(dialogCallback, request, window, request->initial.empty() ? nullptr : request->initial.c_str(), false);
+        };
+#endif
         custom = nativeWindowChromeSupported(window) && SDL_SetWindowHitTest(window, hitTest, this) && titleBarInput.initialize(window, [this](float x, float y) { return custom && !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) && app->draggable(x * inputX, y * inputY); }, [this] { app->changeWindow(WindowAction::TitleBarDoubleClick); });
         if (custom) custom = updateNativeWindowChrome(window, false);
         if (!custom) {

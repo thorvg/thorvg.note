@@ -205,7 +205,7 @@ void EditorApp::openPath(const storage::Path& path)
         workspace.error = "Cannot resolve directory: " + error.message();
         return;
     }
-    recent.rememberDirectory(directory);
+    recent.importDirectory(directory);
     folderWorkspace = true;
     layouts[size_t(Layout::Note)].sidebar = true;
     setLayout(Layout::Note);
@@ -389,6 +389,16 @@ void EditorApp::registerCommands()
         auto tab = target();
         return tab && tab->stamp.exists() && !tab->uncertain && !tab->persistenceFailed && !workspace.busy() && !dialog && prompt == Prompt::None;
     };
+    auto pickFolder = [this](const storage::Path& initial, std::function<void(const storage::Path&)> chosen) {
+        dialog = true;
+        focusEditor(false);
+        chooseFolder(initial, [this, chosen = std::move(chosen)](const std::vector<std::string>& paths, const std::string& error) {
+            dialog = false;
+            focusEditor(prompt == Prompt::None && !palette);
+            if (!error.empty()) workspace.error = error;
+            else if (!paths.empty()) chosen(utf8Path(paths.front()));
+        });
+    };
     add("file.new", "New document", "File", "Mod+N", [this] {
         auto& tab = workspace.create();
         settings.active = false;
@@ -509,6 +519,7 @@ void EditorApp::registerCommands()
         collectionOffset = 0;
         noteFileScroll = 0;
         refreshNoteFiles(true); }, [this] { return !menuFolder.empty(); }, "Right-click a folder in Note to choose an item");
+    add("folder.open", "Open folder...", "Folders", "", [this, pickFolder] { pickFolder(recent.directories.empty() ? storage::Path{} : recent.directories.front(), [this](const storage::Path& path) { openPath(path); }); }, [this] { return chooseFolder && !dialog; }, "No folder dialog is available");
     add("view.lineNumbers.toggle", "Toggle line numbers", "View", "", [this] { layout().lineNumbers = !layout().lineNumbers; applyAppearance(); });
     add("layout.memo", "Use Memo layout", "Layout", "", [this] { setLayout(Layout::Memo); });
     add("layout.note", "Use Note layout", "Layout", "", [this] { setLayout(Layout::Note); });

@@ -938,6 +938,15 @@ TEST_CASE_FIXTURE(EditorTest, "repeating_a_theme_selection_does_not_restart_its_
     CHECK(appearance().background.r == tn::defaultTheme(false).colors.background.r);
 }
 
+TEST_CASE("imported_folders_survive_loading_preferences")
+{
+    tn::Preferences decoded;
+    REQUIRE(decodePreferences("thornote-settings 1\nrecent-directory \"/notes/a\"\nrecent-directory \"/notes/b\"\nimported-directory \"/notes/b\"\n", decoded));
+    CHECK(decoded.recent.directories.size() == 2);
+    CHECK(decoded.recent.imported == std::vector<storage::Path>{"/notes/b"});
+    CHECK(encodePreferences(decoded).find("imported-directory \"/notes/b\"\n") != std::string::npos);
+}
+
 TEST_CASE("retired_line_number_corrections_still_load_and_are_dropped")
 {
     tn::Preferences decoded;

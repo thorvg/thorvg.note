@@ -38,11 +38,20 @@ void RecentItems::rememberDirectory(const storage::Path& path)
 {
     remember(directories, path);
 }
+void RecentItems::importDirectory(const storage::Path& path)
+{
+    remember(directories, path);
+    remember(imported, path);
+}
 void RecentItems::removeDirectory(const storage::Path& path)
 {
     if (path.empty() || !path.is_absolute()) return;
     auto normalized = normalizedDirectory(path);
-    directories.erase(std::remove_if(directories.begin(), directories.end(), [&](const auto& entry) { return contains(normalized, entry); }), directories.end());
+    auto inside = [&](const auto& entry) {
+        return contains(normalized, entry);
+    };
+    std::erase_if(directories, inside);
+    std::erase_if(imported, inside);
 }
 
 const std::vector<storage::Path>& RecentItems::rootDirectories() const

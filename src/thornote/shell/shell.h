@@ -142,6 +142,7 @@ public:
     // Shows a file dialog and later reports the chosen paths, or an error, on the main thread.
     // A relative save path starts in the documents folder.
     std::function<void(bool save, const storage::Path& initial, std::function<void(const std::vector<std::string>& paths, const std::string& error)> done)> chooseFile;
+    std::function<void(const storage::Path& initial, std::function<void(const std::vector<std::string>& paths, const std::string& error)> done)> chooseFolder;
     std::function<void(WindowAction)> changeWindow;
     // Shows the platform text menu; false leaves the menu to the app.
     std::function<bool(float x, float y, std::string_view selection, const ui::CommandRegistry&)> showTextMenu;

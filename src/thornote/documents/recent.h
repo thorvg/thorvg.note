@@ -8,9 +8,10 @@ namespace tn
 struct RecentItems
 {
     static constexpr size_t fileLimit = 10;
-    std::vector<storage::Path> files, directories;
+    std::vector<storage::Path> files, directories, imported;
     void rememberFile(const storage::Path&, bool rememberParent = true);
     void rememberDirectory(const storage::Path&);
+    void importDirectory(const storage::Path&);
     void removeDirectory(const storage::Path&);
     const std::vector<storage::Path>& rootDirectories() const;
     storage::Path rootDirectory(const storage::Path&) const;

@@ -217,8 +217,8 @@ private:
     LayoutScript layoutScript{commands};
     ui::Composition workbench;
     ui::CommandListState paletteState, listState;
-    ui::ListState collectionList, folderList;
-    std::vector<ui::ListItem> collectionItems, folderItems;  // Borrowed by the lists until input is dispatched.
+    ui::ListState collectionList, importedList, folderList;
+    std::vector<ui::ListItem> collectionItems, importedItems, folderItems;  // Borrowed by the lists until input is dispatched.
     ui::Rect editorBounds{}, sidebarBounds{}, searchBounds{}, menuButton{};
     ui::Rect promptSave{}, promptDiscard{}, promptCancel{};
     ui::TextInput renameInput;
@@ -229,7 +229,7 @@ private:
     storage::Path menuFolder;
     std::optional<ui::Rect> contextMenuAnchor;
     ui::MenuDefinition menuDefinition;
-    size_t menuSelection = 0, collectionOffset = 0;
+    size_t menuSelection = 0, collectionOffset = 0, importedOffset = 0;
     float noteFileScroll = 0, documentScroll = 0;
     ui::TextInput noteSearch;
     mutable std::string searchedQuery;
