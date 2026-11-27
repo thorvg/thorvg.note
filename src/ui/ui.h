@@ -991,6 +991,18 @@ public:
     const Theme& theme() const;
 
     /**
+     * @brief Sets the device pixels per logical pixel; scrolled content snaps to this grid.
+     *
+     * @param[in] factor Positive scale; other values reset it to 1.
+     */
+    void scale(float factor);
+
+    /**
+     * @brief Returns the device pixels per logical pixel.
+     */
+    float scale() const;
+
+    /**
      * @brief Optional font selector invoked for label measurement and rendering.
      *
      * @code

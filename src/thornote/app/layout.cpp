@@ -329,6 +329,7 @@ void EditorApp::render(float w, float h, double seconds)
     updateFind();
     hint.text.clear();
     context.begin(theme, {0, 0, w, h}, seconds);
+    context.scale(chrome.window.scale);
     context.pointerPosition(pointerX, pointerY);
     context.rect({0, 0, w, h}, theme.background);
     auto& state = layout();

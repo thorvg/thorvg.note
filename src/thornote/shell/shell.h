@@ -95,6 +95,7 @@ struct TextInputState
 struct WindowState
 {
     bool customTitleBar = false, maximized = false, fullscreen = false;
+    float scale = 1;
 };
 
 // The application side of the shell. Positions are logical pixels.

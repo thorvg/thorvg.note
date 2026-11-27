@@ -104,6 +104,7 @@ struct Context::Impl
     Icons icons;
     size_t iconSequence = 0;
     double seconds = 0;
+    float scale = 1;
     std::optional<double> nextFrame;
     const Theme* theme = nullptr;
     Rect clip;
@@ -262,6 +263,16 @@ tvg::Scene* Context::scene() const
 const Theme& Context::theme() const
 {
     return *impl->theme;
+}
+
+void Context::scale(float factor)
+{
+    impl->scale = std::isfinite(factor) && factor > 0 ? factor : 1;
+}
+
+float Context::scale() const
+{
+    return impl->scale;
 }
 
 State Context::control(std::string_view id, Rect bounds, Handler handler, bool enabled, ControlFlag flags, Cursor cursor, TextInput* input)

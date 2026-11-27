@@ -163,7 +163,7 @@ Rect TextEditor::Impl::logicalCaret() const
 {
     if (preedit.empty()) return view.caretRect();
     auto rect = preeditCaret;
-    rect.y += float(preeditOrigin - vertical);
+    rect.y += float(preeditOrigin - shownVertical());
     return rect;
 }
 
@@ -171,7 +171,7 @@ void TextEditor::Impl::ensureCaret()
 {
     relayout();
     measureTo(editing.selection().caret);
-    view.origin(vertical);
+    view.origin(shownVertical());
     auto caret = logicalCaret();
     auto area = textArea();
     if (caret.x < horizontal) horizontal = caret.x;
@@ -216,8 +216,8 @@ void TextEditor::Impl::pointerDown(float x, float y, bool extend, int clicks)
         relayout();
     }
     auto area = textArea();
-    view.origin(vertical);
-    view.pointerDown(x - area.x + horizontal, y - area.y, extend, clicks);
+    view.origin(shownVertical());
+    view.pointerDown(x - area.x + shownHorizontal(), y - area.y, extend, clicks);
     snapWidgets(true, true);
     dragging = true;
     edited(false, false);
@@ -240,8 +240,8 @@ void TextEditor::Impl::pointerMove(float x, float y)
     if (y < area.y) vertical -= lineHeight;
     if (y > area.y + area.h) vertical += lineHeight;
     clampScroll();
-    view.origin(vertical);
-    view.pointerMove(x - area.x + horizontal, y - area.y);
+    view.origin(shownVertical());
+    view.pointerMove(x - area.x + shownHorizontal(), y - area.y);
     snapWidgets(true, true);
     edited(false, false);
 }
@@ -341,7 +341,7 @@ bool TextEditor::Impl::key(Key key, Modifiers mods)
             return true;
         }
     }
-    view.origin(vertical);
+    view.origin(shownVertical());
     if (view.key(key, mods, textArea().h)) {
         if (mods.primary && key == Key::C) return true;
         snapWidgets(key != Key::Left && key != Key::Up && key != Key::Home && key != Key::PageUp);
@@ -397,9 +397,9 @@ Rect TextEditor::caretRect()
     impl->relayout();
     impl->measureTo(impl->editing.selection().caret);
     auto area = impl->textArea();
-    impl->view.origin(impl->vertical);
+    impl->view.origin(impl->shownVertical());
     auto caret = impl->logicalCaret();
-    caret.x += area.x - impl->horizontal;
+    caret.x += area.x - impl->shownHorizontal();
     caret.y += area.y;
     return caret;
 }
@@ -443,6 +443,7 @@ void TextEditor::Impl::handle(Context& host, std::string_view id, Rect bounds, c
 
 void TextEditor::render(Context& host, std::string_view id, Rect bounds)
 {
+    impl->scale = host.scale();
     impl->resize(bounds.w, bounds.h);
     impl->relayout();
     // The handler outlives this call; the host keeps it until its next frame.
@@ -526,11 +527,13 @@ bool TextEditor::Impl::update(double now)
         end = visible.second;
         prepareViewport(first, end);
     }
+    auto offsetX = shownHorizontal();
+    auto offsetY = shownVertical();
     context.clip({0, area.y, width, area.h}, [&] {
         if (configuration.lineNumbers) {
             auto scene = numberContent.scene();
             context.add(scene);
-            transform(scene, {1, 0, 0, 0, 1, area.y + float(renderOrigin - vertical), 0, 0, 1});
+            transform(scene, {1, 0, 0, 0, 1, area.y + float(renderOrigin - offsetY), 0, 0, 1});
         }
     });
     context.clip(area, [&] {
@@ -539,13 +542,13 @@ bool TextEditor::Impl::update(double now)
         if (configuration.markdown) {
             auto scene = codeContent.scene();
             context.add(scene);
-            transform(scene, {1, 0, area.x - horizontal, 0, 1, area.y + float(renderOrigin - vertical), 0, 0, 1});
+            transform(scene, {1, 0, area.x - offsetX, 0, 1, area.y + float(renderOrigin - offsetY), 0, 0, 1});
         }
         if (preedit.empty()) paintDecorations(first, end, false);
         if (!preedit.empty()) {
             for (auto rect : preeditRects) {
-                rect.x += area.x - horizontal;
-                rect.y += area.y + float(preeditOrigin - vertical);
+                rect.x += area.x - offsetX;
+                rect.y += area.y + float(preeditOrigin - offsetY);
                 context.rect(rect, themeTokens.raised);
             }
         } else if (!selection.empty())
@@ -556,10 +559,10 @@ bool TextEditor::Impl::update(double now)
         if (preedit.empty()) paintDecorations(first, end, true);
         auto scene = textContent.scene();
         context.add(scene);
-        transform(scene, {1, 0, area.x - horizontal, 0, 1, area.y + float(renderOrigin - vertical), 0, 0, 1});
+        transform(scene, {1, 0, area.x - offsetX, 0, 1, area.y + float(renderOrigin - offsetY), 0, 0, 1});
         if (!preedit.empty()) {
             for (auto rect : preeditRects) {
-                float x = area.x + rect.x - horizontal, y = area.y + rect.y + rect.h - 2 + float(preeditOrigin - vertical);
+                float x = area.x + rect.x - offsetX, y = area.y + rect.y + rect.h - 2 + float(preeditOrigin - offsetY);
                 context.line(x, y, x + rect.w, y, themeTokens.accent);
             }
         }

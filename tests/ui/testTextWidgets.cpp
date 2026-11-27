@@ -826,7 +826,7 @@ TEST_CASE_FIXTURE(Widgets, "below_previews_keep_fractional_wheel_distance_and_vi
         CHECK(editor.scrollY() == doctest::Approx(requested));
         for (const auto& [id, rect] : previews) {
             auto found = before.find(id);
-            if (found != before.end()) CHECK(rect.y == doctest::Approx(found->second.y + delta * step).epsilon(.0001));
+            if (found != before.end()) CHECK(rect.y == doctest::Approx(found->second.y + std::round(previous) - std::round(editor.scrollY())).epsilon(.0001));
         }
     }
 }

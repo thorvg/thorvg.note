@@ -236,12 +236,12 @@ void TextEditor::Impl::paintWidgets(Context& host, std::string_view id, Rect bou
             };
             for (const auto& item : found->second->widgets) {
                 auto rect = item.bounds;
-                rect.x += area.x - horizontal;
-                rect.y += area.y + float(line.y() - vertical);
+                rect.x += area.x - shownHorizontal();
+                rect.y += area.y + float(line.y() - shownVertical());
                 // Inline widgets take clicks across the text row, since their box is only as tall as a capital.
                 auto target = rect;
                 if (item.range.display != TextWidget::Below) {
-                    target.y = area.y + float(line.y() - vertical);
+                    target.y = area.y + float(line.y() - shownVertical());
                     target.h = line.textHeight;
                 }
                 auto hit = target.intersect(area).intersect(host.clip());

@@ -47,10 +47,10 @@ std::vector<Rect> TextEditor::rangeRects(size_t start, size_t end)
     if (composing()) return {};
     impl->relayout();
     auto area = impl->textArea();
-    impl->view.origin(impl->vertical);
-    auto result = impl->view.rangeRects(start, end, Rect{impl->horizontal, 0, area.w, area.h});
+    impl->view.origin(impl->shownVertical());
+    auto result = impl->view.rangeRects(start, end, Rect{impl->shownHorizontal(), 0, area.w, area.h});
     for (auto& rect : result) {
-        rect.x += area.x - impl->horizontal;
+        rect.x += area.x - impl->shownHorizontal();
         rect.y += area.y;
     }
     return result;
@@ -60,8 +60,8 @@ Rect TextEditor::Impl::rangeRect(const TextLine& line, size_t start, size_t end)
 {
     auto rect = line.rangeRect(start, end);
     auto area = textArea();
-    rect.x += area.x - horizontal;
-    rect.y = float(line.y() - vertical) + area.y;
+    rect.x += area.x - shownHorizontal();
+    rect.y = float(line.y() - shownVertical()) + area.y;
     return rect;
 }
 

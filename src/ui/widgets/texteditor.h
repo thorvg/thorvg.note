@@ -155,8 +155,7 @@ struct TextEditor::Impl
     uint64_t measuredFontReset = 0;
     uint64_t measuredRevision = uint64_t(-1), measuredFontGeneration = 0, paintedRevision = uint64_t(-1);
     double vertical = 0;
-    float width = 1, height = 1, horizontal = 0, gutter = 0, lineHeight = 24, boldAdvance = 0, widest = 0, digitWidth = 0;
-    // Wheel lines not yet scrolled; fractional ticks wait until they add up to a whole line.
+    float width = 1, height = 1, horizontal = 0, gutter = 0, lineHeight = 24, boldAdvance = 0, widest = 0, digitWidth = 0, scale = 1;
     bool viewportReady = false;
     std::optional<std::pair<float, double>> pendingScroll;
     bool dirty = true, layoutDirty = true, textContentDirty = true, hasFocus = false, dragging = false, previousCaretVisible = false;
@@ -198,6 +197,8 @@ struct TextEditor::Impl
     void textInput(std::string_view text);
 
     Rect logicalCaret() const;
+    double shownVertical() const { return std::round(vertical * scale) / scale; }
+    float shownHorizontal() const { return std::round(horizontal * scale) / scale; }
     Rect paintCaret();
     Rect textArea() const;
     Rect scrollTrack(Axis axis) const;

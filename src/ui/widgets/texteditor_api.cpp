@@ -127,7 +127,7 @@ bool TextEditor::navigate(std::string_view motion, size_t count, bool extend)
         modifiers.primary = motion == "end";
     } else return false;
     impl->relayout();
-    impl->view.origin(impl->vertical);
+    impl->view.origin(impl->shownVertical());
     for (size_t i = 0; i < count; ++i) {
         impl->view.key(key, modifiers, impl->textArea().h);
         impl->snapWidgets(key != Key::Left && key != Key::Up && key != Key::Home && key != Key::PageUp);

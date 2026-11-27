@@ -267,7 +267,7 @@ TEST_CASE_FIXTURE(Editor, "pointer_selects_and_wheel_scrolls_in_host_coordinates
     CHECK(context.wheel(-3));
     CHECK(editor.scrollY() == doctest::Approx(caret.h * 3));
     draw();
-    CHECK(editor.caretRect().y == doctest::Approx(caret.y - caret.h * 3));
+    CHECK(editor.caretRect().y == doctest::Approx(caret.y - std::round(caret.h * 3)));
     context.pointerPosition(bounds.x + bounds.w + 10, y);
     CHECK(!context.wheel(-3));
 }
@@ -334,6 +334,32 @@ TEST_CASE_FIXTURE(Editor, "pixel_wheel_scrolls_by_the_reported_distance")
     CHECK(editor.scrollY() == doctest::Approx(13.5f));
     CHECK(context.wheel(0, 9, true));
     CHECK(editor.scrollX() == doctest::Approx(9));
+}
+
+TEST_CASE_FIXTURE(Editor, "fractional_scroll_is_drawn_on_device_pixels")
+{
+    std::string text = "body\n# heading\n";
+    for (int i = 0; i < 100; ++i)
+        text += "body\n";
+    REQUIRE(document.text(text));
+    auto options = editor.options();
+    options.markdown = true;
+    editor.options(options);
+    context.scale(2);
+    draw();
+    auto top = editor.caretRect().y;
+    context.pointerMove(bounds.x + 20, bounds.y + 20);
+    CHECK(context.wheel(-0.2f, 0, true));
+    draw();
+    CHECK(editor.scrollY() == doctest::Approx(0.2f));
+    CHECK(editor.caretRect().y == doctest::Approx(top));
+    CHECK(context.wheel(-0.2f, 0, true));
+    draw();
+    CHECK(editor.scrollY() == doctest::Approx(0.4f));
+    CHECK(editor.caretRect().y == doctest::Approx(top - 0.5f));
+    CHECK(context.wheel(-0.35f, 0, true));
+    draw();
+    CHECK(editor.caretRect().y == doctest::Approx(top - 1));
 }
 
 TEST_CASE_FIXTURE(Editor, "wheel_is_released_when_content_fits")
@@ -456,7 +482,7 @@ TEST_CASE_FIXTURE(Editor, "scrolling_moves_parent_scenes_and_retains_text_in_the
         CHECK(found->transform.e13 == pose.transform.e13);
         CHECK(found->transform.e23 == pose.transform.e23);
         CHECK(found->parent == pose.parent);
-        CHECK(found->parentTransform.e23 == doctest::Approx(pose.parentTransform.e23 - distance));
+        CHECK(found->parentTransform.e23 == doctest::Approx(pose.parentTransform.e23 - std::round(distance)));
     }
     CHECK(reused == before.size());
     auto viewport = editor.textViewport();
@@ -1615,14 +1641,14 @@ TEST_CASE_FIXTURE(Editor, "large_document_coordinates_preserve_fractional_scroll
     auto maximum = editor.scrollY();
     auto end = editor.caretRect();
     CHECK(maximum > 33554432.0);
-    CHECK(std::abs(maximum + end.y + end.h - double(rowHeight) * 4000) < 0.01);
+    CHECK(std::abs(std::round(maximum) + end.y + end.h - double(rowHeight) * 4000) < 0.01);
     auto origin = maximum - 1000;
     editor.scroll(0, origin);
     auto before = editor.caretRect().y;
     for (size_t i = 1; i <= 8; ++i) {
         editor.scroll(0, origin + i * 0.25);
         CHECK(editor.scrollY() == origin + i * 0.25);
-        CHECK(editor.caretRect().y == doctest::Approx(before - i * 0.25));
+        CHECK(editor.caretRect().y == doctest::Approx(before - (std::round(origin + i * 0.25) - std::round(origin))));
     }
 }
 

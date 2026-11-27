@@ -792,7 +792,7 @@ TEST_CASE_FIXTURE(EditorTest, "font_size_reaches_a_hidden_document_when_it_is_sh
     CHECK(hidden.editor.options().fontSize == 17);
     // It keeps the caret where it was on screen.
     auto caret = hidden.editor.caretRect();
-    CHECK(caret.y + caret.h / 2 == doctest::Approx(anchor.y + anchor.h / 2).epsilon(0.01));
+    CHECK(std::abs((caret.y + caret.h / 2) - (anchor.y + anchor.h / 2)) <= 1);
 }
 
 TEST_CASE_FIXTURE(EditorTest, "extension_recursion_counts_only_work_queued_in_turn")

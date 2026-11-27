@@ -349,14 +349,14 @@ private:
         }
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) return true;
         auto flags = SDL_GetWindowFlags(window);
-        app->window({custom, bool(flags & SDL_WINDOW_MAXIMIZED), bool(flags & SDL_WINDOW_FULLSCREEN)});
+        auto scale = SDL_GetWindowDisplayScale(window);
+        if (scale <= 0) scale = 1;
+        app->window({custom, bool(flags & SDL_WINDOW_MAXIMIZED), bool(flags & SDL_WINDOW_FULLSCREEN), scale});
         if (!updateNativeWindowChrome(window, !custom)) return false;
         titleBarInput.update(custom, flags & SDL_WINDOW_INPUT_FOCUS);
         int ww, wh, width, height;
         if (!SDL_GetWindowSize(window, &ww, &wh) || !SDL_GetWindowSizeInPixels(window, &width, &height)) return false;
         if (ww <= 0 || wh <= 0 || width <= 0 || height <= 0) return true;
-        auto scale = SDL_GetWindowDisplayScale(window);
-        if (scale <= 0) scale = 1;
         inputX = float(width) / ww / scale;
         inputY = float(height) / wh / scale;
         app->render(width / scale, height / scale, ui::frameTime());
