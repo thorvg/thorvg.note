@@ -772,6 +772,30 @@ TEST_CASE_FIXTURE(EditorTest, "editor_leaves_printable_native_keys_for_text_inte
     CHECK(tab.document.text() == "a한");
 }
 
+TEST_CASE_FIXTURE(EditorTest, "shortcuts_work_after_a_click_ends_a_composition")
+{
+    storage::test::Directory directory;
+    auto path = directory.file("note.md");
+    storage::test::write(path, "Body");
+    auto id = app->workspace.open(path, false);
+    activate(id);
+    REQUIRE(wait([&] { return !app->workspace.busy(); }));
+    draw();
+    auto& tab = *app->workspace.find(id);
+    app->edit({id, 4, 4, 0, "!", false});
+    app->edit({id, 5, 5, 3, "요", true});
+    REQUIRE(tab.editor.composing());
+    // The input method does not report the end of a composition that a click drops.
+    auto bounds = editorBounds();
+    click({bounds.x, bounds.y, 8, 8});
+    draw();
+    REQUIRE_FALSE(tab.editor.composing());
+    key(Key('s'), primary);
+    CHECK(tab.saving);
+    REQUIRE(wait([&] { return !app->workspace.busy(); }));
+    CHECK(storage::test::read(path) == "Body!");
+}
+
 TEST_CASE_FIXTURE(EditorTest, "markdown_shortcuts_use_the_editor_selection")
 {
     auto& tab = document("한글 note");

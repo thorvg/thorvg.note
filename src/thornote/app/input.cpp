@@ -95,6 +95,12 @@ bool EditorApp::key(const KeyEvent& event)
         return true;
     }
     if (composing) {
+        // A click drops the preedit without the input method reporting the end of the composition.
+        auto input = context.input();
+        auto tab = textInputTarget();
+        composing = input ? !input->preedit.empty() : tab && tab->editor.composing();
+    }
+    if (composing) {
         if (auto input = context.input(); input && event.key == Key::Escape) {
             input->composition("", 0);
             composing = false;

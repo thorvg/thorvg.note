@@ -267,6 +267,12 @@ void targetTextMenu(NSMenu* menu, NSView* view)
     if (!key) return;
     key->consumed = true;
     handledKey = commandKey = false;
+    // A shortcut commits the composition first, so commands such as Save see its text,
+    // and the input method drops the syllable it would otherwise keep composing.
+    if (self.hasMarkedText && (event.modifierFlags & NSEventModifierFlagCommand)) {
+        [self unmarkText];
+        [self.inputContext discardMarkedText];
+    }
     bool dispatched = false;
     if (!self.hasMarkedText && owner->beforeKey) {
         dispatched = true;
