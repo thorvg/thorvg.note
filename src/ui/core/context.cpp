@@ -401,21 +401,21 @@ TextInput* Context::input() const
     return control && control->enabled ? control->input : nullptr;
 }
 
-bool Context::wheel(float vertical, float horizontal)
+bool Context::wheel(float vertical, float horizontal, bool pixels)
 {
     if (!std::isfinite(vertical) || !std::isfinite(horizontal) || (vertical == 0 && horizontal == 0)) return false;
     for (size_t i = impl->controls.size(); i > 0;) {
         const auto& control = impl->controls[--i];
         if (!control.enabled || !has(control.flags, ControlFlag::Scrollable) || !control.bounds.contains(impl->pointerX, impl->pointerY)) continue;
         auto id = control.id;
-        Event event{.type = EventType::Scroll, .x = horizontal, .y = vertical};
+        Event event{.type = EventType::Scroll, .x = horizontal, .y = vertical, .pixels = pixels};
         impl->send(id, event);
         if (event.handled) return true;
         i = std::min(i, impl->controls.size());
     }
 #ifdef __EMSCRIPTEN__
     EM_ASM({
-        if (Module['onUnhandledWheel']) Module['onUnhandledWheel']($0, $1); }, horizontal * 100, -vertical * 100);
+        if (Module['onUnhandledWheel']) Module['onUnhandledWheel']($0, $1); }, horizontal * (pixels ? 1 : wheelStepPixels), -vertical * (pixels ? 1 : wheelStepPixels));
 #endif
     return false;
 }
@@ -429,8 +429,8 @@ void Context::scroll(std::string_view id, Rect bounds, float& x, float& y, float
     control(id, bounds, [&x, &y, limitX, limitY, bounds, options](const Event& event) {
         float dx = 0, dy = 0;
         if (event.type == EventType::Scroll) {
-            dx = event.x * options.step;
-            dy = -event.y * options.step;
+            dx = event.x * (event.pixels ? 1 : options.step);
+            dy = -event.y * (event.pixels ? 1 : options.step);
         } else if (event.type == EventType::Key) {
             switch (event.key) {
                 case Key::Up: dy = -options.step; break;

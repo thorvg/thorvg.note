@@ -322,6 +322,20 @@ TEST_CASE_FIXTURE(Editor, "wheel_is_released_at_editor_scroll_boundaries")
     CHECK(context.wheel(1));
 }
 
+TEST_CASE_FIXTURE(Editor, "pixel_wheel_scrolls_by_the_reported_distance")
+{
+    std::string text;
+    for (int i = 0; i < 100; ++i)
+        text += "line " + std::string(100, 'x') + "\n";
+    REQUIRE(document.text(text));
+    draw();
+    context.pointerMove(bounds.x + 20, bounds.y + 20);
+    CHECK(context.wheel(-13.5f, 0, true));
+    CHECK(editor.scrollY() == doctest::Approx(13.5f));
+    CHECK(context.wheel(0, 9, true));
+    CHECK(editor.scrollX() == doctest::Approx(9));
+}
+
 TEST_CASE_FIXTURE(Editor, "wheel_is_released_when_content_fits")
 {
     REQUIRE(document.text("Short note"));

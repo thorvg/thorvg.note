@@ -398,8 +398,8 @@ void EditorApp::pointerUp(const PointerEvent& event)
 void EditorApp::wheel(const WheelEvent& event)
 {
     if (event.y != 0 && std::isfinite(event.y) && event.modifiers.control && editorAt(event.pointerX, event.pointerY))
-        setFontSize(std::max(options.fontSize / 2, options.fontSize + event.y));
-    else context.wheel(event.y, event.x);
+        setFontSize(std::max(options.fontSize / 2, options.fontSize + (event.pixels ? event.y / ui::wheelStepPixels : event.y)));
+    else context.wheel(event.y, event.x, event.pixels);
     sync();
 }
 

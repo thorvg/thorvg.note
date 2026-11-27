@@ -532,6 +532,7 @@ struct Event
     Modifiers modifiers = {};
     int clicks = 1;
     std::string text = {};
+    bool pixels = false;          ///< Scroll deltas are pixels from a precise device instead of wheel steps.
     mutable bool handled = true;  ///< A Scroll handler may clear this to let an enclosing region or host scroll.
 
     /** @brief Whether a pointer activation or keyboard confirmation should invoke this control. */
@@ -571,6 +572,9 @@ enum class ControlFlag : uint8_t
 };
 
 /** @brief Wheel behavior for a scroll region; offsets and limits use the same units. */
+/** @brief Pixels a browser reports for one wheel step; converts pixel deltas for regions that move in rows. */
+constexpr float wheelStepPixels = 100;
+
 struct ScrollOptions
 {
     float step = 36;
@@ -1163,9 +1167,10 @@ public:
      * if (!context.wheel(vertical, horizontal)) page -= vertical * 40;
      * @endcode
      *
+     * @param pixels Whether the deltas are pixels from a precise device instead of wheel steps.
      * @return Whether a control consumed the scroll event.
      */
-    bool wheel(float vertical, float horizontal = 0);
+    bool wheel(float vertical, float horizontal = 0, bool pixels = false);
 
     /**
      * @brief Registers a scroll region and clamps its retained offset to the current limit.
@@ -1179,7 +1184,8 @@ public:
         control(id, bounds, [&offset, limit, options](const Event& event) {
             if (event.type != EventType::Scroll) return;
             float delta = options.horizontal ? (std::abs(event.x) > std::abs(event.y) ? event.x : -event.y) : -event.y;
-            event.handled = scrollOffset(offset, limit, delta * options.step); }, options.enabled && limit > 0, ControlFlag::Scrollable);
+            if (event.pixels && std::is_integral_v<T>) delta /= wheelStepPixels;
+            event.handled = scrollOffset(offset, limit, event.pixels && !std::is_integral_v<T> ? delta : delta * options.step); }, options.enabled && limit > 0, ControlFlag::Scrollable);
     }
 
     /** @brief Registers both axes of a scroll region; horizontal and vertical deltas stay independent. */

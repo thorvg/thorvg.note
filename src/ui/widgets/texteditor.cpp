@@ -260,13 +260,13 @@ void TextEditor::Impl::cancelPointer()
     view.cancelPointer();
 }
 
-void TextEditor::Impl::wheel(float y, float x)
+void TextEditor::Impl::wheel(float y, float x, bool pixels)
 {
     if (!std::isfinite(y) || !std::isfinite(x)) return;
     relayout();
     // Use the body line height so headings do not change wheel sensitivity.
-    vertical -= y * lineHeight;
-    horizontal += x * configuration.fontSize * 3;
+    vertical -= y * (pixels ? 1 : lineHeight);
+    horizontal += x * (pixels ? 1 : configuration.fontSize * 3);
     clampScroll();
     invalidate();
 }
@@ -427,7 +427,7 @@ void TextEditor::Impl::handle(Context& host, std::string_view id, Rect bounds, c
         case EventType::Scroll:
             relayout();
             event.handled = (event.y > 0 && vertical > 0) || (event.y < 0 && vertical < maxVerticalScroll()) || (event.x < 0 && horizontal > 0) || (event.x > 0 && horizontal < maxHorizontalScroll());
-            if (event.handled) wheel(event.y, event.x);
+            if (event.handled) wheel(event.y, event.x, event.pixels);
             break;
         case EventType::Key:
             focus(true);

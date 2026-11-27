@@ -193,7 +193,7 @@ struct TextEditor::Impl
     void pointerMove(float x, float y);
     void pointerUp();
     void cancelPointer();
-    void wheel(float y, float x);
+    void wheel(float y, float x, bool pixels);
     bool key(Key key, Modifiers mods);
     void textInput(std::string_view text);
 

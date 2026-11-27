@@ -67,10 +67,11 @@ struct PointerEvent
 
 struct WheelEvent
 {
-    // Steps to the right and away from the user; flipped scrolling is already reversed.
+    // Steps, or pixels when set, to the right and away from the user; flipped scrolling is already reversed.
     float x = 0, y = 0;
     float pointerX = 0, pointerY = 0;
     ui::platform::KeyModifiers modifiers{};
+    bool pixels = false;
 };
 
 // An edit from the platform input method, in UTF-8 byte offsets of the target document.

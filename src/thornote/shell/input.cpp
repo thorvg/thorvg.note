@@ -68,7 +68,13 @@ bool send(App& app, const SDL_Event& event, float sx, float sy)
         }
         case SDL_EVENT_MOUSE_WHEEL: {
             float direction = event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1;
-            app.wheel({event.wheel.x * direction, event.wheel.y * direction, event.wheel.mouse_x * sx, event.wheel.mouse_y * sy, modifiers(SDL_GetModState())});
+#ifdef __EMSCRIPTEN__
+            direction *= ui::wheelStepPixels;
+            bool pixels = true;
+#else
+            bool pixels = false;
+#endif
+            app.wheel({event.wheel.x * direction, event.wheel.y * direction, event.wheel.mouse_x * sx, event.wheel.mouse_y * sy, modifiers(SDL_GetModState()), pixels});
             break;
         }
         default: break;

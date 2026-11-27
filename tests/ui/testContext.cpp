@@ -239,6 +239,27 @@ TEST_CASE_FIXTURE(Frame, "scroll_regions_support_rows_and_horizontal_strips")
     CHECK(x == 96);
 }
 
+TEST_CASE_FIXTURE(Frame, "pixel_wheel_moves_pixel_offsets_exactly_and_rows_by_steps")
+{
+    size_t row = 0;
+    float list = 0, x = 0, y = 0;
+    context.begin(theme, {0, 0, 300, 100});
+    context.scroll("rows", {0, 0, 100, 100}, row, size_t(5), {.step = 3});
+    context.scroll("list", {100, 0, 100, 100}, list, 500.0f, {.step = 60});
+    context.scroll("page", {200, 0, 100, 100}, x, y, 100.0f, 300.0f);
+    context.end();
+    context.pointerPosition(10, 10);
+    CHECK(context.wheel(-ui::wheelStepPixels, 0, true));
+    CHECK(row == 3);
+    context.pointerPosition(110, 10);
+    CHECK(context.wheel(-7.5f, 0, true));
+    CHECK(list == 7.5f);
+    context.pointerPosition(210, 10);
+    CHECK(context.wheel(-4, 6, true));
+    CHECK(x == 6);
+    CHECK(y == 4);
+}
+
 TEST_CASE_FIXTURE(Frame, "two_axis_scroll_regions_handle_wheel_and_keyboard")
 {
     float x = 0, y = 0;
